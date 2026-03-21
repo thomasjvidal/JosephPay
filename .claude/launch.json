@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "JosephPay",
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": ["serve.js"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

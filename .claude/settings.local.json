@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npx:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(mkdir -p okcomputer_extracted)",
+      "Bash(powershell -command \"Expand-Archive -Path ''''OKComputer_Clone_100%_do_Robinhood.zip'''' -DestinationPath ''''okcomputer_extracted'''' -Force\")",
+      "Bash(powershell -command \"Expand-Archive -Path ''C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho\\\\stitch.zip'' -DestinationPath ''C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho\\\\stitch_extracted'' -Force; Write-Host ''Done''\")",
+      "Bash(powershell -command \"Expand-Archive -Path ''C:\\\\Users\\\\milen\\\\Downloads\\\\OKComputer_Clone_100%_do_Robinhood.zip'' -DestinationPath ''C:\\\\Users\\\\milen\\\\Downloads\\\\okcomputer_extracted'' -Force; Write-Host ''Done''\")",
+      "Bash(powershell -command \"Get-ChildItem ''C:\\\\Users\\\\milen\\\\Downloads\\\\okcomputer_extracted'' -Recurse | Select-Object FullName, Length\")",
+      "Bash(powershell -command \"\\(Get-Item ''C:\\\\Users\\\\milen\\\\Downloads\\\\OKComputer_Clone_100%_do_Robinhood.zip''\\).Length; Add-Type -Assembly ''System.IO.Compression.FileSystem''; [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\Users\\\\milen\\\\Downloads\\\\OKComputer_Clone_100%_do_Robinhood.zip''\\).Entries | Select-Object FullName, Length\")",
+      "Bash(powershell -command \"Add-Type -Assembly ''System.IO.Compression.FileSystem''; [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho\\\\stitch.zip''\\).Entries | Select-Object FullName, Length | Format-Table -AutoSize\")",
+      "Bash(powershell -command \"Add-Type -Assembly ''System.IO.Compression.FileSystem''; [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\Users\\\\milen\\\\Downloads\\\\stitch \\(1\\).zip''\\).Entries | Select-Object FullName, Length | Format-Table -AutoSize\")",
+      "Bash(dir 'C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho')",
+      "Bash(powershell -command \"Expand-Archive -Path ''WhatsApp Unknown 2026-03-21 at 11.20.27.zip'' -DestinationPath ''whatsapp_imgs'' -Force\")"
+    ]
+  }
+}
