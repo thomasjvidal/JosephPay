@@ -17,7 +17,7 @@ const mimeTypes = {
 };
 
 http.createServer((req, res) => {
-  let filePath = path.join(dir, req.url === '/' ? '/vjosephpay.html' : req.url);
+  let filePath = path.join(dir, req.url === '/' ? '/index.html' : req.url);
   const ext = path.extname(filePath);
   const contentType = mimeTypes[ext] || 'text/plain';
 
