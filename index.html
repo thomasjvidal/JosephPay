@@ -4,11 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JosephPay</title>
+<script>
+const originalConsoleError = console.error;
+console.error = function (...args) {
+  if (typeof args[0] === 'string' && args[0].includes('Support for defaultProps will be removed from function components')) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+</script>
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
 <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -47,9 +57,18 @@ textarea{resize:none}
 const {useState,useEffect,useRef}=React;
 const {AreaChart,Area,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,BarChart,Bar}=Recharts;
 
+// ── Supabase config ─────────────────────────────────────────────────────────
+// Preencha com suas credenciais do painel Supabase (Settings → API)
+const SUPABASE_URL  = "https://ljpjadwvqocatnqjvuvk.supabase.co";   // ex: "https://xyzxyz.supabase.co"
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqcGphZHd2cW9jYXRucWp2dXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTg4MzgsImV4cCI6MjA5MTg5NDgzOH0.cflTLbryotX4p84pA2L03J1VHmVCELTvJ0WwI5WeZeY";   // ex: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+  : null;
+// ────────────────────────────────────────────────────────────────────────────
+
 const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B8DEF";
 const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
-const BDR="rgba(255,255,255,0.06)", MUTED="#99907C", TEXT="#E5E2E0";
+const BDR="rgba(255,255,255,0.06)", MUTED="#B0A894", TEXT="#F2EFEA";
 const F="'Inter',system-ui,sans-serif", SF="'Newsreader',Georgia,serif";
 
 const mkData=(n,base,variance)=>Array.from({length:n},(_,i)=>({i,v:Math.max(0,base+Math.floor((Math.random()-0.4)*variance))}));
@@ -70,7 +89,7 @@ function Tag({status}){
   return <span style={{background:s.bg,color:s.tx,border:`1px solid ${s.bd}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{status}</span>;
 }
 
-function KPICard({label,value,sub,accent,icon}){
+function KPICard({label,value,sub,accent,icon,vis=true}){
   const c=accent||GOLD;
   return(
     <div style={{background:CARD,border:`1px solid rgba(212,175,55,0.06)`,borderRadius:16,padding:"20px 16px"}}>
@@ -78,7 +97,7 @@ function KPICard({label,value,sub,accent,icon}){
         <span style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F}}>{label}</span>
         <span style={{width:28,height:28,borderRadius:"50%",border:`1px solid ${c}30`,background:`${c}0D`,display:"flex",alignItems:"center",justifyContent:"center",color:c,fontSize:12,flexShrink:0}}>{icon}</span>
       </div>
-      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,letterSpacing:"-0.01em"}}>{value}</div>
+      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,letterSpacing:"-0.01em"}}>{vis?value:"••••••"}</div>
       {sub&&<div style={{color:MUTED,fontSize:11,marginTop:5,fontFamily:F}}>{sub}</div>}
     </div>
   );
@@ -103,25 +122,25 @@ function Btn({children,onClick,color,outline,sm}){
   );
 }
 
-function AdvancedChart({accent=GOLD}){
-  const [period,setPeriod]=useState("semana");
+function AdvancedChart({accent=GOLD,vis=true}){
+  const [period,setPeriod]=useState("mes");
   const pd=PERIODS[period];
   const total=pd.data.reduce((a,d)=>a+d.v,0);
   const gid=`g-${period}-${accent.replace("#","")}`;
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px 20px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
-        <div>
-          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,fontFamily:F}}>{pd.label}</div>
-          <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:30,letterSpacing:"-0.01em"}}>R$ {total.toLocaleString()}</div>
-        </div>
-        <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
-          {Object.keys(PERIODS).map(p=>(
-            <button key={p} onClick={()=>setPeriod(p)} style={{padding:"4px 11px",borderRadius:100,border:`1px solid ${p===period?accent+"50":BDR}`,background:p===period?`${accent}15`:"transparent",color:p===period?accent:MUTED,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F}}>{p}</button>
-          ))}
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{pd.label}</div>
+          <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:22,letterSpacing:"-0.01em"}}>{vis?`R$ ${total.toLocaleString()}`:"R$ ••••••"}</div>
         </div>
       </div>
-      <div style={{height:120}}>
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:8,scrollbarWidth:"none",msOverflowStyle:"none",WebkitOverflowScrolling:"touch"}} className="hide-scroll">
+        {Object.keys(PERIODS).map(p=>(
+          <button key={p} onClick={()=>setPeriod(p)} style={{padding:"4px 11px",borderRadius:100,border:`1px solid ${p===period?accent+"50":BDR}`,background:p===period?`${accent}15`:"transparent",color:p===period?accent:MUTED,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",flexShrink:0}}>{p}</button>
+        ))}
+      </div>
+      <div style={{height:100}}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={pd.data} margin={{top:4,right:4,left:-32,bottom:0}}>
             <defs>
@@ -148,7 +167,7 @@ function VisitorChart(){
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes</div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
           <div style={{color:MUTED,fontSize:12,marginTop:2}}>josephpay.com</div>
         </div>
         <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{data.reduce((a,d)=>a+d.v,0)} visitas</span>
@@ -165,7 +184,7 @@ function VisitorChart(){
         </ResponsiveContainer>
       </div>
       <div style={{display:"flex",gap:20,marginTop:14}}>
-        {[{l:"Sessões",v:"847",c:TEXT},{l:"Conversão",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
+        {[{l:"Sessões do site",v:"847",c:TEXT},{l:"Conversão do site",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
           <div key={k.l}>
             <div style={{color:k.c,fontWeight:700,fontSize:15}}>{k.v}</div>
             <div style={{color:MUTED,fontSize:11,marginTop:2}}>{k.l}</div>
@@ -179,8 +198,8 @@ function VisitorChart(){
 const QQ=["📊 Vendas hoje?","💰 Receita da semana?","🔗 Gerar link de afiliado","📈 Minha conversão?","❓ Configurar checkout","🆘 Suporte"];
 const AR={"📊 Vendas hoje?":"Hoje você teve 4 vendas totalizando R$ 1.240. Melhor hora: 14h com R$ 480. +18% acima da média! 🚀","💰 Receita da semana?":"Esta semana você recebeu R$ 7.270 líquidos. Quarta foi seu melhor dia.","🔗 Gerar link de afiliado":"Seu link: josephpay.com/ref/SEU_CODIGO — já ativo! Cada venda gera comissão automática.","📈 Minha conversão?":"Sua conversão atual é 2.3%. Média do mercado: 1.5-3%. Você está bem posicionado!","❓ Configurar checkout":"Vá em Templates, escolha o modelo, preencha produto e valor e clique Criar.","🆘 Suporte":"Me conta o que aconteceu. Contato: suporte@josephpay.com"};
 
-function ChatIA({productName}){
-  const [msgs,setMsgs]=useState([{role:"ai",text:`Olá! Sou a IA da JosephPay. Estou aqui pra te ajudar com "${productName||"seu produto"}". O que precisa?`}]);
+function ChatIA({productName, onBack}){
+  const [msgs,setMsgs]=useState([]);
   const [input,setInput]=useState("");
   const [showQ,setShowQ]=useState(true);
   const bottom=useRef(null);
@@ -195,19 +214,13 @@ function ChatIA({productName}){
     },600);
   };
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 140px)",minHeight:380}}>
-      <div style={{background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:14,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-        <div style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>Site ativo</div>
-          <div style={{color:TEXT,fontSize:13,fontWeight:600}}>protocolog9.josephpay.com</div>
-        </div>
-        <span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 150px)",minHeight:380}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexShrink:0}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para o Início</button>
       </div>
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
         {msgs.map((m,i)=>(
           <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-            {m.role==="ai"&&<div style={{width:30,height:30,borderRadius:10,background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#0A0A0A",flexShrink:0,marginRight:8,marginTop:2}}>J</div>}
             <div style={{maxWidth:"76%",padding:"11px 15px",borderRadius:16,fontSize:13,lineHeight:1.55,background:m.role==="user"?`${GOLD}18`:"rgba(255,255,255,0.05)",color:TEXT,border:`1px solid ${m.role==="user"?GOLD+"30":BDR}`}}>{m.text}</div>
           </div>
         ))}
@@ -221,7 +234,7 @@ function ChatIA({productName}){
         )}
         <div ref={bottom}/>
       </div>
-      <div style={{display:"flex",gap:8,flexShrink:0}}>
+      <div style={{display:"flex",gap:8,flexShrink:0,paddingBottom:20}}>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
         <button onClick={()=>send()} style={{width:46,height:46,borderRadius:14,background:GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:"pointer",fontWeight:900,flexShrink:0}}>→</button>
       </div>
@@ -248,7 +261,7 @@ function Afiliados({isAdmin}){
           </div>
           <div className="jp-promo-card" style={{marginBottom:12}}>
             <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
-              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGkuyzZnqoUM08agRXlkrfxyMPG1tGTOsGJ-31vPSQjy3rEEHMBFLq2ZLNqvyvHLkkTTYW-_hLzpuoBRJTrvv4xSSGB-jp3sbsOFDReLicp6zd81gmzD9BwYODCdJPBXvM2_GVLDhTvSbz4JL8gWYb4wMHdhb7NIrK8bm9KwT90lqkusGrmpiu97ip26oz_yQjoLrQB-6d84oW1NYU6dSKW2_4wfU_YMoZsy5I6jBpdbdPI2oUjKs7A_e065DuDo1ss2lfiD1la8c" alt="asset" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+              <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop" alt="asset" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
               <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
             </div>
             <div style={{position:"relative",zIndex:1,padding:"20px 18px",maxWidth:"60%"}}>
@@ -337,7 +350,7 @@ function Assinaturas(){
       </div>
       <div className="jp-promo-card" style={{marginBottom:12}}>
         <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuZ_p6XSf1uPm-R1aQQsYyjWjaq4-_sF_1tba9Q78fPdieeJejqTR9qEqNrBTI_XwIf7AnKCw1D19ucEXPWoPrTTMx-SU1IL3V7kHObKXOG-_wxOKR4Xy2bNGtTx2CF3oBgKaVgq23FMh-nRTQPPWWA54GxszAv1fE04OKIyR3UJYv32A3EN3XbxGgw7O51XHJjTc6Hfnn6nkmuqdwgCMZCbRydP84er7HMfSTOBLFk2BG7JaqJQTgwAyYiOsuDYe4w9v8ko7V_F0" alt="gold coins" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop" alt="gold coins" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"20px 18px",maxWidth:"60%"}}>
@@ -384,7 +397,6 @@ function Sacar(){
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
           <div style={{color:"rgba(12,12,12,0.45)",fontFamily:"monospace",fontSize:13,letterSpacing:"0.14em"}}>•••• •••• •••• 3421</div>
-          <div style={{color:"rgba(12,12,12,0.4)",fontFamily:SF,fontWeight:700,fontSize:20}}>J</div>
         </div>
         <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAutN3CNgEjGwomODrN5X4TOoO9lYUUoHWzKR2y1DXVVum-OCBnFZmfHd2oYxnFCsmaUBG-S_-p6CWLcawruI2o0xiEwgFYokwkCFGLUfdM9RYuEIRHnX8wCbHpYb-4baj1zvlB22kJCSGiAkMvBZRhKEAKASdlbVILoAl0rAMz3UaOE3KDx0JEeQ8TaSKRsY26BaU-RIbocWAJLApHHLz_k-nvZw5mlk47BFd6YWyMCbFRd0NPZjSrc-8buFoJ0PZm5n76xi3_erY" alt="Gold Card" style={{position:"absolute",top:0,right:0,width:"45%",height:"100%",objectFit:"cover",opacity:0.35,mixBlendMode:"overlay"}}/>
       </div>
@@ -408,7 +420,7 @@ function Sacar(){
         <button onClick={()=>val&&setDone(true)} style={{background:val?GOLD:"rgba(201,168,76,0.2)",border:"none",borderRadius:100,padding:16,color:val?"#0C0C0C":MUTED,fontWeight:600,fontSize:15,cursor:val?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>Sacar agora →</button>
       </div>
       <div style={{background:CARD,borderRadius:20,overflow:"hidden",position:"relative",minHeight:100,marginTop:4}}>
-        <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeQJm4QL9qsw7QaD-_Ap2d1GmXDitz5Q2p8_yAJ2_XVFDk4zhAIeiFEIbH5qQpMcugGC43qS0X2Eumf_M0kb_8nq5UDwnK32r_USpGYAI62IbSa7_y5BRISwuUUQwQwGGPY6nmxGdylfHshszyUN66z_N6CbCbo4lC21c-wFVYnd9_zMM_8IzfaG9vsO41pfnu1zvUrAdafKLpyEEOWaitIpwa0xdFlFp7DeFRLFZsoEldd1DgT9Dgs_IqeO0LbAPxDceIfKiTq7I"
+        <img src="https://images.unsplash.com/photo-1616077168712-fc6c788db4af?q=80&w=2070&auto=format&fit=crop"
           alt="Gold" style={{position:"absolute",right:0,top:0,height:"100%",width:"40%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 60%, transparent)"}}/>
         <div style={{position:"relative",zIndex:1,padding:"18px 20px"}}>
@@ -538,7 +550,7 @@ function DashAdmin({onNav}){
       </div>
       <div className="jp-promo-card" style={{marginBottom:10}}>
         <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3E80x53g2UjTg5zt_bloK6G8ydx3xV_6wLbUXCQHoHhenlKMMkjd5tguuq9zIbawappmALMBQBpjBfqp3uiLpkKaRkb41CVyacl8EaN60HpovHpWHR6rx3Cc91p6ga8lneU6wG06RSx9hYwcNYvQrOrNTxJiRmIEAs1zHHFrhc5gktrt1Mfir-cX7f9nEufikt_IRN5_4DbDZwpi9flQxndPhO_DZ85uDjgMJ2-Hwhb_SD6lOq1TqtIS6u41KD80FXJh2EciQ4VA"
+          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop"
             alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
         </div>
@@ -546,18 +558,6 @@ function DashAdmin({onNav}){
           <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>JosephPay Premium</div>
           <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Pagamentos digitais de nova geração</div>
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
-        </div>
-      </div>
-      <div className="jp-promo-card" style={{marginBottom:10}}>
-        <div style={{position:"absolute",top:0,right:0,width:"50%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxh5OLk2w6hgrUUSFyr_QXYJSdoHSBuMilbkZaj9nsTgO_u1HiY1Ijn0EQOusHuPn1EVAiiLpV6q_GhxGcl-IhRhuChQmXZFTMaanH6l61YhfjJ1YvpJiKC3cKSYqrpO49dHJgjDQXeLYeYdHsnYCZoZJLTYVnhiLpecYUJbtykT0s_wJ8x0T-As_FLsbjzsZf3KA6hki12KulV1m1mqtptH3rZHl-l_QG9g0n-42yqDKLRHqS_NaOroHpHVdPHLIZvhVI_wU0w4g"
-            alt="Vault" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.6,mixBlendMode:"luminosity"}}/>
-          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
-        </div>
-        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"58%"}}>
-          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>Pagamentos Elite</div>
-          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Processe com segurança e velocidade</div>
-          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Ver recursos →</button>
         </div>
       </div>
       <AdvancedChart accent={GOLD}/>
@@ -669,7 +669,7 @@ function ClientesAdmin(){
       </div>
       <div className="jp-promo-card" style={{marginBottom:16}}>
         <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeQJm4QL9qsw7QaD-_Ap2d1GmXDitz5Q2p8_yAJ2_XVFDk4zhAIeiFEIbH5qQpMcugGC43qS0X2Eumf_M0kb_8nq5UDwnK32r_USpGYAI62IbSa7_y5BRISwuUUQwQwGGPY6nmxGdylfHshszyUN66z_N6CbCbo4lC21c-wFVYnd9_zMM_8IzfaG9vsO41pfnu1zvUrAdafKLpyEEOWaitIpwa0xdFlFp7DeFRLFZsoEldd1DgT9Dgs_IqeO0LbAPxDceIfKiTq7I" alt="gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2070&auto=format&fit=crop" alt="gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
@@ -727,7 +727,7 @@ function VendasAdmin(){
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas · Plataforma</div>
       <div className="jp-promo-card" style={{marginBottom:16}}>
         <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCh2qlJ6n9z6dNQtynkppsjCpRvd3CwMwAJaYRokRhRolunRsXQD63Qrclg-UaZJoSNJJXDobg6xVkzDpOMhOMmfUU3pjaE56JpXxFUO3PwYS-AelFfqvvz5jY7nPQ_hh066Ld_O8q5Lh0vs9Izx7ukBLhjdzj1noSysUuRPhgpQRCCT-agmZ7gxN7whArUmUsMnB0eReex0rZnkPyAfbrvmk2l409w8XG1rDQFO3wDZxX5_yIdA7zhicf4dMJIafpJS6TKX11INks" alt="mystery" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?q=80&w=2070&auto=format&fit=crop" alt="mystery" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
@@ -811,32 +811,32 @@ function SiteAdmin(){
 }
 
 function DashClient({accent=GOLD,isDeise,onNav}){
-  const [vis,setVis]=useState(true);
+  const [vis,setVis]=useState(false);
   const sales=[{name:"João P.",val:isDeise?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:isDeise?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:isDeise?5000:60,met:"PIX",h:"10:48",st:"pendente"}];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Saldo disponível</div>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
           <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(isDeise?"R$ 31.200,00":"R$ 1.840,00"):"R$ ••••••"}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(isDeise?"R$ 45.500,00":"R$ 8.280,00"):"R$ ••••••"}</div>
         <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +{isDeise?"8":"22"}% este mês</span>
       </div>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Receita total" value={isDeise?"R$ 45.500":"R$ 8.280"} accent={accent} icon="◈"/>
-          <KPICard label="Vendas hoje" value={isDeise?"R$ 8.500":"R$ 360"} accent={GOLD} icon="↑"/>
-          <KPICard label="Assinaturas" value="3 ativas" accent={GOLD} icon="⟳"/>
-          <KPICard label="Ticket médio" value="R$ 547" accent={GOLD} icon="◎"/>
+          <KPICard label="Vendas hoje" value={isDeise?"R$ 8.500":"R$ 360"} accent={GOLD} icon="↑" vis={vis}/>
+          <KPICard label="Assinaturas ativas" value={isDeise?"2":"3"} accent={GOLD} icon="⟳" vis={vis}/>
+          <KPICard label="Total de clientes" value={isDeise?"124":"47"} accent={GOLD} icon="◻" vis={vis}/>
+          <KPICard label="Mensagens hoje" value={isDeise?"45":"24"} accent={GOLD} icon="✉" vis={vis}/>
         </div>
       </div>
-      <AdvancedChart accent={accent}/>
+      <AdvancedChart accent={accent} vis={vis}/>
       <div className="jp-promo-card" style={{marginBottom:10}}>
         <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCSGB2g5qeBUQ32i7H2wBd0Fj9XRuLGk1G1PRM4rAzvhEMSwOKT079f620o7qVHTZhguz14cVIh4APzZV7Mhfxhfdn0-DYkaMWyvorMnmidSDwu_iwP7sbhQ-rCHXcw0FLLNMLstsxr7oem9j2QBDYEsfZIy3CK84gjmdxbb48KCM8XhaEGEJ_fpUA3dImiV6a359XcC_qyzxCMm0Px01fW3HpfkK_TUgxy5TmNLztCusp5BQ9jJgKNS1ddSno-vkUAmnzndPz6UZA"
-            alt="Gold Coins" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1611689342806-0863700ce1e4?q=80&w=2070&auto=format&fit=crop"
+            alt="Eagle" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"60%"}}>
@@ -845,22 +845,10 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
         </div>
       </div>
-      <div className="jp-promo-card" style={{marginBottom:10}}>
-        <div style={{position:"absolute",top:0,right:0,width:"50%",height:"100%"}}>
-          <img src="https://lh3.googleusercontent.com/aida/ADBb0ui29YkiDkpyVsa9cfDW1krB1rl3sJe4LIrwmUN7XXuSNf0FVDlU5_tiy8xNQs0Np_sBlOJ9DnC8A0_O-mHBYAGqSywt3vaQYmg6D-8mR3tn0exgefotG5yi5iutGI-TwB2B4q4TzyZ-uHytHMMfzWCoMGG2BCcyVUkYaQst25yKYp8gv3e1Mxr9LiQSRJnqf1XUSknfmoieMBjC5zlEsHt_44f-DmsB42fhshzmyOhUU7nn5F8EnVRWJvnEwXCksKp5N3aZwIdPEA"
-            alt="Eagle" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.6,mixBlendMode:"luminosity"}}/>
-          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
-        </div>
-        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"58%"}}>
-          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>Pagamentos Elite</div>
-          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Processe com segurança e velocidade</div>
-          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Ver recursos →</button>
-        </div>
-      </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
-          <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+          <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
         {sales.map((s,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
@@ -903,7 +891,6 @@ function Sidebar({tab,setTab,nav,userName,initial}){
   return(
     <aside className="jp-sidebar">
       <div style={{display:"flex",alignItems:"center",gap:12,padding:"22px 16px 16px",marginBottom:8}}>
-        <div style={{width:36,height:36,borderRadius:12,background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:17,color:"#0C0C0C",flexShrink:0,fontFamily:SF}}>J</div>
         <div className="logo-text" style={{display:"none"}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:15,letterSpacing:"-0.02em",fontFamily:F}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
         </div>
@@ -934,14 +921,69 @@ function Sidebar({tab,setTab,nav,userName,initial}){
 
 function BottomNav({tab,setTab,nav}){
   return(
-    <div className="jp-bnav">
+    <div className="jp-bnav" style={{
+      display: "flex", 
+      justifyContent: "space-around", 
+      padding: "12px 24px", 
+      background: "rgba(19, 19, 18, 0.85)", 
+      backdropFilter: "blur(20px)", 
+      WebkitBackdropFilter: "blur(20px)",
+      borderTop: `1px solid ${BDR}`,
+      boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.4)",
+      paddingBottom: "env(safe-area-inset-bottom, 24px)"
+    }}>
       {nav.map(n=>{
         const a=tab===n.id;
         return(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{minWidth:"60px",flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"4px 2px",background:"none",border:"none",cursor:"pointer",position:"relative"}}>
-            {a&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",width:20,height:2,borderRadius:2,background:GOLD}}/>}
-            <span style={{fontSize:18,color:a?GOLD:"rgba(255,255,255,0.3)",lineHeight:1}}>{n.icon}</span>
-            <span style={{fontSize:9,fontWeight:a?600:400,color:a?GOLD:"rgba(255,255,255,0.35)",letterSpacing:"0.02em",fontFamily:F}}>{n.label}</span>
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{
+            display: "flex", 
+            flexDirection: "column", 
+            alignItems: "center", 
+            gap: "6px", 
+            background: "none", 
+            border: "none", 
+            cursor: "pointer", 
+            position: "relative",
+            flex: 1,
+            transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}>
+            {a && (
+              <div style={{
+                position: "absolute", 
+                top: "-12px", 
+                left: "50%", 
+                transform: "translateX(-50%)", 
+                width: "30%", 
+                height: "3px", 
+                borderRadius: "0 0 4px 4px", 
+                background: GOLD,
+                boxShadow: `0 2px 10px ${GOLD}60`
+              }}/>
+            )}
+            <div style={{
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center", 
+              width: "40px", 
+              height: "40px", 
+              borderRadius: "14px", 
+              background: a ? `${GOLD}15` : "transparent",
+              color: a ? GOLD : "rgba(255, 255, 255, 0.35)",
+              fontSize: "20px",
+              transition: "all 0.2s"
+            }}>
+              {n.icon}
+            </div>
+            <span style={{
+              fontSize: "10px", 
+              fontWeight: a ? 700 : 500, 
+              color: a ? GOLD : "rgba(255, 255, 255, 0.4)", 
+              letterSpacing: "0.03em", 
+              fontFamily: F,
+              transition: "color 0.2s"
+            }}>
+              {n.label}
+            </span>
           </button>
         );
       })}
@@ -949,7 +991,7 @@ function BottomNav({tab,setTab,nav}){
   );
 }
 
-function Topbar({title,sub,onLogout,initial}){
+function Topbar({title,sub,onLogout,initial,onOpenPerfil}){
   return(
     <div className="jp-glass" style={{position:"sticky",top:0,zIndex:30,borderBottom:"1px solid rgba(212,175,55,0.08)"}}>
       <div style={{padding:"18px 24px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -959,11 +1001,52 @@ function Topbar({title,sub,onLogout,initial}){
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-          <div style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F}}>{initial}</div>
-          <button onClick={onLogout} style={{background:"none",border:`1px solid rgba(255,255,255,0.12)`,borderRadius:20,padding:"6px 16px",color:MUTED,fontSize:12,cursor:"pointer",fontWeight:500,fontFamily:F}}>Sair</button>
+          <button onClick={onOpenPerfil} style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0}}>{initial}</button>
         </div>
       </div>
       <div style={{height:"1px",background:`linear-gradient(90deg,${GOLD}60,${GOLD}20,transparent)`,margin:"0 24px"}}/>
+    </div>
+  );
+}
+
+function PerfilModal({userName,product,email,onClose,onLogout}){
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
+        {/* handle */}
+        <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
+        {/* header */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:CARD3,border:`2px solid ${GOLD}30`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{userName?.[0]||"R"}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{userName}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{product}</div>
+          </div>
+        </div>
+        {/* status */}
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
+        <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
+          {[{icon:"●",label:"WhatsApp",val:"conectado",c:GREEN},{icon:"●",label:"Site",val:"ativo",c:GREEN},{icon:"●",label:"Automações",val:"ligadas",c:GREEN}].map((s,i,arr)=>(
+            <div key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:s.c,flexShrink:0}}/>
+              <span style={{color:MUTED,fontSize:13,flex:1}}>{s.label}</span>
+              <span style={{color:s.c,fontWeight:700,fontSize:13}}>{s.val}</span>
+            </div>
+          ))}
+        </div>
+        {/* conta */}
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Conta</div>
+        <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:24}}>
+          {[{icon:"📧",label:email||"renato@g9.com"},{icon:"🔒",label:"Alterar senha"},{icon:"📞",label:"Suporte"}].map((item,i,arr)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:"pointer"}}>
+              <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
+              <span style={{color:TEXT,fontSize:13}}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* logout */}
+        <button onClick={onLogout} style={{width:"100%",background:`${RED}14`,border:`1px solid ${RED}30`,borderRadius:100,padding:14,color:RED,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Sair da conta</button>
+      </div>
     </div>
   );
 }
@@ -982,7 +1065,7 @@ function AdminPanel({onLogout}){
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay"/>,config:<Config/>};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName="Joseph Admin" initial="J"/>
@@ -990,59 +1073,582 @@ function AdminPanel({onLogout}){
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial="J"/>
         <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      <BottomNav tab={tab} setTab={setTab} nav={NAV}/>
+      {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
     </>
   );
 }
 
 function ClientPanel({clientName,onLogout}){
   const [tab,setTab]=useState("dashboard");
+  const [showPerfil,setShowPerfil]=useState(false);
   const isDeise=clientName?.includes("Deise");
   const accent=GOLD;
   const product=isDeise?"Cirurgia Plástica":"Protocolo G9";
+  const email=isDeise?"deise@clinica.com":"renato@g9.com";
   const NAV=[
-    {id:"dashboard",icon:"⌂",label:"Dashboard"},
-    {id:"vendas",icon:"↗",label:"Vendas"},
-    {id:"site",icon:"◯",label:"Site"},
-    {id:"afiliados",icon:"⊙",label:"Afiliados"},
-    {id:"assinaturas",icon:"↺",label:"Assinaturas"},
-    {id:"sacar",icon:"↑",label:"Sacar"},
+    {id:"dashboard",icon:"⌂",label:"Início"},
+    {id:"produtos",icon:"◈",label:"Produtos"},
+    {id:"clientes",icon:"◻",label:"Clientes"},
+    {id:"maquina",icon:"⚙",label:"Máquina"},
     {id:"chat",icon:"✧",label:"Chat IA"},
   ];
-  const TITLES={dashboard:clientName,vendas:"Vendas",site:"Meu Site",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA"};
-  const VIEWS={dashboard:<DashClient accent={accent} isDeise={isDeise} onNav={setTab}/>,vendas:<Vendas accent={accent} isDeise={isDeise}/>,site:<SiteView accent={accent}/>,afiliados:<Afiliados isAdmin={false}/>,assinaturas:<Assinaturas/>,sacar:<Sacar/>,chat:<ChatIA productName={product}/>};
+  const TITLES={dashboard:clientName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
+  const VIEWS={
+    dashboard:<InicioTab accent={accent} isDeise={isDeise} onNav={setTab}/>,
+    produtos:<ProdutosTab accent={accent} isDeise={isDeise}/>,
+    clientes:<ClientesTab/>,
+    maquina:<MaquinaTab/>,
+    chat:<ChatIA productName={product} onBack={()=>setTab("dashboard")}/>,
+  };
   return(
     <>
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={clientName} initial={clientName?.[0]||"C"}/>
       <div className="jp-main">
-        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${product}`:null} onLogout={onLogout} initial={clientName?.[0]||"C"}/>
+        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${product}`:null} onLogout={onLogout} initial={clientName?.[0]||"C"} onOpenPerfil={()=>setShowPerfil(true)}/>
         <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      <BottomNav tab={tab} setTab={setTab} nav={NAV}/>
+      {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
+      {showPerfil&&<PerfilModal userName={clientName} product={product} email={email} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}}/>}
     </>
+  );
+}
+
+function InicioTab({accent,isDeise,onNav}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <DashClient accent={accent} isDeise={isDeise} onNav={onNav}/>
+    </div>
+  );
+}
+
+function InicioTab_STATUS_UNUSED({accent,isDeise,onNav}){
+  const [wapStatus,setWapStatus]=useState("conectado");
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginRight:4,flexShrink:0}}>Status</span>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>WhatsApp: <span style={{color:wapStatus==="conectado"?GREEN:RED}}>{wapStatus}</span></span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Site: <span style={{color:GREEN}}>ativo</span></span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Automações: <span style={{color:GREEN}}>ligadas</span></span>
+          </div>
+          {wapStatus==="desconectado"&&(
+            <button onClick={()=>setWapStatus("conectado")} style={{background:GOLD,border:"none",borderRadius:20,padding:"5px 16px",color:"#0C0C0C",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Reconectar</button>
+          )}
+        </div>
+      </div>
+      <DashClient accent={accent} isDeise={isDeise} onNav={onNav}/>
+    </div>
+  );
+}
+
+function CoproducaoView(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="two-col">
+        <KPICard label="Coprodutor" value="—" icon="◉" accent={GOLD}/>
+        <KPICard label="Divisão" value="—" icon="◈" accent={GOLD}/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
+        <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◉</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Adicionar Coprodutor</div>
+        <div style={{color:MUTED,fontSize:13,lineHeight:1.6,marginBottom:18}}>Compartilhe a receita deste produto com outro produtor da plataforma.</div>
+        <Btn sm outline color={GOLD}>+ Convidar coprodutor</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ProdutoDetalhe({produto,onBack,isDeise,accent}){
+  const [detTab,setDetTab]=useState(null);
+  
+  const CARDS = [
+    {id:"vendas", label:"Vendas", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuAGkuyzZnqoUM08agRXlkrfxyMPG1tGTOsGJ-31vPSQjy3rEEHMBFLq2ZLNqvyvHLkkTTYW-_hLzpuoBRJTrvv4xSSGB-jp3sbsOFDReLicp6zd81gmzD9BwYODCdJPBXvM2_GVLDhTvSbz4JL8gWYb4wMHdhb7NIrK8bm9KwT90lqkusGrmpiu97ip26oz_yQjoLrQB-6d84oW1NYU6dSKW2_4wfU_YMoZsy5I6jBpdbdPI2oUjKs7A_e065DuDo1ss2lfiD1la8c"},
+    {id:"assinaturas", label:"Assinaturas", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuAxh5OLk2w6hgrUUSFyr_QXYJSdoHSBuMilbkZaj9nsTgO_u1HiY1Ijn0EQOusHuPn1EVAiiLpV6q_GhxGcl-IhRhuChQmXZFTMaanH6l61YhfjJ1YvpJiKC3cKSYqrpO49dHJgjDQXeLYeYdHsnYCZoZJLTYVnhiLpecYUJbtykT0s_wJ8x0T-As_FLsbjzsZf3KA6hki12KulV1m1mqtptH3rZHl-l_QG9g0n-42yqDKLRHqS_NaOroHpHVdPHLIZvhVI_wU0w4g"},
+    {id:"afiliados", label:"Afiliados", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuA3E80x53g2UjTg5zt_bloK6G8ydx3xV_6wLbUXCQHoHhenlKMMkjd5tguuq9zIbawappmALMBQBpjBfqp3uiLpkKaRkb41CVyacl8EaN60HpovHpWHR6rx3Cc91p6ga8lneU6wG06RSx9hYwcNYvQrOrNTxJiRmIEAs1zHHFrhc5gktrt1Mfir-cX7f9nEufikt_IRN5_4DbDZwpi9flQxndPhO_DZ85uDjgMJ2-Hwhb_SD6lOq1TqtIS6u41KD80FXJh2EciQ4VA"},
+    {id:"coproducao", label:"Coprodução", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuCh2qlJ6n9z6dNQtynkppsjCpRvd3CwMwAJaYRokRhRolunRsXQD63Qrclg-UaZJoSNJJXDobg6xVkzDpOMhOMmfUU3pjaE56JpXxFUO3PwYS-AelFfqvvz5jY7nPQ_hh066Ld_O8q5Lh0vs9Izx7ukBLhjdzj1noSysUuRPhgpQRCCT-agmZ7gxN7whArUmUsMnB0eReex0rZnkPyAfbrvmk2l409w8XG1rDQFO3wDZxX5_yIdA7zhicf4dMJIafpJS6TKX11INks"},
+    {id:"saque", label:"Saque", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuCuZ_p6XSf1uPm-R1aQQsYyjWjaq4-_sF_1tba9Q78fPdieeJejqTR9qEqNrBTI_XwIf7AnKCw1D19ucEXPWoPrTTMx-SU1IL3V7kHObKXOG-_wxOKR4Xy2bNGtTx2CF3oBgKaVgq23FMh-nRTQPPWWA54GxszAv1fE04OKIyR3UJYv32A3EN3XbxGgw7O51XHJjTc6Hfnn6nkmuqdwgCMZCbRydP84er7HMfSTOBLFk2BG7JaqJQTgwAyYiOsuDYe4w9v8ko7V_F0"}
+  ];
+
+  const content={vendas:<Vendas accent={accent} isDeise={isDeise}/>,assinaturas:<Assinaturas/>,afiliados:<Afiliados isAdmin={false}/>,coproducao:<CoproducaoView/>,saque:<Sacar/>};
+  
+  if(detTab !== null) {
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <button onClick={()=>setDetTab(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para o produto</button>
+        {content[detTab]}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para produtos</button>
+      {/* header card */}
+      <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>{produto.name}</div>
+        </div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{produto.receita}</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:24}}>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +22% este mês</span>
+          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.site}</span>
+        </div>
+        <div style={{display:"flex",gap:10,marginBottom:16,position:"relative",zIndex:1}}>
+          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Editar produto</button>
+          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir site</button>
+        </div>
+        <button onClick={()=>setDetTab("saque")} style={{width:"100%",background:"rgba(12,12,12,0.9)",border:"none",borderRadius:100,padding:"14px",color:GOLD,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em",position:"relative",zIndex:1}}>Sacar</button>
+      </div>
+      
+      {/* Lista de menus do produto estilo banco */}
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:6}}>
+        {CARDS.map((c, i) => (
+          <div key={i} onClick={()=>setDetTab(c.id)} className="jp-promo-card" style={{cursor:"pointer",marginBottom:0}}>
+            <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
+              <img src={c.img} alt={c.label} style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+            </div>
+            <div style={{position:"relative",zIndex:1,padding:"20px 18px",maxWidth:"60%"}}>
+              <div style={{color:TEXT,fontSize:15,fontWeight:600,lineHeight:1.3,marginBottom:10}}>{c.label}</div>
+              <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Acessar →</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProdutosTab({accent,isDeise}){
+  const [sel,setSel]=useState(null);
+  const produtos=isDeise?[
+    {name:"Cirurgia Plástica",receita:"R$ 45.500",vendas:47,assinaturas:2,afiliados:3,site:"dradeise.josephpay.com",tipo:"Produto próprio"},
+  ]:[
+    {name:"Protocolo G9",receita:"R$ 8.280",vendas:89,assinaturas:32,afiliados:5,site:"protocolog9.josephpay.com",tipo:"Produto próprio"},
+  ];
+  if(sel!==null) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
+        <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
+      </div>
+      {produtos.map((p,i)=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
+          {/* capa */}
+          <div style={{height:90,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:32,color:GOLD,opacity:0.7}}>◈</span>
+          </div>
+          {/* info */}
+          <div style={{padding:"20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
+                  <Tag status="ativo"/>
+                </div>
+                <div style={{color:MUTED,fontSize:12,fontFamily:F}}>🔗 {p.site}</div>
+              </div>
+            </div>
+            
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,paddingBottom:20,borderBottom:`1px solid ${BDR}`}}>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Receita (mês)</div>
+                <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                  <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,lineHeight:1,letterSpacing:"-0.02em"}}>{p.receita}</div>
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Vendas</div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,lineHeight:1}}>{p.vendas}</div>
+              </div>
+            </div>
+
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Afiliados</div>
+                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.afiliados}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Assinaturas</div>
+                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.assinaturas}</div>
+              </div>
+            </div>
+
+            <button onClick={()=>setSel(i)} style={{width:"100%",background:TEXT,border:"none",borderRadius:100,padding:"14px",color:BG,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em"}}>Gerenciar Produto</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AutomacoesZap(){
+  const [wapStatus]=useState("conectado");
+  const [anivOn,setAnivOn]=useState(true);
+  const [anivMsg,setAnivMsg]=useState("Feliz aniversário, {nome}! 🎂 Aqui vai um presentinho especial para você.");
+  const [cashOn,setCashOn]=useState(false);
+  const [cashDias,setCashDias]=useState("7");
+  const [cashMsg,setCashMsg]=useState("Oi {nome}, você tem cashback esperando! Use hoje.");
+  const [posOn,setPosOn]=useState(true);
+  const [posDias,setPosDias]=useState("3");
+  const [posMsg,setPosMsg]=useState("Olá {nome}! Como foi sua experiência? Posso te oferecer algo mais?");
+  function Toggle({on,setOn}){
+    return(
+      <button onClick={()=>setOn(!on)} style={{width:44,height:24,borderRadius:100,background:on?GOLD:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        <div style={{width:18,height:18,borderRadius:"50%",background:on?"#0C0C0C":"rgba(255,255,255,0.4)",position:"absolute",top:3,left:on?23:3,transition:"left 0.2s"}}/>
+      </button>
+    );
+  }
+  function AutoBlock({title,on,setOn,dias,setDias,msg,setMsg,showDias}){
+    return(
+      <div style={{background:CARD,border:`1px solid ${on?GOLD+"30":BDR}`,borderRadius:18,padding:"18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:on?14:0}}>
+          <div>
+            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{title}</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{on?"Ativo":"Inativo"}</div>
+          </div>
+          <Toggle on={on} setOn={setOn}/>
+        </div>
+        {on&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {showDias&&(
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Dias após a compra</div>
+                <input value={dias} onChange={e=>setDias(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+              </div>
+            )}
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Mensagem</div>
+              <textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,lineHeight:1.5}}/>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>WhatsApp</div>
+          <div style={{color:TEXT,fontSize:13,fontWeight:600}}>{wapStatus==="conectado"?"Conectado e pronto":"Desconectado"}</div>
+        </div>
+        {wapStatus==="conectado"&&<span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>}
+      </div>
+      <AutoBlock title="Mensagem de Aniversário" on={anivOn} setOn={setAnivOn} msg={anivMsg} setMsg={setAnivMsg} showDias={false}/>
+      <AutoBlock title="Cashback" on={cashOn} setOn={setCashOn} dias={cashDias} setDias={setCashDias} msg={cashMsg} setMsg={setCashMsg} showDias={true}/>
+      <AutoBlock title="Pós-compra" on={posOn} setOn={setPosOn} dias={posDias} setDias={setPosDias} msg={posMsg} setMsg={setPosMsg} showDias={true}/>
+    </div>
+  );
+}
+
+function ClientesCRM(){
+  const clientes=[
+    {name:"João P.",whatsapp:"(11) 99910-0001",ultima:"20/03/2026",aniv:"15/05",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"Cartão",st:"pago"},{prod:"Protocolo G9",val:"R$ 180",data:"05/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Maria L.",whatsapp:"(11) 99910-0002",ultima:"20/03/2026",aniv:"22/08",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Carlos M.",whatsapp:"(11) 99910-0003",ultima:"20/03/2026",aniv:"03/12",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"20/03/2026",met:"PIX",st:"pendente"}]},
+    {name:"Ana R.",whatsapp:"(11) 99910-0004",ultima:"09/03/2026",aniv:"19/04",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"09/03/2026",met:"Cartão",st:"pago"}]},
+    {name:"Pedro S.",whatsapp:"(11) 99910-0005",ultima:"08/03/2026",aniv:"07/10",status:"inativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"08/03/2026",met:"PIX",st:"cancelado"}]},
+  ];
+  const [sel,setSel]=useState(null);
+  if(sel!==null){
+    const c=clientes[sel];
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.whatsapp}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {c.aniv}</div>
+            </div>
+            <Tag status={c.status}/>
+          </div>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {c.ultima}</span>
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {["Entrou","Comprou",c.status==="inativo"?"Parou":"Ativo"].map((s,i,arr)=>(
+            <React.Fragment key={s}>
+              <span style={{background:i===arr.length-1?`${GOLD}18`:"rgba(255,255,255,0.05)",color:i===arr.length-1?GOLD:MUTED,border:`1px solid ${i===arr.length-1?GOLD+"30":BDR}`,fontSize:11,fontWeight:700,padding:"3px 12px",borderRadius:20}}>{s}</span>
+              {i<arr.length-1&&<span style={{color:MUTED,fontSize:12}}>→</span>}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
+          {c.compras.map((cp,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<c.compras.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{cp.prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{cp.met} · {cp.data}</div></div>
+              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cp.val}</div><div style={{marginTop:4}}><Tag status={cp.st}/></div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clientes.filter(c=>c.status==="ativo").length} ativos</span>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn sm outline color={GOLD}>+ Adicionar cliente</Btn>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar Excel</button>
+      </div>
+      {clientes.map((c,i)=>(
+        <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
+          <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
+              <Tag status={c.status}/>
+            </div>
+            <div style={{color:MUTED,fontSize:12}}>📱 {c.whatsapp}</div>
+            <div style={{display:"flex",gap:12,marginTop:2}}>
+              <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{c.ultima}</span></span>
+              <span style={{color:MUTED,fontSize:11}}>🎂 {c.aniv}</span>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PainelClientesTab(){
+  const anivs=[
+    {name:"Ana R.",data:"19/04",dias:5},
+    {name:"João P.",data:"15/05",dias:31},
+    {name:"Maria L.",data:"22/08",dias:130},
+  ];
+  
+  const clientes=[
+    {name:"João P.",whatsapp:"(11) 99910-0001",ultima:"20/03/2026",aniv:"15/05",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"Cartão",st:"pago"},{prod:"Protocolo G9",val:"R$ 180",data:"05/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Maria L.",whatsapp:"(11) 99910-0002",ultima:"20/03/2026",aniv:"22/08",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Carlos M.",whatsapp:"(11) 99910-0003",ultima:"20/03/2026",aniv:"03/12",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"20/03/2026",met:"PIX",st:"pendente"}]},
+    {name:"Ana R.",whatsapp:"(11) 99910-0004",ultima:"09/03/2026",aniv:"19/04",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"09/03/2026",met:"Cartão",st:"pago"}]},
+    {name:"Pedro S.",whatsapp:"(11) 99910-0005",ultima:"08/03/2026",aniv:"07/10",status:"inativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"08/03/2026",met:"PIX",st:"cancelado"}]},
+  ];
+  const [sel,setSel]=useState(null);
+
+  if(sel!==null){
+    const c=clientes[sel];
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.whatsapp}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {c.aniv}</div>
+            </div>
+            <Tag status={c.status}/>
+          </div>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {c.ultima}</span>
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {["Entrou","Comprou",c.status==="inativo"?"Parou":"Ativo"].map((s,i,arr)=>(
+            <React.Fragment key={s}>
+              <span style={{background:i===arr.length-1?`${GOLD}18`:"rgba(255,255,255,0.05)",color:i===arr.length-1?GOLD:MUTED,border:`1px solid ${i===arr.length-1?GOLD+"30":BDR}`,fontSize:11,fontWeight:700,padding:"3px 12px",borderRadius:20}}>{s}</span>
+              {i<arr.length-1&&<span style={{color:MUTED,fontSize:12}}>→</span>}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
+          {c.compras.map((cp,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<c.compras.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{cp.prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{cp.met} · {cp.data}</div></div>
+              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cp.val}</div><div style={{marginTop:4}}><Tag status={cp.st}/></div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="kpi-grid">
+        <KPICard label="Msgs hoje" value="24" icon="✉" accent={GOLD}/>
+        <KPICard label="Msgs este mês" value="312" icon="✉" accent={GOLD}/>
+        <KPICard label="Total clientes" value="5" icon="◻" accent={GOLD}/>
+        <KPICard label="Clientes ativos" value="4" icon="◉" accent={GOLD}/>
+      </div>
+      
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Próximos aniversários</span>
+        </div>
+        {anivs.map((a,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none"}}>
+            <span style={{fontSize:18,flexShrink:0}}>🎂</span>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{a.data}</div>
+            </div>
+            {a.dias<=30&&<span style={{background:`${GOLD}18`,color:GOLD,border:`1px solid ${GOLD}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{a.dias} dias</span>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4,marginBottom:12}}>
+        <Btn sm outline color={GOLD}>+ Adicionar</Btn>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar</button>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
+      </div>
+
+      {/* Lista de Clientes Integrada */}
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
+        </div>
+        {clientes.map((c,i)=>(
+          <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
+            <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
+                <Tag status={c.status}/>
+              </div>
+              <div style={{color:MUTED,fontSize:12}}>📱 {c.whatsapp}</div>
+              <div style={{display:"flex",gap:12,marginTop:2}}>
+                <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{c.ultima}</span></span>
+                <span style={{color:MUTED,fontSize:11}}>🎂 {c.aniv}</span>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClientesTab(){
+  const [sub,setSub]=useState("painel");
+  const segTabs=[{id:"painel",label:"Painel"},{id:"automacoes",label:"Automações"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",background:CARD,borderRadius:14,padding:3,gap:2}}>
+        {segTabs.map(s=>(
+          <button key={s.id} onClick={()=>setSub(s.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:s.id===sub?CARD3:"transparent",border:"none",color:s.id===sub?TEXT:MUTED,fontSize:12,fontWeight:s.id===sub?700:500,cursor:"pointer",fontFamily:F,transition:"background 0.15s"}}>{s.label}</button>
+        ))}
+      </div>
+      {sub==="painel"&&<PainelClientesTab/>}
+      {sub==="automacoes"&&<AutomacoesZap/>}
+    </div>
+  );
+}
+
+function MaquinaTab(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <VisitorChart/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Origem de vendas</div>
+        {[{l:"Site",v:"67%",bg:GOLD},{l:"WhatsApp",v:"24%",bg:"#B8941A"},{l:"Campanhas",v:"9%",bg:"rgba(212,175,55,0.4)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:16}}>Reputação</div>
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+          <div style={{textAlign:"center",flexShrink:0}}>
+            <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:38,lineHeight:1}}>4.8</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:4}}>nota média</div>
+          </div>
+          <div style={{flex:1}}>
+            {[{s:"5 ★",w:"72%"},{s:"4 ★",w:"18%"},{s:"3 ★",w:"6%"},{s:"2 ★",w:"2%"},{s:"1 ★",w:"2%"}].map(r=>(
+              <div key={r.s} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                <span style={{color:MUTED,fontSize:11,width:28,flexShrink:0}}>{r.s}</span>
+                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:r.w}}/></div>
+                <span style={{color:MUTED,fontSize:11,width:28,textAlign:"right",flexShrink:0}}>{r.w}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>📊 Baseado em 47 avaliações Google</div>
+      </div>
+    </div>
   );
 }
 
 function Login({onLogin}){
   const [role,setRole]=useState(null);
-  const [client,setClient]=useState(null);
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
   const [step,setStep]=useState(1);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [resetSent,setResetSent]=useState(false);
   const CLIENTS=[{name:"Renato G9",email:"renato@g9.com"},{name:"Dra. Deise",email:"deise@clinica.com"}];
-  const doLogin=()=>{
-    if(!email||!pass)return;
-    if(role==="admin")onLogin({role:"admin",name:"Joseph"});
-    else onLogin({role:"client",name:client?.name||"Cliente"});
+  const isAdminMode=typeof window!=="undefined"&&(window.location.search.includes("admin=1") || window.location.pathname.includes("/admin"));
+
+  const doLogin=async()=>{
+    if(!email||!pass){setError("Preencha e-mail e senha.");return;}
+    setError("");setLoading(true);
+    if(_sb){
+      const{data,error:err}=await _sb.auth.signInWithPassword({email,password:pass});
+      setLoading(false);
+      if(err){setError(err.message==="Invalid login credentials"?"E-mail ou senha incorretos.":err.message);return;}
+      const meta=data.user.user_metadata||{};
+      onLogin({role:meta.role||(role==="admin"?"admin":"client"),name:meta.name||email.split("@")[0],email,id:data.user.id});
+    } else {
+      // Demo mode — funciona sem Supabase configurado
+      setTimeout(()=>{
+        setLoading(false);
+        if(role==="admin"){onLogin({role:"admin",name:"Joseph",email});}
+        else{const m=CLIENTS.find(c=>c.email.toLowerCase()===email.toLowerCase())||CLIENTS[0];onLogin({role:"client",name:m.name,email});}
+      },600);
+    }
+  };
+
+  const doReset=async()=>{
+    if(!email){setError("Digite seu e-mail antes de recuperar a senha.");return;}
+    setError("");
+    if(_sb){
+      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+      setResetSent(true);
+    } else {
+      setError("Configure o Supabase para usar recuperação de senha.");
+    }
   };
   return(
     <div style={{background:BG,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",padding:0}}>
       <div style={{width:"100%",maxWidth:480,position:"relative",height:220,overflow:"hidden",flexShrink:0}}>
-        <img src="https://lh3.googleusercontent.com/aida/ADBb0ui29YkiDkpyVsa9cfDW1krB1rl3sJe4LIrwmUN7XXuSNf0FVDlU5_tiy8xNQs0Np_sBlOJ9DnC8A0_O-mHBYAGqSywt3vaQYmg6D-8mR3tn0exgefotG5yi5iutGI-TwB2B4q4TzyZ-uHytHMMfzWCoMGG2BCcyVUkYaQst25yKYp8gv3e1Mxr9LiQSRJnqf1XUSknfmoieMBjC5zlEsHt_44f-DmsB42fhshzmyOhUU7nn5F8EnVRWJvnEwXCksKp5N3aZwIdPEA" alt="JosephPay" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.55,mixBlendMode:"luminosity"}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,#1a1500 0%,#2d2200 30%,#1a1200 60%,#0d0d0c 100%)"}}/>
+        <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 60% 40%,${GOLD}22 0%,transparent 65%)`}}/>
         <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, transparent 0%, ${BG} 100%)`}}/>
-        <div style={{position:"absolute",bottom:24,left:0,right:0,textAlign:"center"}}>
-          <div style={{width:64,height:64,borderRadius:20,background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:SF,fontWeight:700,fontSize:28,color:"#0C0C0C",margin:"0 auto 14px",boxShadow:`0 0 60px ${GOLD}40`}}>J</div>
-          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:36,letterSpacing:"-0.01em",lineHeight:1.1}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
+          <div style={{position:"absolute",bottom:24,left:0,right:0,textAlign:"center"}}>
+            <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:36,letterSpacing:"-0.01em",lineHeight:1.1}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
           <div style={{width:40,height:1,background:`linear-gradient(90deg,transparent,${GOLD}80,transparent)`,margin:"12px auto"}}/>
           <div style={{color:MUTED,fontSize:13,fontFamily:F,fontWeight:400,letterSpacing:"0.01em"}}>Plataforma de pagamentos</div>
         </div>
@@ -1051,44 +1657,54 @@ function Login({onLogin}){
         {step===1&&(
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{color:MUTED,fontSize:11,fontWeight:600,textAlign:"center",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Como você quer entrar?</div>
-            <button onClick={()=>{setRole("admin");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
-              <div style={{width:44,height:44,borderRadius:14,background:`${GOLD}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,fontFamily:SF,fontWeight:700,color:GOLD}}>⊞</div>
-              <div>
-                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou o dono — Admin</div>
-                <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Painel JosephPay completo</div>
-                <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Acesso total</span>
-              </div>
-            </button>
-            {CLIENTS.map(c=>(
-              <button key={c.name} onClick={()=>{setRole("client");setClient(c);setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"16px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
-                <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:SF,fontWeight:800,fontSize:18,color:MUTED,flexShrink:0}}>{c.name[0]}</div>
+            {isAdminMode&&(
+              <button onClick={()=>{setRole("admin");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+                <div style={{width:44,height:44,borderRadius:14,background:`${GOLD}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,fontFamily:SF,fontWeight:700,color:GOLD}}>⊞</div>
                 <div>
-                  <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>{c.name}</div>
-                  <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>{c.email}</div>
-                  <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Produtor</span>
+                  <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Admin</div>
+                  <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Painel JosephPay completo</div>
+                  <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Acesso total</span>
                 </div>
               </button>
-            ))}
+            )}
+            <button onClick={()=>{setRole("client");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>◈</div>
+              <div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou produtor</div>
+                <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Acesse seu painel de vendas</div>
+                <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Produtor</span>
+              </div>
+            </button>
+            <button onClick={()=>{setRole("afiliado");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>⊙</div>
+              <div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou afiliado</div>
+                <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Acompanhe suas comissões</div>
+                <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Afiliado</span>
+              </div>
+            </button>
           </div>
         )}
         {step===2&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar</button>
             <div style={{background:CARD,border:`1px solid ${role==="admin"?GOLD+"35":BDR}`,borderRadius:18,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:2}}>
-              <div style={{width:40,height:40,borderRadius:12,background:role==="admin"?GOLD:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:role==="admin"?"#0A0A0A":MUTED,flexShrink:0}}>{role==="admin"?"J":client?.name?.[0]}</div>
+              <div style={{width:40,height:40,borderRadius:12,background:role==="admin"?GOLD:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:role==="admin"?16:18,color:role==="admin"?"#0A0A0A":MUTED,flexShrink:0}}>{role==="admin"?"J":role==="afiliado"?"⊙":"◈"}</div>
               <div>
-                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":client?.name}</div>
-                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{role==="admin"?"Acesso completo":"Painel do produtor"}</div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":role==="afiliado"?"Painel do afiliado":"Painel do produtor"}</div>
+                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{role==="admin"?"Acesso completo":role==="afiliado"?"Comissões e links":"Suas vendas e receitas"}</div>
               </div>
             </div>
-            {[{l:"E-mail",p:role==="admin"?"admin@josephpay.com":client?.email,t:"email"},{l:"Senha",p:"••••••••",t:"password"}].map(f=>(
+            {[{l:"E-mail",p:role==="admin"?"admin@josephpay.com":"seu@email.com",t:"email"},{l:"Senha",p:"••••••••",t:"password"}].map(f=>(
               <div key={f.l}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{f.l}</div>
                 <input type={f.t} placeholder={f.p} value={f.t==="email"?email:pass} onChange={e=>f.t==="email"?setEmail(e.target.value):setPass(e.target.value)} style={{width:"100%",background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 15px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
               </div>
             ))}
-            <div style={{textAlign:"right"}}><span style={{color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer"}}>Esqueci a senha</span></div>
-            <button onClick={doLogin} style={{background:GOLD,border:"none",borderRadius:100,padding:"16px",color:"#0C0C0C",fontWeight:600,fontSize:15,cursor:"pointer",fontFamily:F,letterSpacing:"0.01em"}}>Entrar →</button>
+            <div style={{textAlign:"right"}}><span onClick={doReset} style={{color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer"}}>{resetSent?"✓ E-mail enviado!":"Esqueci a senha"}</span></div>
+            {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13,fontWeight:500}}>{error}</div>}
+            <button onClick={doLogin} disabled={loading} style={{background:loading?"rgba(212,175,55,0.5)":GOLD,border:"none",borderRadius:100,padding:"16px",color:"#0C0C0C",fontWeight:600,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:F,letterSpacing:"0.01em",transition:"background 0.2s"}}>{loading?"Entrando…":"Entrar →"}</button>
+            {!_sb&&<div style={{textAlign:"center",background:"rgba(212,175,55,0.06)",border:`1px solid ${GOLD}20`,borderRadius:10,padding:"8px 12px",color:MUTED,fontSize:11}}>Modo demonstração · Configure o Supabase para acesso real</div>}
             <div style={{textAlign:"center",color:MUTED,fontSize:11}}>🔒 Acesso seguro · JosephPay</div>
           </div>
         )}
@@ -1099,11 +1715,52 @@ function Login({onLogin}){
 
 function App(){
   const [user,setUser]=useState(null);
+  const [booting,setBooting]=useState(true);
+
+  useEffect(()=>{
+    if(_sb){
+      // Supabase configurado → restaura sessão real
+      _sb.auth.getSession().then(({data:{session}})=>{
+        if(session){
+          const m=session.user.user_metadata||{};
+          setUser({role:m.role||"client",name:m.name||session.user.email.split("@")[0],email:session.user.email,id:session.user.id});
+        }
+        setBooting(false);
+      });
+      const{data:{subscription}}=_sb.auth.onAuthStateChange((_ev,session)=>{
+        if(!session)setUser(null);
+      });
+      return()=>subscription.unsubscribe();
+    } else {
+      // Sem Supabase → usa localStorage para persistência de demo
+      try{const s=localStorage.getItem("jp_session");if(s)setUser(JSON.parse(s));}catch(e){}
+      setBooting(false);
+    }
+  },[]);
+
+  const handleLogin=(u)=>{
+    setUser(u);
+    if(!_sb)localStorage.setItem("jp_session",JSON.stringify(u));
+  };
+  const handleLogout=()=>{
+    setUser(null);
+    if(_sb)_sb.auth.signOut();
+    else localStorage.removeItem("jp_session");
+  };
+
+  if(booting)return(
+    <div style={{background:BG,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
+      <div style={{width:32,height:32,border:`3px solid ${GOLD}30`,borderTop:`3px solid ${GOLD}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
   return(
     <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
-      {!user&&<Login onLogin={setUser}/>}
-      {user?.role==="admin"&&<AdminPanel onLogout={()=>setUser(null)}/>}
-      {user?.role==="client"&&<ClientPanel clientName={user.name} onLogout={()=>setUser(null)}/>}
+      {!user&&<Login onLogin={handleLogin}/>}
+      {user?.role==="admin"&&<AdminPanel onLogout={handleLogout}/>}
+      {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} onLogout={handleLogout}/>}
     </div>
   );
 }
