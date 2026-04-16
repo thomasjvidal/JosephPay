@@ -1322,8 +1322,8 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
           <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.site}</span>
         </div>
         <div style={{display:"flex",gap:10,marginBottom:16,position:"relative",zIndex:1}}>
-          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Editar produto</button>
-          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir site</button>
+          {produto.checkoutLink&&<button onClick={()=>{navigator.clipboard?.writeText(produto.checkoutLink);alert("Link copiado!");}} style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Copiar link</button>}
+          {produto.checkoutLink&&<button onClick={()=>window.open(produto.checkoutLink,'_blank')} style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir checkout</button>}
         </div>
         <button onClick={()=>setDetTab("saque")} style={{width:"100%",background:"rgba(12,12,12,0.9)",border:"none",borderRadius:100,padding:"14px",color:GOLD,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em",position:"relative",zIndex:1}}>Sacar</button>
       </div>
@@ -1347,10 +1347,89 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   );
 }
 
+function CriarProdutoModal({onClose,onCreated}){
+  const [nome,setNome]=useState("");
+  const [preco,setPreco]=useState("");
+  const [desc,setDesc]=useState("");
+  const [tipo,setTipo]=useState("UNDEFINED");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [link,setLink]=useState(null);
+
+  const criar=async()=>{
+    if(!nome||!preco){setError("Preencha nome e preço.");return;}
+    setError("");setLoading(true);
+    const val=parseFloat(preco.replace(/\./g,"").replace(",","."));
+    if(isNaN(val)||val<=0){setError("Preço inválido.");setLoading(false);return;}
+    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo})});
+    setLoading(false);
+    if(d.error){setError(d.error);return;}
+    setLink(d.paymentUrl);
+    if(onCreated)onCreated();
+  };
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
+        {link?(
+          <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+            <div style={{color:GREEN,fontSize:40,marginBottom:12}}>✓</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:8}}>Produto criado!</div>
+            <div style={{color:MUTED,fontSize:13,marginBottom:20}}>Link de pagamento gerado com sucesso.</div>
+            <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",marginBottom:20,wordBreak:"break-all"}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Link de checkout</div>
+              <div style={{color:GOLD,fontSize:13,fontWeight:600}}>{link}</div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{navigator.clipboard?.writeText(link);}} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Copiar link</button>
+              <button onClick={onClose} style={{flex:1,background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
+            </div>
+          </div>
+        ):(
+          <>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:20}}>Novo produto</div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome do produto *</div>
+                <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Protocolo G9" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Preço (R$) *</div>
+                <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12}}>
+                  <span style={{padding:"0 14px",color:GOLD,fontWeight:700,fontSize:16}}>R$</span>
+                  <input value={preco} onChange={e=>setPreco(e.target.value)} placeholder="0,00" style={{flex:1,background:"none",border:"none",padding:"13px 0",color:TEXT,fontSize:20,fontWeight:700,outline:"none",fontFamily:F}}/>
+                </div>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Descrição (opcional)</div>
+                <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Descreva seu produto..." rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,lineHeight:1.5}}/>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Tipo de cobrança</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {[{v:"UNDEFINED",l:"Qualquer"},{v:"PIX",l:"PIX"},{v:"CREDIT_CARD",l:"Cartão"},{v:"BOLETO",l:"Boleto"}].map(t=>(
+                    <button key={t.v} onClick={()=>setTipo(t.v)} style={{padding:"7px 16px",borderRadius:100,border:`1px solid ${t.v===tipo?GOLD+"55":BDR}`,background:t.v===tipo?`${GOLD}18`:"transparent",color:t.v===tipo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.l}</button>
+                  ))}
+                </div>
+              </div>
+              {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
+              <button onClick={criar} disabled={loading||!nome||!preco} style={{background:(!loading&&nome&&preco)?GOLD:"rgba(212,175,55,0.2)",border:"none",borderRadius:100,padding:16,color:(!loading&&nome&&preco)?"#0C0C0C":MUTED,fontWeight:700,fontSize:15,cursor:(!loading&&nome&&preco)?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>{loading?"Criando…":"Criar produto e gerar link →"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProdutosTab({accent,isDeise}){
   const [sel,setSel]=useState(null);
   const [produtos,setProdutos]=useState(null);
+  const [showCriar,setShowCriar]=useState(false);
+  const [refreshKey,setRefreshKey]=useState(0);
   useEffect(()=>{
+    setProdutos(null);
     if(!_sb){
       // Fallback demo quando Supabase não disponível
       setProdutos(isDeise?
@@ -1371,24 +1450,25 @@ function ProdutosTab({accent,isDeise}){
         ]);
         const vendasMes=(salesData.data||[]).length;
         const receitaMes=(salesData.data||[]).filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0);
-        return{...p,receita:fmtBRL(receitaMes),vendas:vendasMes,assinaturas:subsData.count||0,afiliados:afilData.count||0,site:`${p.slug||p.id.slice(0,8)}.josephpay.com`,tipo:"Produto próprio"};
+        return{...p,receita:fmtBRL(receitaMes),vendas:vendasMes,assinaturas:subsData.count||0,afiliados:afilData.count||0,checkoutLink:p.url||null,site:p.url||`josephpay.com/checkout/${p.id.slice(0,8)}`,tipo:"Produto próprio"};
       }));
       setProdutos(enriched);
     });
-  },[isDeise]);
+  },[isDeise,refreshKey]);
   if(sel!==null&&produtos) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
-        <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
+        <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
+      {showCriar&&<CriarProdutoModal onClose={()=>{setShowCriar(false);setRefreshKey(k=>k+1);}} onCreated={()=>{setRefreshKey(k=>k+1);}}/>}
       {produtos===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtos…</div>}
       {produtos!==null&&produtos.length===0&&(
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"40px 20px",textAlign:"center"}}>
           <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◈</div>
           <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Nenhum produto ainda</div>
           <div style={{color:MUTED,fontSize:13,marginBottom:18}}>Crie seu primeiro produto para começar a vender.</div>
-          <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Criar produto</button>
+          <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Criar produto</button>
         </div>
       )}
       {(produtos||[]).map((p,i)=>(
@@ -1405,7 +1485,7 @@ function ProdutosTab({accent,isDeise}){
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
                   <Tag status="ativo"/>
                 </div>
-                <div style={{color:MUTED,fontSize:12,fontFamily:F}}>🔗 {p.site}</div>
+                {p.checkoutLink?<button onClick={(e)=>{e.stopPropagation();navigator.clipboard?.writeText(p.checkoutLink);}} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0,textAlign:"left"}}>🔗 Copiar link de checkout</button>:<div style={{color:MUTED,fontSize:12}}>🔗 {p.site}</div>}
               </div>
             </div>
             

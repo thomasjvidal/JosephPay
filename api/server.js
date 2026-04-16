@@ -308,30 +308,46 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const monthDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
+    const todayDate = now.toISOString().split("T")[0];
 
     const [salesMonth, salesToday, activeSubs] = await Promise.all([
-      supabase.from("sales")
-        .select("amount")
-        .eq("owner_id", uid)
-        .eq("status", "pago")
-        .gte("created_at", monthStart),
-      supabase.from("sales")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_id", uid)
-        .eq("status", "pago")
-        .gte("created_at", todayStart),
-      supabase.from("subscriptions")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_id", uid)
-        .eq("status", "ativo"),
+      supabase.from("sales").select("amount").eq("owner_id", uid).eq("status", "pago").gte("created_at", monthStart),
+      supabase.from("sales").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "pago").gte("created_at", todayStart),
+      supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "ativo"),
     ]);
 
-    const receitaMes = (salesMonth.data || []).reduce((acc, s) => acc + Number(s.amount), 0);
+    let receitaMes = (salesMonth.data || []).reduce((acc, s) => acc + Number(s.amount), 0);
+    let vendasHoje = salesToday.count || 0;
+
+    // Fallback: se DB está vazio, busca histórico de pagamentos do Asaas
+    if (receitaMes === 0 && process.env.ASAAS_API_KEY) {
+      try {
+        const [asaasMes, asaasBalance] = await Promise.all([
+          asaas.get(`/payments?status=RECEIVED&dateCreatedStart=${monthDate}&limit=100`),
+          asaas.get("/finance/balance"),
+        ]);
+        const payments = asaasMes.data?.data || [];
+        receitaMes = payments.reduce((a, p) => a + Number(p.value || 0), 0);
+        vendasHoje = payments.filter(p => (p.dateCreated || "").startsWith(todayDate) || (p.confirmedDate || "").startsWith(todayDate)).length;
+        // Inclui saldo disponível também
+        res.json({
+          receitaMes,
+          vendasHoje,
+          assinaturasAtivas: activeSubs.count || 0,
+          saldoDisponivel: asaasBalance.data?.balance || 0,
+          fonte: "asaas",
+        });
+        return;
+      } catch (e) {
+        console.warn("[kpis] Asaas fallback:", e.message);
+      }
+    }
 
     res.json({
-      receitaMes:         receitaMes,
-      vendasHoje:         salesToday.count || 0,
-      assinaturasAtivas:  activeSubs.count || 0,
+      receitaMes,
+      vendasHoje,
+      assinaturasAtivas: activeSubs.count || 0,
     });
   } catch (err) {
     console.error("[dashboard/kpis]", err.message);
@@ -429,6 +445,51 @@ app.get("/api/admin/chart", requireAuth, async (req, res) => {
     res.json({ sales: data || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — PRODUTOS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/products/create
+ * Cria produto no Supabase + link de pagamento no Asaas
+ */
+app.post("/api/products/create", requireAuth, async (req, res) => {
+  try {
+    const { name, description, price, billingType = "UNDEFINED" } = req.body;
+    if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
+
+    // 1. Cria link de pagamento no Asaas primeiro
+    const dueDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const charge = await asaas.post("/payments", {
+      billingType: billingType || "UNDEFINED",
+      value: Number(price),
+      dueDate,
+      description: name + (description ? " — " + description : ""),
+    });
+    const paymentUrl = charge.data.invoiceUrl || charge.data.bankSlipUrl || "";
+
+    // 2. Salva produto no Supabase (url = link do checkout Asaas)
+    const { data: product, error: prodErr } = await supabase
+      .from("products")
+      .insert({
+        name,
+        description: description || "",
+        price: Number(price),
+        status: "ativo",
+        owner_id: req.user.id,
+        url: paymentUrl,
+      })
+      .select()
+      .single();
+    if (prodErr) console.warn("[products/create] Supabase insert:", prodErr.message);
+
+    res.json({ product: product || { name, price }, paymentUrl, chargeId: charge.data.id });
+  } catch (err) {
+    console.error("[products/create]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
   }
 });
 
