@@ -66,6 +66,13 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
   : null;
 // ────────────────────────────────────────────────────────────────────────────
 
+// ── Railway + helpers ────────────────────────────────────────────────────────
+const RAILWAY="https://josephpay-production.up.railway.app";
+const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
+const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});return await res.json();}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B8DEF";
 const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
 const BDR="rgba(255,255,255,0.06)", MUTED="#B0A894", TEXT="#F2EFEA";
@@ -202,16 +209,24 @@ function ChatIA({productName, onBack}){
   const [msgs,setMsgs]=useState([]);
   const [input,setInput]=useState("");
   const [showQ,setShowQ]=useState(true);
+  const [sending,setSending]=useState(false);
   const bottom=useRef(null);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"})},[msgs]);
-  const send=(text)=>{
-    const msg=text||input;if(!msg.trim())return;
-    setInput("");setShowQ(false);
-    setMsgs(p=>[...p,{role:"user",text:msg}]);
-    setTimeout(()=>{
-      const reply=AR[msg]||"Entendi! Em breve conectado à IA real via API. Posso ajudar com dúvidas sobre vendas e afiliados!";
-      setMsgs(p=>[...p,{role:"ai",text:reply}]);
-    },600);
+  const send=async(text)=>{
+    const msg=text||input;if(!msg.trim()||sending)return;
+    setInput("");setShowQ(false);setSending(true);
+    const newMsgs=[...msgs,{role:"user",text:msg}];
+    setMsgs(newMsgs);
+    try{
+      const data=await apiCall('/api/chat',{method:'POST',body:JSON.stringify({
+        messages:newMsgs.map(m=>({role:m.role==='ai'?'assistant':m.role,content:m.text})),
+        productContext:productName
+      })});
+      setMsgs(p=>[...p,{role:"ai",text:data.reply||"Erro ao processar resposta."}]);
+    }catch(e){
+      setMsgs(p=>[...p,{role:"ai",text:"Erro de conexão. Verifique sua internet e tente novamente."}]);
+    }
+    setSending(false);
   };
   return(
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 150px)",minHeight:380}}>
@@ -232,11 +247,12 @@ function ChatIA({productName, onBack}){
             ))}
           </div>
         )}
+        {sending&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"11px 16px",borderRadius:16,background:"rgba(255,255,255,0.05)",border:`1px solid ${BDR}`,color:MUTED,fontSize:13}}>✦ digitando…</div></div>}
         <div ref={bottom}/>
       </div>
       <div style={{display:"flex",gap:8,flexShrink:0,paddingBottom:20}}>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
-        <button onClick={()=>send()} style={{width:46,height:46,borderRadius:14,background:GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:"pointer",fontWeight:900,flexShrink:0}}>→</button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." disabled={sending} style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,opacity:sending?0.6:1}}/>
+        <button onClick={()=>send()} disabled={sending} style={{width:46,height:46,borderRadius:14,background:sending?"rgba(212,175,55,0.4)":GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:sending?"not-allowed":"pointer",fontWeight:900,flexShrink:0}}>→</button>
       </div>
     </div>
   );
@@ -340,13 +356,21 @@ function Afiliados({isAdmin}){
 }
 
 function Assinaturas(){
-  const subs=[{nome:"Renato G9",plano:"Protocolo G9 — 3x R$60",status:"ativo",prox:"15/04/2026",pago:2},{nome:"Cliente #4",plano:"Protocolo G9 — 3x R$60",status:"ativo",prox:"20/04/2026",pago:1},{nome:"Cliente #5",plano:"Protocolo G9 — 3x R$60",status:"cancelado",prox:"—",pago:1}];
+  const [subs,setSubs]=useState(null);
+  useEffect(()=>{
+    if(!_sb)return;
+    _sb.from('subscriptions').select('*,customers(name),products(name)').order('created_at',{ascending:false})
+      .then(({data})=>{if(data)setSubs(data);});
+  },[]);
+  const ativas=(subs||[]).filter(s=>s.status==='ativo').length;
+  const canceladas=(subs||[]).filter(s=>s.status==='cancelado').length;
+  const mrr=(subs||[]).filter(s=>s.status==='ativo').reduce((a,s)=>a+Number(s.amount),0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="kpi-grid">
-        <KPICard label="Ativas" value="2" icon="⟳" accent={GOLD}/>
-        <KPICard label="Canceladas" value="1" icon="✕" accent={RED}/>
-        <KPICard label="MRR" value="R$ 120" sub="Recorrência mensal" icon="◈" accent={GOLD}/>
+        <KPICard label="Ativas" value={subs?String(ativas):"—"} icon="⟳" accent={GOLD}/>
+        <KPICard label="Canceladas" value={subs?String(canceladas):"—"} icon="✕" accent={RED}/>
+        <KPICard label="MRR" value={subs?fmtBRL(mrr):"—"} sub="Recorrência mensal" icon="◈" accent={GOLD}/>
       </div>
       <div className="jp-promo-card" style={{marginBottom:12}}>
         <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
@@ -361,14 +385,21 @@ function Assinaturas(){
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Assinaturas</span></div>
-        {subs.map((s,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<subs.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{s.nome[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.plano}</div></div>
-            <div style={{textAlign:"right",fontSize:11,color:MUTED,marginRight:8}}><div>{s.pago}/3 pagas</div><div>Próx: {s.prox}</div></div>
+        {subs===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {subs!==null&&subs.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma assinatura registrada ainda.</div>}
+        {(subs||[]).map((s,i)=>{
+          const nome=s.customers?.name||"Cliente";
+          const produto=s.products?.name||s.plan||"—";
+          const proxCobranca=s.next_billing?new Date(s.next_billing).toLocaleDateString('pt-BR'):"—";
+          return(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(subs.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{produto} · {fmtBRL(s.amount)}/mês</div></div>
+            <div style={{textAlign:"right",fontSize:11,color:MUTED,marginRight:8}}><div>Próx: {proxCobranca}</div></div>
             <Tag status={s.status}/>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -376,7 +407,21 @@ function Assinaturas(){
 
 function Sacar(){
   const [val,setVal]=useState("");
+  const [pixKey,setPixKey]=useState("");
   const [done,setDone]=useState(false);
+  const [balance,setBalance]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [saqueErr,setSaqueErr]=useState("");
+  useEffect(()=>{
+    apiCall('/api/asaas/balance').then(d=>{if(d?.balance!==undefined)setBalance(d.balance);});
+  },[]);
+  const doSaque=async()=>{
+    if(!val||!pixKey){setSaqueErr("Preencha o valor e a chave PIX.");return;}
+    setSaqueErr("");setLoading(true);
+    const d=await apiCall('/api/asaas/withdraw',{method:'POST',body:JSON.stringify({amount:parseFloat(val.replace(',','.')),pixKey,pixKeyType:'CPF'})});
+    setLoading(false);
+    if(d.error){setSaqueErr(d.error);}else{setDone(true);}
+  };
   if(done)return(
     <div style={{textAlign:"center",paddingTop:60,maxWidth:400,margin:"0 auto"}}>
       <div style={{width:80,height:80,margin:"0 auto 24px",background:`${GREEN}14`,border:`1.5px solid ${GREEN}40`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:GREEN}}>↑</div>
@@ -393,7 +438,7 @@ function Sacar(){
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.3,pointerEvents:"none"}}/>
         <div style={{marginBottom:32}}>
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",marginBottom:8}}>Disponível para saque</div>
-          <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>R$ 4.832,40</div>
+          <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>{balance!==null?fmtBRL(balance):"Carregando…"}</div>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
           <div style={{color:"rgba(12,12,12,0.45)",fontFamily:"monospace",fontSize:13,letterSpacing:"0.14em"}}>•••• •••• •••• 3421</div>
@@ -409,15 +454,16 @@ function Sacar(){
           </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-          {["100","500","4.832"].map(v=>(
+          {["100","500",balance?String(Math.floor(balance)):"0"].map(v=>(
             <button key={v} onClick={()=>setVal(v)} style={{padding:"11px 0",borderRadius:100,background:CARD2,border:`1.5px solid ${BDR}`,color:MUTED,fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:F}}>R$ {v}</button>
           ))}
         </div>
-        <div style={{padding:"14px 18px",background:CARD2,borderRadius:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:MUTED,fontSize:13}}>Conta destino</span>
-          <span style={{color:TEXT,fontSize:13,fontWeight:600}}>Inter ••••3421</span>
+        <div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Chave PIX (CPF, e-mail ou telefone)</div>
+          <input value={pixKey} onChange={e=>setPixKey(e.target.value)} placeholder="sua@chave.pix" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
         </div>
-        <button onClick={()=>val&&setDone(true)} style={{background:val?GOLD:"rgba(201,168,76,0.2)",border:"none",borderRadius:100,padding:16,color:val?"#0C0C0C":MUTED,fontWeight:600,fontSize:15,cursor:val?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>Sacar agora →</button>
+        {saqueErr&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{saqueErr}</div>}
+        <button onClick={doSaque} disabled={loading} style={{background:(val&&pixKey&&!loading)?GOLD:"rgba(201,168,76,0.2)",border:"none",borderRadius:100,padding:16,color:(val&&pixKey&&!loading)?"#0C0C0C":MUTED,fontWeight:600,fontSize:15,cursor:(val&&pixKey&&!loading)?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>{loading?"Processando…":"Sacar agora →"}</button>
       </div>
       <div style={{background:CARD,borderRadius:20,overflow:"hidden",position:"relative",minHeight:100,marginTop:4}}>
         <img src="https://images.unsplash.com/photo-1616077168712-fc6c788db4af?q=80&w=2070&auto=format&fit=crop"
@@ -812,7 +858,16 @@ function SiteAdmin(){
 
 function DashClient({accent=GOLD,isDeise,onNav}){
   const [vis,setVis]=useState(false);
-  const sales=[{name:"João P.",val:isDeise?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:isDeise?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:isDeise?5000:60,met:"PIX",h:"10:48",st:"pendente"}];
+  const [kpis,setKpis]=useState(null);
+  const [lastSales,setLastSales]=useState(null);
+  const [totalClientes,setTotalClientes]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
+    if(_sb){
+      _sb.from('sales').select('amount,status,created_at,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
+      _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
+    }
+  },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
@@ -821,15 +876,15 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
           <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(isDeise?"R$ 45.500,00":"R$ 8.280,00"):"R$ ••••••"}</div>
-        <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +{isDeise?"8":"22"}% este mês</span>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
+        <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Receita do mês atual</span>
       </div>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Vendas hoje" value={isDeise?"R$ 8.500":"R$ 360"} accent={GOLD} icon="↑" vis={vis}/>
-          <KPICard label="Assinaturas ativas" value={isDeise?"2":"3"} accent={GOLD} icon="⟳" vis={vis}/>
-          <KPICard label="Total de clientes" value={isDeise?"124":"47"} accent={GOLD} icon="◻" vis={vis}/>
-          <KPICard label="Mensagens hoje" value={isDeise?"45":"24"} accent={GOLD} icon="✉" vis={vis}/>
+          <KPICard label="Vendas hoje" value={kpis?String(kpis.vendasHoje):"—"} accent={GOLD} icon="↑" vis={vis}/>
+          <KPICard label="Assinaturas ativas" value={kpis?String(kpis.assinaturasAtivas):"—"} accent={GOLD} icon="⟳" vis={vis}/>
+          <KPICard label="Total de clientes" value={totalClientes!==null?String(totalClientes):"—"} accent={GOLD} icon="◻" vis={vis}/>
+          <KPICard label="Mensagens hoje" value="—" accent={GOLD} icon="✉" vis={vis}/>
         </div>
       </div>
       <AdvancedChart accent={accent} vis={vis}/>
@@ -850,38 +905,56 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
-        {sales.map((s,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
-            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div><div style={{marginTop:4}}><Tag status={s.st}/></div></div>
+        {lastSales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {lastSales!==null&&lastSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
+        {(lastSales||[]).map((s,i)=>{
+          const nome=s.customers?.name||"Cliente";
+          const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          return(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(lastSales.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora}</div></div>
+            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function Vendas({accent=GOLD,isDeise}){
-  const sales=[{name:"João P.",val:isDeise?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:isDeise?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:isDeise?5000:60,met:"PIX",h:"10:48",st:"pendente"},{name:"Ana R.",val:isDeise?12000:180,met:"Cartão",h:"09:05",st:"pago"},{name:"Pedro S.",val:isDeise?3000:60,met:"PIX",h:"08:22",st:"cancelado"}];
+  const [sales,setSales]=useState(null);
+  useEffect(()=>{
+    if(!_sb)return;
+    _sb.from('sales').select('*,customers(name)').order('created_at',{ascending:false}).limit(50)
+      .then(({data})=>{if(data)setSales(data);});
+  },[]);
+  const receita=(sales||[]).filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas</div>
       <div className="two-col">
-        <Pill label="Total vendas" value={sales.length.toString()} accent={accent}/>
-        <Pill label="Receita" value={`R$ ${sales.reduce((a,s)=>a+s.val,0).toLocaleString()}`} accent={GOLD}/>
+        <Pill label="Total vendas" value={sales?String(sales.length):"—"} accent={accent}/>
+        <Pill label="Receita" value={sales?fmtBRL(receita):"—"} accent={GOLD}/>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        {sales.map((s,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
+        {sales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda registrada ainda.</div>}
+        {(sales||[]).map((s,i)=>{
+          const nome=s.customers?.name||"Cliente";
+          const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
+          return(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(sales.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
             <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
-              <Tag status={s.st}/>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div>
+              <Tag status={s.status}/>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1430,23 +1503,30 @@ function ClientesCRM(){
 }
 
 function PainelClientesTab(){
-  const anivs=[
-    {name:"Ana R.",data:"19/04",dias:5},
-    {name:"João P.",data:"15/05",dias:31},
-    {name:"Maria L.",data:"22/08",dias:130},
-  ];
-  
-  const clientes=[
-    {name:"João P.",whatsapp:"(11) 99910-0001",ultima:"20/03/2026",aniv:"15/05",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"Cartão",st:"pago"},{prod:"Protocolo G9",val:"R$ 180",data:"05/03/2026",met:"PIX",st:"pago"}]},
-    {name:"Maria L.",whatsapp:"(11) 99910-0002",ultima:"20/03/2026",aniv:"22/08",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"PIX",st:"pago"}]},
-    {name:"Carlos M.",whatsapp:"(11) 99910-0003",ultima:"20/03/2026",aniv:"03/12",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"20/03/2026",met:"PIX",st:"pendente"}]},
-    {name:"Ana R.",whatsapp:"(11) 99910-0004",ultima:"09/03/2026",aniv:"19/04",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"09/03/2026",met:"Cartão",st:"pago"}]},
-    {name:"Pedro S.",whatsapp:"(11) 99910-0005",ultima:"08/03/2026",aniv:"07/10",status:"inativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"08/03/2026",met:"PIX",st:"cancelado"}]},
-  ];
+  const [clientes,setClientes]=useState(null);
   const [sel,setSel]=useState(null);
+  useEffect(()=>{
+    if(!_sb)return;
+    _sb.from('customers').select('*,sales(amount,status,created_at,products(name))').order('created_at',{ascending:false})
+      .then(({data})=>{if(data)setClientes(data);});
+  },[]);
 
-  if(sel!==null){
+  // Calcula aniversários próximos (30 dias)
+  const today=new Date();
+  const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
+    const b=new Date(c.birthday);
+    const next=new Date(today.getFullYear(),b.getMonth(),b.getDate());
+    if(next<today)next.setFullYear(today.getFullYear()+1);
+    const dias=Math.round((next-today)/(1000*60*60*24));
+    return{name:c.name,data:`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}`,dias};
+  }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias).slice(0,5);
+
+  if(sel!==null&&clientes){
     const c=clientes[sel];
+    const compras=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    const lastSale=compras[0];
+    const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
+    const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
     return(
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
@@ -1455,29 +1535,27 @@ function PainelClientesTab(){
             <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
             <div style={{flex:1}}>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.whatsapp}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {c.aniv}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.phone||"—"}</div>
+              {c.email&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>✉ {c.email}</div>}
+              {c.birthday&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {anivFmt}</div>}
             </div>
-            <Tag status={c.status}/>
+            <Tag status={lastSale?"ativo":"inativo"}/>
           </div>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {c.ultima}</span>
-        </div>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          {["Entrou","Comprou",c.status==="inativo"?"Parou":"Ativo"].map((s,i,arr)=>(
-            <React.Fragment key={s}>
-              <span style={{background:i===arr.length-1?`${GOLD}18`:"rgba(255,255,255,0.05)",color:i===arr.length-1?GOLD:MUTED,border:`1px solid ${i===arr.length-1?GOLD+"30":BDR}`,fontSize:11,fontWeight:700,padding:"3px 12px",borderRadius:20}}>{s}</span>
-              {i<arr.length-1&&<span style={{color:MUTED,fontSize:12}}>→</span>}
-            </React.Fragment>
-          ))}
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
         </div>
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
-          {c.compras.map((cp,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<c.compras.length-1?`1px solid ${BDR}`:"none"}}>
-              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{cp.prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{cp.met} · {cp.data}</div></div>
-              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cp.val}</div><div style={{marginTop:4}}><Tag status={cp.st}/></div></div>
+          {compras.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
+          {compras.map((cp,i)=>{
+            const prod=cp.products?.name||"Produto";
+            const dt=new Date(cp.created_at).toLocaleDateString('pt-BR');
+            return(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<compras.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
+              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(cp.amount)}</div><div style={{marginTop:4}}><Tag status={cp.status}/></div></div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -1486,10 +1564,10 @@ function PainelClientesTab(){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="kpi-grid">
-        <KPICard label="Msgs hoje" value="24" icon="✉" accent={GOLD}/>
-        <KPICard label="Msgs este mês" value="312" icon="✉" accent={GOLD}/>
-        <KPICard label="Total clientes" value="5" icon="◻" accent={GOLD}/>
-        <KPICard label="Clientes ativos" value="4" icon="◉" accent={GOLD}/>
+        <KPICard label="Msgs hoje" value="—" icon="✉" accent={GOLD}/>
+        <KPICard label="Msgs este mês" value="—" icon="✉" accent={GOLD}/>
+        <KPICard label="Total clientes" value={clientes?String(clientes.length):"—"} icon="◻" accent={GOLD}/>
+        <KPICard label="Clientes ativos" value={clientes?String(clientes.length):"—"} icon="◉" accent={GOLD}/>
       </div>
       
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
@@ -1514,27 +1592,32 @@ function PainelClientesTab(){
         <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
       </div>
 
-      {/* Lista de Clientes Integrada */}
+      {/* Lista de Clientes */}
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
-        </div>
-        {clientes.map((c,i)=>(
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
+        {clientes===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
+        {clientes!==null&&clientes.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente cadastrado ainda.</div>}
+        {(clientes||[]).map((c,i)=>{
+          const lastSale=c.sales?.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+          const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
+          const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
+          return(
           <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
             <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
                 <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-                <Tag status={c.status}/>
+                <Tag status={lastSale?"ativo":"inativo"}/>
               </div>
-              <div style={{color:MUTED,fontSize:12}}>📱 {c.whatsapp}</div>
+              <div style={{color:MUTED,fontSize:12}}>📱 {c.phone||c.email||"—"}</div>
               <div style={{display:"flex",gap:12,marginTop:2}}>
-                <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{c.ultima}</span></span>
-                <span style={{color:MUTED,fontSize:11}}>🎂 {c.aniv}</span>
+                <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{ultimaCompra}</span></span>
+                {c.birthday&&<span style={{color:MUTED,fontSize:11}}>🎂 {anivFmt}</span>}
               </div>
             </div>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
