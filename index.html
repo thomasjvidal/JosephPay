@@ -87,6 +87,15 @@ const PERIODS={
   ano:{data:mkData(12,8000,6000).map((d,i)=>({...d,label:["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][i]})),label:"Ano"},
 };
 
+function aggregateSales(sales,period,now){
+  now=now||new Date();
+  if(period==='hoje'){const a=Array.from({length:16},(_,i)=>({label:`${6+i}h`,v:0}));sales.forEach(s=>{const h=new Date(s.created_at).getHours()-6;if(h>=0&&h<16)a[h].v+=Number(s.amount);});return a;}
+  if(period==='semana'){const d=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'],a=d.map(l=>({label:l,v:0}));sales.forEach(s=>{a[(new Date(s.created_at).getDay()+6)%7].v+=Number(s.amount);});return a;}
+  if(period==='mes'){const dim=now.getDate(),a=Array.from({length:dim},(_,i)=>({label:i+1,v:0}));sales.forEach(s=>{const d=new Date(s.created_at).getDate()-1;if(d>=0&&d<dim)a[d].v+=Number(s.amount);});return a;}
+  if(period==='trimestre'){const a=Array.from({length:12},(_,i)=>({label:`S${i+1}`,v:0})),s0=new Date(now.getTime()-84*24*60*60*1000);sales.forEach(s=>{const w=Math.min(Math.floor((new Date(s.created_at)-s0)/(7*24*60*60*1000)),11);if(w>=0)a[w].v+=Number(s.amount);});return a;}
+  const m=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],a=m.map(l=>({label:l,v:0}));sales.forEach(s=>{a[new Date(s.created_at).getMonth()].v+=Number(s.amount);});return a;
+}
+
 function Tag({status}){
   if(status==="pago") return <span style={{fontSize:10,fontWeight:600,color:"#22C55E",letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
   if(status==="pendente") return <span style={{fontSize:10,fontWeight:600,color:MUTED,letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
@@ -129,16 +138,34 @@ function Btn({children,onClick,color,outline,sm}){
   );
 }
 
-function AdvancedChart({accent=GOLD,vis=true}){
+function AdvancedChart({accent=GOLD,vis=true,isAdmin=false}){
   const [period,setPeriod]=useState("mes");
-  const pd=PERIODS[period];
-  const total=pd.data.reduce((a,d)=>a+d.v,0);
+  const [chartData,setChartData]=useState(PERIODS.mes.data);
+  const [chartLabel,setChartLabel]=useState("Este mês");
+  useEffect(()=>{
+    const lbls={hoje:"Hoje",semana:"Esta semana",mes:"Este mês",trimestre:"Trimestre",ano:"Ano"};
+    setChartLabel(lbls[period]||period);
+    const now=new Date();
+    let from;
+    if(period==='hoje')from=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
+    else if(period==='semana')from=new Date(now.getTime()-7*24*60*60*1000).toISOString();
+    else if(period==='mes')from=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
+    else if(period==='trimestre')from=new Date(now.getTime()-90*24*60*60*1000).toISOString();
+    else from=new Date(now.getFullYear(),0,1).toISOString();
+    if(isAdmin){
+      apiCall(`/api/admin/chart?period=${period}`).then(d=>{if(d&&!d.error&&d.sales)setChartData(aggregateSales(d.sales,period,now));});
+    }else if(_sb){
+      _sb.from('sales').select('amount,created_at').eq('status','pago').gte('created_at',from)
+        .then(({data})=>{if(data)setChartData(aggregateSales(data,period,now));});
+    }
+  },[period,isAdmin]);
+  const total=chartData.reduce((a,d)=>a+d.v,0);
   const gid=`g-${period}-${accent.replace("#","")}`;
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{pd.label}</div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{chartLabel}</div>
           <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:22,letterSpacing:"-0.01em"}}>{vis?`R$ ${total.toLocaleString()}`:"R$ ••••••"}</div>
         </div>
       </div>
@@ -149,7 +176,7 @@ function AdvancedChart({accent=GOLD,vis=true}){
       </div>
       <div style={{height:100}}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={pd.data} margin={{top:4,right:4,left:-32,bottom:0}}>
+          <AreaChart data={chartData} margin={{top:4,right:4,left:-32,bottom:0}}>
             <defs>
               <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={accent} stopOpacity={0.18}/>
@@ -169,31 +196,23 @@ function AdvancedChart({accent=GOLD,vis=true}){
 }
 
 function VisitorChart(){
-  const data=mkData(7,120,150).map((d,i)=>({...d,label:["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"][i]}));
+  const emptyData=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(l=>({label:l,v:0}));
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
-          <div style={{color:MUTED,fontSize:12,marginTop:2}}>josephpay.com</div>
+          <div style={{color:MUTED,fontSize:12,marginTop:2}}>Analytics em desenvolvimento</div>
         </div>
-        <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{data.reduce((a,d)=>a+d.v,0)} visitas</span>
+        <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Em breve</span>
       </div>
-      <div style={{height:90}}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{top:4,right:4,left:-32,bottom:0}}>
-            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
-            <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
-            <YAxis hide/>
-            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
-            <Bar dataKey="v" fill={`${GOLD}66`} radius={[4,4,0,0]}/>
-          </BarChart>
-        </ResponsiveContainer>
+      <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{color:MUTED,fontSize:12,fontStyle:"italic"}}>Integração de analytics em desenvolvimento</span>
       </div>
       <div style={{display:"flex",gap:20,marginTop:14}}>
-        {[{l:"Sessões do site",v:"847",c:TEXT},{l:"Conversão do site",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
+        {[{l:"Sessões do site",v:"—"},{l:"Conversão do site",v:"—"},{l:"Rejeição",v:"—"}].map(k=>(
           <div key={k.l}>
-            <div style={{color:k.c,fontWeight:700,fontSize:15}}>{k.v}</div>
+            <div style={{color:MUTED,fontWeight:700,fontSize:15}}>{k.v}</div>
             <div style={{color:MUTED,fontSize:11,marginTop:2}}>{k.l}</div>
           </div>
         ))}
@@ -259,21 +278,27 @@ function ChatIA({productName, onBack}){
 }
 
 function Afiliados({isAdmin}){
-  const list=[
-    {name:"Carlos M.",code:"CARLOS10",vendas:12,comissao:"R$ 216,00",status:"ativo",cli:"Renato G9",cliques:124,conv:"9.7%"},
-    {name:"Fernanda R.",code:"FER20",vendas:8,comissao:"R$ 144,00",status:"ativo",cli:"Dra. Deise",cliques:98,conv:"8.2%"},
-    {name:"João K.",code:"JOAO5",vendas:3,comissao:"R$ 54,00",status:"inativo",cli:"Renato G9",cliques:42,conv:"7.1%"},
-    {name:"Ana P.",code:"ANA30",vendas:6,comissao:"R$ 108,00",status:"ativo",cli:"Dr. Chayenne",cliques:67,conv:"9.0%"},
-  ];
+  const [list,setList]=useState(null);
+  useEffect(()=>{
+    if(!_sb)return;
+    if(isAdmin){
+      _sb.from('affiliates').select('*,profiles(name)').order('created_at',{ascending:false})
+        .then(({data})=>{if(data)setList(data.map(a=>({name:a.profiles?.name||a.affiliate_id?.slice(0,8)||"Afiliado",code:a.referral_code||"—",vendas:a.sales_count||0,comissao:fmtBRL(a.commission_total||0),status:a.status||"ativo",cliques:a.clicks||0,conv:"—"})));});
+    }else{
+      _sb.from('affiliates').select('*').order('created_at',{ascending:false})
+        .then(({data})=>{if(data)setList(data.map(a=>({name:a.name||"Afiliado",code:a.referral_code||"—",vendas:a.sales_count||0,comissao:fmtBRL(a.commission_total||0),status:a.status||"ativo",cliques:a.clicks||0,conv:"—"})));});
+    }
+  },[isAdmin]);
+  const displayList=list||[];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {isAdmin?(
         <>
           <div className="kpi-grid">
-            <KPICard label="Total afiliados" value="9" accent={GOLD} icon="◉"/>
-            <KPICard label="Comissão total" value="R$ 522" sub="este mês" accent={GOLD} icon="◈"/>
-            <KPICard label="Cliques totais" value="331" accent={GOLD} icon="◎"/>
-            <KPICard label="Conversão média" value="8.5%" accent={GOLD} icon="⊕"/>
+            <KPICard label="Total afiliados" value={list!==null?String(displayList.length):"—"} accent={GOLD} icon="◉"/>
+            <KPICard label="Afiliados ativos" value={list!==null?String(displayList.filter(a=>a.status==="ativo").length):"—"} accent={GOLD} icon="◈"/>
+            <KPICard label="Vendas geradas" value={list!==null?String(displayList.reduce((a,x)=>a+x.vendas,0)):"—"} accent={GOLD} icon="◎"/>
+            <KPICard label="Cliques totais" value={list!==null?String(displayList.reduce((a,x)=>a+x.cliques,0)):"—"} accent={GOLD} icon="⊕"/>
           </div>
           <div className="jp-promo-card" style={{marginBottom:12}}>
             <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
@@ -291,13 +316,14 @@ function Afiliados({isAdmin}){
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Todos os afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
-            {list.map((a,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<list.length-1?`1px solid ${BDR}`:"none"}}>
+            {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+            {list!==null&&displayList.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado registrado ainda.</div>}
+            {displayList.map((a,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<displayList.length-1?`1px solid ${BDR}`:"none"}}>
                 <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
                   <div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas · {a.cliques} cliques</div>
-                  <div style={{color:"rgba(255,255,255,0.22)",fontSize:11,marginTop:1}}>{a.cli}</div>
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{color:GOLD,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div>
@@ -307,8 +333,8 @@ function Afiliados({isAdmin}){
             ))}
           </div>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Métricas globais</span></div>
-            {[{l:"Cliques totais na plataforma",v:"331"},{l:"Vendas geradas por afiliados",v:"29"},{l:"Taxa de conversão média",v:"8.5%"},{l:"Comissão total pendente",v:"R$ 198,00"},{l:"Comissão total paga",v:"R$ 324,00"},{l:"Afiliados ativos",v:"3"},{l:"Afiliados inativos",v:"1"}].map((r,i,arr)=>(
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Resumo</span></div>
+            {[{l:"Total de afiliados",v:displayList.length.toString()},{l:"Afiliados ativos",v:displayList.filter(a=>a.status==="ativo").length.toString()},{l:"Vendas geradas",v:displayList.reduce((a,x)=>a+x.vendas,0).toString()},{l:"Comissão total gerada",v:fmtBRL(displayList.reduce((a,x)=>a+parseFloat((x.comissao||"0").replace(/[^0-9.,]/g,"").replace(",",".")||"0"),0))}].map((r,i,arr)=>(
               <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
                 <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
                 <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
@@ -319,17 +345,17 @@ function Afiliados({isAdmin}){
       ):(
         <>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seu link de afiliado</div>
-            <div style={{color:GOLD,fontWeight:700,fontSize:14,marginBottom:14}}>josephpay.com/ref/RENATO15</div>
-            <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>Copiar link</Btn><Btn sm outline color={MUTED}>Compartilhar</Btn></div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seus afiliados</div>
+            <div style={{color:GOLD,fontWeight:700,fontSize:14,marginBottom:14}}>{displayList.length} afiliados cadastrados</div>
+            <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>+ Convidar</Btn></div>
           </div>
           <div className="two-col">
-            <Pill label="Total afiliados" value="3" accent={GOLD}/>
-            <Pill label="Comissão total" value="R$ 414" accent={GOLD} sub="este mês"/>
+            <Pill label="Total afiliados" value={displayList.length.toString()} accent={GOLD}/>
+            <Pill label="Afiliados ativos" value={displayList.filter(a=>a.status==="ativo").length.toString()} accent={GOLD} sub="ativos"/>
           </div>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Meu desempenho</span></div>
-            {[{l:"Cliques no link",v:"234"},{l:"Vendas geradas",v:"12"},{l:"Taxa de conversão",v:"5.1%"},{l:"Comissão pendente",v:"R$ 72,00"}].map((r,i,arr)=>(
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Resumo de afiliados</span></div>
+            {[{l:"Vendas geradas total",v:displayList.reduce((a,x)=>a+x.vendas,0).toString()},{l:"Afiliados ativos",v:displayList.filter(a=>a.status==="ativo").length.toString()},{l:"Afiliados inativos",v:displayList.filter(a=>a.status==="inativo").length.toString()}].map((r,i,arr)=>(
               <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
                 <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
                 <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
@@ -338,11 +364,13 @@ function Afiliados({isAdmin}){
           </div>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Afiliados ativos</span>
+              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Seus afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
-            {list.slice(0,3).map((a,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<2?`1px solid ${BDR}`:"none"}}>
+            {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+            {list!==null&&displayList.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado ainda.</div>}
+            {displayList.slice(0,5).map((a,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(4,displayList.length-1)?`1px solid ${BDR}`:"none"}}>
                 <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
                 <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas</div></div>
                 <div style={{textAlign:"right"}}><div style={{color:GREEN,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div><Tag status={a.status}/></div>
@@ -567,37 +595,41 @@ const ALL_CLIENTS=[
 
 function DashAdmin({onNav}){
   const [vis,setVis]=useState(true);
-  const recentSales=[{cli:"Renato G9",name:"João P.",val:180,met:"PIX",h:"14:32",st:"pago"},{cli:"Dra. Deise",name:"Maria L.",val:20000,met:"Cartão",h:"12:10",st:"pago"},{cli:"Dr. Chayenne",name:"Ana R.",val:350,met:"PIX",h:"10:48",st:"pago"},{cli:"Renato G9",name:"Carlos M.",val:60,met:"PIX",h:"09:05",st:"pendente"}];
+  const [kpis,setKpis]=useState(null);
+  const [recentSales,setRecentSales]=useState(null);
+  const [clients,setClients]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/admin/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
+    apiCall('/api/admin/sales?limit=4').then(d=>{if(d&&!d.error)setRecentSales(d.sales||[]);});
+    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+  },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Saldo disponível · Plataforma</div>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita da plataforma · Este mês</div>
           <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?"R$ 34.700,00":"R$ ••••••"}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +24% este mês</span>
-          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>3 clientes · Volume: R$ 34.700</span>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>{kpis?`${kpis.clientes} produtores`:"Carregando…"}</span>
+          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>{kpis?`${kpis.transacoes} transações totais`:"—"}</span>
         </div>
       </div>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Suas taxas" value="R$ 842" accent={GOLD} icon="◈"/>
-          <KPICard label="Transações" value="47" accent={GOLD} icon="↑"/>
-          <KPICard label="Afiliados" value="9 ativos" accent={GOLD} icon="◉"/>
-          <KPICard label="MRR" value="R$ 1.260" accent={GOLD} icon="⟳"/>
-          <KPICard label="Ticket médio" value="R$ 738" accent={GOLD} icon="◎"/>
-          <KPICard label="Conversão" value="2.4%" accent={GOLD} icon="⊕"/>
-          <KPICard label="Visitantes" value="2.407" accent={GOLD} icon="◎"/>
-          <KPICard label="Sites ativos" value="3" accent={GOLD} icon="◈"/>
+          <KPICard label="Taxas do mês" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈"/>
+          <KPICard label="Transações" value={kpis?String(kpis.transacoes):"—"} accent={GOLD} icon="↑"/>
+          <KPICard label="Afiliados ativos" value={kpis?String(kpis.afiliados):"—"} accent={GOLD} icon="◉"/>
+          <KPICard label="MRR" value={kpis?fmtBRL(kpis.mrr):"—"} accent={GOLD} icon="⟳"/>
+          <KPICard label="Produtores" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◻"/>
+          <KPICard label="Receita mês" value={kpis?fmtBRL(kpis.receitaMes):"—"} accent={GOLD} icon="◈"/>
         </div>
       </div>
       <div className="jp-promo-card" style={{marginBottom:10}}>
         <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
-          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop"
-            alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop" alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"60%"}}>
@@ -606,36 +638,45 @@ function DashAdmin({onNav}){
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
         </div>
       </div>
-      <AdvancedChart accent={GOLD}/>
+      <AdvancedChart accent={GOLD} isAdmin={true}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
-        {recentSales.map((s,i)=>(
+        {recentSales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {recentSales!==null&&recentSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
+        {(recentSales||[]).map((s,i)=>{
+          const nome=s.customers?.name||"Cliente";
+          const produtor=s.profiles?.name||"—";
+          const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          return(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<recentSales.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h} · <span style={{color:"rgba(255,255,255,0.55)"}}>{s.cli}</span></div>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora} · <span style={{color:"rgba(255,255,255,0.55)"}}>{produtor}</span></div>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
-              <div style={{marginTop:4}}><Tag status={s.st}/></div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div>
+              <div style={{marginTop:4}}><Tag status={s.status}/></div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Clientes</span>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Produtores</span>
           <button onClick={()=>onNav("clientes")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todos →</button>
         </div>
-        {ALL_CLIENTS.map((c,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<ALL_CLIENTS.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produto}</div></div>
-            <div style={{textAlign:"right",flexShrink:0}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{c.vol}</div><div style={{color:GOLD,fontSize:11,fontWeight:600,marginTop:2}}>{c.taxa} taxas</div></div>
+        {clients===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {clients!==null&&clients.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
+        {(clients||[]).slice(0,4).map((c,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(3,clients.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"Sem nome"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produtos} produto(s) · desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div></div>
+            <div style={{textAlign:"right",flexShrink:0}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(c.vol)}</div><div style={{color:GOLD,fontSize:11,fontWeight:600,marginTop:2}}>{fmtBRL(c.taxa)} taxas</div></div>
           </div>
         ))}
       </div>
@@ -644,56 +685,54 @@ function DashAdmin({onNav}){
 }
 
 function ClientePerfilAdmin({c,onBack}){
-  const accent=GOLD;
-  const sales=[{name:"João P.",val:c.name.includes("Deise")?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:c.name.includes("Deise")?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:c.name.includes("Deise")?5000:60,met:"PIX",h:"10:48",st:"pendente"}];
+  const [sales,setSales]=useState(null);
+  const [kpis,setKpis]=useState(null);
+  useEffect(()=>{
+    // Busca vendas deste produtor via admin endpoint (filtra por owner_id no server)
+    apiCall(`/api/admin/sales?limit=20&owner=${c.id}`).then(d=>{if(d&&!d.error)setSales(d.sales||[]);});
+  },[c.id]);
+  // KPIs calculados das vendas reais
+  const vol=sales?(sales.filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0)):c.vol;
+  const taxa=typeof vol==='number'?Math.round(vol*0.022*100)/100:c.taxa;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-          <div style={{width:50,height:50,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+          <div style={{width:50,height:50,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
           <div style={{flex:1}}>
-            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:2}}>🔗 {c.site}</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name||"Sem nome"}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:3}}>Produtor desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos} produto(s) cadastrado(s)</div>
           </div>
-          <Tag status={c.status}/>
+          <Tag status="ativo"/>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Saldo: {c.saldo}</span>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {c.taxa}</span>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {fmtBRL(taxa)}</span>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Volume: {fmtBRL(typeof vol==='number'?vol:0)}</span>
         </div>
       </div>
       <div className="kpi-grid">
-        <KPICard label="Receita total" value={c.receita} accent={accent} icon="◈"/>
-        <KPICard label="Vendas hoje" value={c.vendas} accent={GOLD} icon="↑"/>
-        <KPICard label="Assinaturas" value={`${c.assinaturas} ativas`} accent={GOLD} icon="⟳"/>
-        <KPICard label="Ticket médio" value={c.ticket} accent={GOLD} icon="◎"/>
-        <KPICard label="Afiliados" value={`${c.afiliados} ativos`} accent={GOLD} icon="◉"/>
-        <KPICard label="Conversão" value={c.conversao} accent={GOLD} icon="⊕"/>
-        <KPICard label="Visitantes" value={c.visitors.toLocaleString()} accent={GOLD} icon="◎"/>
-        <KPICard label="Volume total" value={c.vol} accent={GOLD} icon="◈"/>
+        <KPICard label="Receita total (pago)" value={fmtBRL(typeof vol==='number'?vol:0)} accent={GOLD} icon="◈"/>
+        <KPICard label="Transações" value={sales?String(sales.length):"—"} accent={GOLD} icon="↑"/>
+        <KPICard label="Taxas geradas" value={fmtBRL(taxa)} accent={GOLD} icon="◈"/>
+        <KPICard label="Pendentes" value={sales?String(sales.filter(s=>s.status==='pendente').length):"—"} accent={GOLD} icon="⟳"/>
       </div>
-      <AdvancedChart accent={accent}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
-        {sales.map((s,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
-            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div><div style={{marginTop:4}}><Tag status={s.st}/></div></div>
+        {sales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {sales!==null&&sales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda registrada.</div>}
+        {(sales||[]).slice(0,10).map((s,i,arr)=>{
+          const nome=s.customers?.name||"Cliente";
+          const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
+          return(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(9,arr.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
+            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
           </div>
-        ))}
-      </div>
-      <VisitorChart/>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Checkouts ativos</span></div>
-        {[{n:`${c.produto} — Assinatura`,tipo:"Assinatura",tx:"2% + R$1,99",status:"ativo"},{n:`${c.produto} — Avulso`,tipo:"Taxa Fixa",tx:"R$1,99",status:"ativo"}].map((ch,i,arr)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{ch.n}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{ch.tipo} · {ch.tx}</div></div>
-            <Tag status={ch.status}/>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
         <Btn sm outline color={GOLD}>Configurar taxa</Btn>
@@ -706,12 +745,16 @@ function ClientePerfilAdmin({c,onBack}){
 
 function ClientesAdmin(){
   const [sel,setSel]=useState(null);
-  if(sel!==null) return <ClientePerfilAdmin c={ALL_CLIENTS[sel]} onBack={()=>setSel(null)}/>;
+  const [clients,setClients]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+  },[]);
+  if(sel!==null&&clients) return <ClientePerfilAdmin c={clients[sel]} onBack={()=>setSel(null)}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
-        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>3 ativos</span>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Produtores</div>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clients.length} cadastrados`:"…"}</span>
       </div>
       <div className="jp-promo-card" style={{marginBottom:16}}>
         <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
@@ -719,33 +762,33 @@ function ClientesAdmin(){
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
-          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Clientes</div>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Produtores</div>
           <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Todos os seus produtores em um só lugar</div>
         </div>
       </div>
-      {ALL_CLIENTS.map((c,i)=>(
+      {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+      {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado ainda.</div>}
+      {(clients||[]).map((c,i)=>(
         <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-            <div style={{width:44,height:44,borderRadius:14,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{width:44,height:44,borderRadius:14,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
             <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produto}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:1}}>📧 {c.email}</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name||"Sem nome"}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos} produto(s)</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:1}}>Desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div>
             </div>
-            <Tag status={c.status}/>
+            <Tag status="ativo"/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
-            {[{l:"Volume",v:c.vol,c:TEXT},{l:"Taxas",v:c.taxa,c:GOLD},{l:"Saldo",v:c.saldo,c:TEXT}].map(item=>(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+            {[{l:"Volume total",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas geradas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
                 <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
               </div>
             ))}
           </div>
-          <div style={{color:MUTED,fontSize:11,marginBottom:12}}>🔗 {c.site}</div>
           <div style={{display:"flex",gap:10}}>
             <Btn sm outline color={GOLD} onClick={()=>setSel(i)}>Ver perfil completo</Btn>
-            <Btn sm outline color={MUTED}>Config. taxa</Btn>
           </div>
         </div>
       ))}
@@ -754,20 +797,15 @@ function ClientesAdmin(){
 }
 
 function VendasAdmin(){
+  const [allSales,setAllSales]=useState(null);
   const [filtro,setFiltro]=useState("todos");
-  const allSales=[
-    {cli:"Renato G9",name:"João P.",val:180,met:"Cartão",h:"14:32",st:"pago",data:"20/03"},
-    {cli:"Renato G9",name:"Maria L.",val:180,met:"PIX",h:"12:10",st:"pago",data:"20/03"},
-    {cli:"Renato G9",name:"Carlos M.",val:60,met:"PIX",h:"10:48",st:"pendente",data:"20/03"},
-    {cli:"Dra. Deise",name:"João P.",val:20000,met:"Cartão",h:"09:00",st:"pago",data:"20/03"},
-    {cli:"Dra. Deise",name:"Maria L.",val:8500,met:"PIX",h:"11:30",st:"pago",data:"19/03"},
-    {cli:"Dra. Deise",name:"Ana R.",val:12000,met:"Cartão",h:"15:20",st:"pago",data:"19/03"},
-    {cli:"Dr. Chayenne",name:"Pedro S.",val:350,met:"PIX",h:"08:15",st:"pago",data:"19/03"},
-    {cli:"Dr. Chayenne",name:"Lucia T.",val:350,met:"Cartão",h:"16:40",st:"cancelado",data:"18/03"},
-  ];
-  const clientes=["todos","Renato G9","Dra. Deise","Dr. Chayenne"];
-  const filtered=filtro==="todos"?allSales:allSales.filter(s=>s.cli===filtro);
-  const totalRec=filtered.filter(s=>s.st==="pago").reduce((a,s)=>a+s.val,0);
+  useEffect(()=>{
+    apiCall('/api/admin/sales?limit=100').then(d=>{if(d&&!d.error)setAllSales(d.sales||[]);});
+  },[]);
+  // Lista dinâmica de produtores
+  const produtores=allSales?["todos",...new Set(allSales.map(s=>s.profiles?.name||s.owner_id||"").filter(Boolean))]:["todos"];
+  const filtered=!allSales?[]:(filtro==="todos"?allSales:allSales.filter(s=>(s.profiles?.name||s.owner_id||"")=== filtro));
+  const totalRec=filtered.filter(s=>s.status==="pago").reduce((a,s)=>a+Number(s.amount),0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas · Plataforma</div>
@@ -782,59 +820,75 @@ function VendasAdmin(){
         </div>
       </div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
-        {clientes.map(c=>(
+        {produtores.map(c=>(
           <button key={c} onClick={()=>setFiltro(c)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${c===filtro?GOLD+"55":BDR}`,background:c===filtro?`${GOLD}14`:"transparent",color:c===filtro?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{c==="todos"?"Todos":c}</button>
         ))}
       </div>
       <div className="kpi-grid">
-        <KPICard label="Receita total" value={`R$ ${totalRec.toLocaleString()}`} accent={GOLD} icon="◈"/>
-        <KPICard label="Suas taxas" value={`R$ ${Math.round(totalRec*0.022).toLocaleString()}`} accent={GOLD} icon="◈"/>
-        <KPICard label="Transações" value={filtered.length.toString()} accent={GOLD} icon="↑"/>
-        <KPICard label="Pendentes" value={filtered.filter(s=>s.st==="pendente").length.toString()} accent={GOLD} icon="⟳"/>
+        <KPICard label="Receita total" value={allSales?fmtBRL(totalRec):"—"} accent={GOLD} icon="◈"/>
+        <KPICard label="Taxas plataforma" value={allSales?fmtBRL(Math.round(totalRec*0.022*100)/100):"—"} accent={GOLD} icon="◈"/>
+        <KPICard label="Transações" value={allSales?String(filtered.length):"—"} accent={GOLD} icon="↑"/>
+        <KPICard label="Pendentes" value={allSales?String(filtered.filter(s=>s.status==="pendente").length):"—"} accent={GOLD} icon="⟳"/>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{filtered.length} transações</span>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{allSales?`${filtered.length} transações`:"Carregando…"}</span>
           <span style={{color:MUTED,fontSize:12}}>{filtro==="todos"?"Todas as contas":filtro}</span>
         </div>
-        {filtered.map((s,i)=>(
+        {allSales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {allSales!==null&&filtered.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
+        {filtered.map((s,i)=>{
+          const nome=s.customers?.name||"Cliente";
+          const produtor=s.profiles?.name||"—";
+          const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
+          const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          return(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<filtered.length-1?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.data} {s.h} · <span style={{color:"rgba(255,255,255,0.5)"}}>{s.cli}</span></div>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora} · <span style={{color:"rgba(255,255,255,0.5)"}}>{produtor}</span></div>
             </div>
             <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
-              <Tag status={s.st}/>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div>
+              <Tag status={s.status}/>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function SiteAdmin(){
+  const [clients,setClients]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+  },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Site & Analytics</div>
       <div className="kpi-grid">
-        <KPICard label="Total visitantes" value="2.407" accent={GOLD} icon="◎"/>
-        <KPICard label="Sites ativos" value="3" accent={GOLD} icon="◈"/>
-        <KPICard label="Conversão média" value="2.4%" accent={GOLD} icon="⊕"/>
-        <KPICard label="Sessões únicas" value="1.847" accent={GOLD} icon="⟳"/>
+        <KPICard label="Total visitantes" value="—" sub="Em breve" accent={GOLD} icon="◎"/>
+        <KPICard label="Sites ativos" value={clients?String(clients.length):"—"} accent={GOLD} icon="◈"/>
+        <KPICard label="Conversão média" value="—" sub="Em breve" accent={GOLD} icon="⊕"/>
+        <KPICard label="Sessões únicas" value="—" sub="Em breve" accent={GOLD} icon="⟳"/>
       </div>
-      <VisitorChart/>
-      {ALL_CLIENTS.map((c,i)=>(
+      <div style={{background:`${GOLD}0A`,border:`1px solid ${GOLD}20`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{color:GOLD,fontSize:14}}>ℹ</span>
+        <span style={{color:MUTED,fontSize:12}}>Analytics de visitantes em desenvolvimento. Os dados de vendas estão disponíveis no Dashboard.</span>
+      </div>
+      {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtores…</div>}
+      {(clients||[]).map((c,i)=>(
         <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>🔗 {c.site}</div></div>
-            <Tag status={c.status}/>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"Sem nome"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produtos} produto(s) cadastrado(s)</div></div>
+            <Tag status="ativo"/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            {[{l:"Visitantes",v:c.visitors.toLocaleString(),c:TEXT},{l:"Conversão",v:c.conversao,c:GOLD},{l:"Volume",v:c.vol,c:TEXT}].map(item=>(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[{l:"Volume Total",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas Geradas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
                 <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
@@ -843,15 +897,6 @@ function SiteAdmin(){
           </div>
         </div>
       ))}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma</div>
-        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
-          <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1304,18 +1349,49 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
 
 function ProdutosTab({accent,isDeise}){
   const [sel,setSel]=useState(null);
-  const produtos=isDeise?[
-    {name:"Cirurgia Plástica",receita:"R$ 45.500",vendas:47,assinaturas:2,afiliados:3,site:"dradeise.josephpay.com",tipo:"Produto próprio"},
-  ]:[
-    {name:"Protocolo G9",receita:"R$ 8.280",vendas:89,assinaturas:32,afiliados:5,site:"protocolog9.josephpay.com",tipo:"Produto próprio"},
-  ];
-  if(sel!==null) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
+  const [produtos,setProdutos]=useState(null);
+  useEffect(()=>{
+    if(!_sb){
+      // Fallback demo quando Supabase não disponível
+      setProdutos(isDeise?
+        [{id:"demo1",name:"Cirurgia Plástica",receita:"—",vendas:"—",assinaturas:"—",afiliados:"—",site:"dradeise.josephpay.com",tipo:"Produto próprio"}]:
+        [{id:"demo2",name:"Protocolo G9",receita:"—",vendas:"—",assinaturas:"—",afiliados:"—",site:"protocolog9.josephpay.com",tipo:"Produto próprio"}]
+      );
+      return;
+    }
+    const now=new Date();
+    const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
+    _sb.from('products').select('*').order('created_at',{ascending:false}).then(async({data:prods})=>{
+      if(!prods){setProdutos([]);return;}
+      const enriched=await Promise.all(prods.map(async p=>{
+        const [salesData,subsData,afilData]=await Promise.all([
+          _sb.from('sales').select('amount,status').eq('product_id',p.id).gte('created_at',monthStart),
+          _sb.from('subscriptions').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('status','ativo'),
+          _sb.from('affiliates').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('status','ativo'),
+        ]);
+        const vendasMes=(salesData.data||[]).length;
+        const receitaMes=(salesData.data||[]).filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0);
+        return{...p,receita:fmtBRL(receitaMes),vendas:vendasMes,assinaturas:subsData.count||0,afiliados:afilData.count||0,site:`${p.slug||p.id.slice(0,8)}.josephpay.com`,tipo:"Produto próprio"};
+      }));
+      setProdutos(enriched);
+    });
+  },[isDeise]);
+  if(sel!==null&&produtos) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
         <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
-      {produtos.map((p,i)=>(
+      {produtos===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtos…</div>}
+      {produtos!==null&&produtos.length===0&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"40px 20px",textAlign:"center"}}>
+          <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◈</div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Nenhum produto ainda</div>
+          <div style={{color:MUTED,fontSize:13,marginBottom:18}}>Crie seu primeiro produto para começar a vender.</div>
+          <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Criar produto</button>
+        </div>
+      )}
+      {(produtos||[]).map((p,i)=>(
         <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
           {/* capa */}
           <div style={{height:90,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1644,41 +1720,42 @@ function MaquinaTab(){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <VisitorChart/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Origem de vendas</div>
-        {[{l:"Site",v:"67%",bg:GOLD},{l:"WhatsApp",v:"24%",bg:"#B8941A"},{l:"Campanhas",v:"9%",bg:"rgba(212,175,55,0.4)"}].map(t=>(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Origem de vendas</div>
+          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
+        </div>
+        {[{l:"Site",v:"—"},{l:"WhatsApp",v:"—"},{l:"Campanhas",v:"—"}].map(t=>(
           <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:MUTED,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}/>
           </div>
         ))}
+        <div style={{color:MUTED,fontSize:11,textAlign:"center",marginTop:8}}>Rastreamento de origem em desenvolvimento</div>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
-        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
+          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
+        </div>
+        {[{l:"Instagram"},{l:"WhatsApp"},{l:"Google"},{l:"Direto"}].map(t=>(
           <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:MUTED,fontWeight:700,fontSize:13}}>—</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}/>
           </div>
         ))}
+        <div style={{color:MUTED,fontSize:11,textAlign:"center",marginTop:8}}>Integração de analytics em desenvolvimento</div>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:16}}>Reputação</div>
-        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
-          <div style={{textAlign:"center",flexShrink:0}}>
-            <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:38,lineHeight:1}}>4.8</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:4}}>nota média</div>
-          </div>
-          <div style={{flex:1}}>
-            {[{s:"5 ★",w:"72%"},{s:"4 ★",w:"18%"},{s:"3 ★",w:"6%"},{s:"2 ★",w:"2%"},{s:"1 ★",w:"2%"}].map(r=>(
-              <div key={r.s} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
-                <span style={{color:MUTED,fontSize:11,width:28,flexShrink:0}}>{r.s}</span>
-                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:r.w}}/></div>
-                <span style={{color:MUTED,fontSize:11,width:28,textAlign:"right",flexShrink:0}}>{r.w}</span>
-              </div>
-            ))}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Reputação</div>
+          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 0"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{color:MUTED,fontSize:38,lineHeight:1,marginBottom:8}}>★</div>
+            <div style={{color:MUTED,fontSize:13}}>Sistema de avaliações em desenvolvimento</div>
           </div>
         </div>
-        <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>📊 Baseado em 47 avaliações Google</div>
       </div>
     </div>
   );

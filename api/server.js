@@ -339,6 +339,99 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — ADMIN (usam service role key → veem TODOS os dados)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/admin/kpis — KPIs gerais da plataforma */
+app.get("/api/admin/kpis", requireAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const [salesMonth, totalTx, profs, afils, subs] = await Promise.all([
+      supabase.from("sales").select("amount").eq("status", "pago").gte("created_at", monthStart),
+      supabase.from("sales").select("id", { count: "exact", head: true }),
+      supabase.from("profiles").select("id", { count: "exact", head: true }),
+      supabase.from("affiliates").select("id", { count: "exact", head: true }).eq("status", "ativo"),
+      supabase.from("subscriptions").select("amount").eq("status", "ativo"),
+    ]);
+    const receitaMes = (salesMonth.data || []).reduce((a, s) => a + Number(s.amount), 0);
+    const mrr = (subs.data || []).reduce((a, s) => a + Number(s.amount), 0);
+    res.json({
+      receitaMes,
+      taxasMes: Math.round(receitaMes * 0.022 * 100) / 100,
+      transacoes: totalTx.count || 0,
+      clientes: profs.count || 0,
+      afiliados: afils.count || 0,
+      mrr,
+    });
+  } catch (err) {
+    console.error("[admin/kpis]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** GET /api/admin/sales — Todas as vendas da plataforma (opcional: ?owner=uuid&limit=N) */
+app.get("/api/admin/sales", requireAuth, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const owner = req.query.owner;
+    let q = supabase
+      .from("sales")
+      .select("*,customers(name),products(name),profiles!owner_id(name)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (owner) q = q.eq("owner_id", owner);
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json({ sales: data || [] });
+  } catch (err) {
+    console.error("[admin/sales]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** GET /api/admin/clients — Todos os produtores + resumo */
+app.get("/api/admin/clients", requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,name,role,created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    const enriched = await Promise.all((data || []).map(async (p) => {
+      const [salesSum, prodCount] = await Promise.all([
+        supabase.from("sales").select("amount").eq("owner_id", p.id).eq("status", "pago"),
+        supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
+      ]);
+      const vol = (salesSum.data || []).reduce((a, s) => a + Number(s.amount), 0);
+      return { ...p, vol, taxa: Math.round(vol * 0.022 * 100) / 100, produtos: prodCount.count || 0 };
+    }));
+    res.json({ clients: enriched });
+  } catch (err) {
+    console.error("[admin/clients]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** GET /api/admin/chart?period=mes — Vendas agregadas para gráfico (admin) */
+app.get("/api/admin/chart", requireAuth, async (req, res) => {
+  try {
+    const period = req.query.period || "mes";
+    const now = new Date();
+    let from;
+    if (period === "hoje") from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    else if (period === "semana") from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    else if (period === "mes") from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    else from = new Date(now.getFullYear(), 0, 1).toISOString();
+    const { data } = await supabase.from("sales").select("amount,created_at").eq("status", "pago").gte("created_at", from);
+    res.json({ sales: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (req, res) => {
   res.json({
