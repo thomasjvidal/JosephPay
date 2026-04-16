@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>JosephPay</title>
+<script>
+const originalConsoleError = console.error;
+console.error = function (...args) {
+  if (typeof args[0] === 'string' && args[0].includes('Support for defaultProps will be removed from function components')) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+</script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#131312;color:#E5E2E0}
+body{font-family:'Inter',system-ui,sans-serif}
+input::placeholder,textarea::placeholder{color:rgba(153,144,124,0.6)}
+textarea{resize:none}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:rgba(212,175,55,0.2);border-radius:4px}
+.jp-sidebar{position:fixed;left:0;top:0;height:100%;width:68px;z-index:50;background:rgba(19,19,18,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid rgba(212,175,55,0.08);display:flex;flex-direction:column;transition:width 0.25s cubic-bezier(0.4,0,0.2,1)}
+@media(min-width:900px){.jp-sidebar{width:230px}.jp-sidebar .lbl{display:block!important}.jp-sidebar .logo-text{display:block!important}}
+.jp-main{margin-left:68px;min-height:100vh}
+@media(min-width:900px){.jp-main{margin-left:230px}}
+@media(max-width:639px){.jp-sidebar{display:none}.jp-main{margin-left:0;padding-bottom:80px}.jp-bnav{display:flex!important}}
+.jp-bnav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:50;background:rgba(19,19,18,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(212,175,55,0.08);padding:10px 0 22px;justify-content:flex-start;align-items:center;overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none}.jp-bnav::-webkit-scrollbar{display:none}
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(min-width:640px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.jp-gold-card{background:linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%);border-radius:22px;position:relative;overflow:hidden;min-height:180px}
+.jp-gold-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.22) 0%,transparent 45%,rgba(0,0,0,0.08) 100%);pointer-events:none}
+.jp-sunburst{position:relative;overflow:hidden}
+.jp-sunburst::after{content:'';position:absolute;top:-80%;left:50%;transform:translateX(-50%);width:220%;height:220%;background:conic-gradient(from 180deg at 50% 0%,transparent 0deg,rgba(212,175,55,0.07) 4deg,transparent 8deg,rgba(212,175,55,0.05) 12deg,transparent 16deg,rgba(212,175,55,0.06) 20deg,transparent 24deg,rgba(212,175,55,0.04) 28deg,transparent 32deg,rgba(212,175,55,0.07) 36deg,transparent 40deg,rgba(212,175,55,0.05) 44deg,transparent 48deg,rgba(212,175,55,0.06) 52deg,transparent 56deg,rgba(212,175,55,0.04) 60deg,transparent 64deg,rgba(212,175,55,0.07) 68deg,transparent 72deg,rgba(212,175,55,0.05) 76deg,transparent 80deg,rgba(212,175,55,0.06) 84deg,transparent 88deg,transparent 270deg,rgba(212,175,55,0.06) 274deg,transparent 278deg,rgba(212,175,55,0.05) 282deg,transparent 286deg,rgba(212,175,55,0.07) 290deg,transparent 294deg,rgba(212,175,55,0.04) 298deg,transparent 302deg,rgba(212,175,55,0.06) 306deg,transparent 310deg,rgba(212,175,55,0.05) 314deg,transparent 318deg,rgba(212,175,55,0.07) 322deg,transparent 326deg,rgba(212,175,55,0.04) 330deg,transparent 334deg,rgba(212,175,55,0.06) 338deg,transparent 342deg,rgba(212,175,55,0.05) 346deg,transparent 350deg,rgba(212,175,55,0.07) 354deg,transparent 358deg,transparent 360deg);pointer-events:none;z-index:0}
+.jp-sunburst>*{position:relative;z-index:1}
+.jp-glass{background:rgba(19,19,18,0.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.jp-gold-gradient{background:linear-gradient(135deg,#D4AF37 0%,#F2CA50 50%,#D4AF37 100%)}
+.jp-gold-text{background:linear-gradient(135deg,#F2CA50 0%,#D4AF37 60%,#F2CA50 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.jp-promo-card{background:#1C1C1A;border-radius:24px;overflow:hidden;position:relative;min-height:140px}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef}=React;
+const {AreaChart,Area,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,BarChart,Bar}=Recharts;
+
+const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B8DEF";
+const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
+const BDR="rgba(255,255,255,0.06)", MUTED="#99907C", TEXT="#E5E2E0";
+const F="'Inter',system-ui,sans-serif", SF="'Newsreader',Georgia,serif";
+
+const mkData=(n,base,variance)=>Array.from({length:n},(_,i)=>({i,v:Math.max(0,base+Math.floor((Math.random()-0.4)*variance))}));
+const PERIODS={
+  hoje:{data:mkData(8,320,300).map((d,i)=>({...d,label:`${8+i}h`})),label:"Hoje"},
+  semana:{data:mkData(7,800,700).map((d,i)=>({...d,label:["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"][i]})),label:"Esta semana"},
+  mes:{data:mkData(30,600,800).map((d,i)=>({...d,label:i+1})),label:"Este mês"},
+  trimestre:{data:mkData(12,2000,2000).map((d,i)=>({...d,label:`S${i+1}`})),label:"Trimestre"},
+  ano:{data:mkData(12,8000,6000).map((d,i)=>({...d,label:["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][i]})),label:"Ano"},
+};
+
+function Tag({status}){
+  if(status==="pago") return <span style={{fontSize:10,fontWeight:600,color:"#22C55E",letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
+  if(status==="pendente") return <span style={{fontSize:10,fontWeight:600,color:MUTED,letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
+  if(status==="estornado") return <span style={{fontSize:10,fontWeight:600,color:RED,letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
+  const m={cancelado:{bg:"rgba(255,68,68,0.1)",tx:RED,bd:"rgba(255,68,68,0.2)"},ativo:{bg:`${GOLD}18`,tx:GOLD,bd:`${GOLD}30`},inativo:{bg:"rgba(255,68,68,0.1)",tx:RED,bd:"rgba(255,68,68,0.2)"}};
+  const s=m[status]||{bg:"rgba(255,255,255,0.07)",tx:MUTED,bd:BDR};
+  return <span style={{background:s.bg,color:s.tx,border:`1px solid ${s.bd}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{status}</span>;
+}
+
+function KPICard({label,value,sub,accent,icon}){
+  const c=accent||GOLD;
+  return(
+    <div style={{background:CARD,border:`1px solid rgba(212,175,55,0.06)`,borderRadius:16,padding:"20px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+        <span style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F}}>{label}</span>
+        <span style={{width:28,height:28,borderRadius:"50%",border:`1px solid ${c}30`,background:`${c}0D`,display:"flex",alignItems:"center",justifyContent:"center",color:c,fontSize:12,flexShrink:0}}>{icon}</span>
+      </div>
+      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,letterSpacing:"-0.01em"}}>{value}</div>
+      {sub&&<div style={{color:MUTED,fontSize:11,marginTop:5,fontFamily:F}}>{sub}</div>}
+    </div>
+  );
+}
+
+function Pill({label,value,accent,sub}){
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"18px 16px",flex:1,minWidth:0}}>
+      <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+      <div style={{color:accent||TEXT,fontSize:20,fontWeight:800,letterSpacing:"-0.03em"}}>{value}</div>
+      {sub&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>{sub}</div>}
+    </div>
+  );
+}
+
+function Btn({children,onClick,color,outline,sm}){
+  const c=color||GOLD;
+  return(
+    <button onClick={onClick} style={{background:outline?"transparent":c,border:`1.5px solid ${outline?c+"70":"transparent"}`,borderRadius:100,padding:sm?"8px 22px":"15px 28px",color:outline?c:(c===GOLD?"#0C0C0C":TEXT),fontWeight:600,fontSize:sm?13:14,cursor:"pointer",width:(outline||sm)?"auto":"100%",fontFamily:F,letterSpacing:"0.01em"}}>
+      {children}
+    </button>
+  );
+}
+
+function AdvancedChart({accent=GOLD}){
+  const [period,setPeriod]=useState("mes");
+  const pd=PERIODS[period];
+  const total=pd.data.reduce((a,d)=>a+d.v,0);
+  const gid=`g-${period}-${accent.replace("#","")}`;
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px 20px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+        <div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6,fontFamily:F}}>{pd.label}</div>
+          <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:30,letterSpacing:"-0.01em"}}>R$ {total.toLocaleString()}</div>
+        </div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
+          {Object.keys(PERIODS).map(p=>(
+            <button key={p} onClick={()=>setPeriod(p)} style={{padding:"4px 11px",borderRadius:100,border:`1px solid ${p===period?accent+"50":BDR}`,background:p===period?`${accent}15`:"transparent",color:p===period?accent:MUTED,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F}}>{p}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{height:120}}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={pd.data} margin={{top:4,right:4,left:-32,bottom:0}}>
+            <defs>
+              <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={accent} stopOpacity={0.18}/>
+                <stop offset="100%" stopColor={accent} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
+            <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+            <YAxis hide/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[`R$ ${v.toLocaleString()}`,"Receita"]} labelStyle={{color:MUTED,fontSize:10}}/>
+            <Area type="monotone" dataKey="v" stroke={accent} strokeWidth={2} fill={`url(#${gid})`} dot={false}/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function VisitorChart(){
+  const data=mkData(7,120,150).map((d,i)=>({...d,label:["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"][i]}));
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes</div>
+          <div style={{color:MUTED,fontSize:12,marginTop:2}}>josephpay.com</div>
+        </div>
+        <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{data.reduce((a,d)=>a+d.v,0)} visitas</span>
+      </div>
+      <div style={{height:90}}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{top:4,right:4,left:-32,bottom:0}}>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
+            <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+            <YAxis hide/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
+            <Bar dataKey="v" fill={`${GOLD}66`} radius={[4,4,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{display:"flex",gap:20,marginTop:14}}>
+        {[{l:"Sessões",v:"847",c:TEXT},{l:"Conversão",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
+          <div key={k.l}>
+            <div style={{color:k.c,fontWeight:700,fontSize:15}}>{k.v}</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const QQ=["📊 Vendas hoje?","💰 Receita da semana?","🔗 Gerar link de afiliado","📈 Minha conversão?","❓ Configurar checkout","🆘 Suporte"];
+const AR={"📊 Vendas hoje?":"Hoje você teve 4 vendas totalizando R$ 1.240. Melhor hora: 14h com R$ 480. +18% acima da média! 🚀","💰 Receita da semana?":"Esta semana você recebeu R$ 7.270 líquidos. Quarta foi seu melhor dia.","🔗 Gerar link de afiliado":"Seu link: josephpay.com/ref/SEU_CODIGO — já ativo! Cada venda gera comissão automática.","📈 Minha conversão?":"Sua conversão atual é 2.3%. Média do mercado: 1.5-3%. Você está bem posicionado!","❓ Configurar checkout":"Vá em Templates, escolha o modelo, preencha produto e valor e clique Criar.","🆘 Suporte":"Me conta o que aconteceu. Contato: suporte@josephpay.com"};
+
+function ChatIA({productName}){
+  const [msgs,setMsgs]=useState([{role:"ai",text:`Olá! Sou a IA da JosephPay. Estou aqui pra te ajudar com "${productName||"seu produto"}". O que precisa?`}]);
+  const [input,setInput]=useState("");
+  const [showQ,setShowQ]=useState(true);
+  const bottom=useRef(null);
+  useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"})},[msgs]);
+  const send=(text)=>{
+    const msg=text||input;if(!msg.trim())return;
+    setInput("");setShowQ(false);
+    setMsgs(p=>[...p,{role:"user",text:msg}]);
+    setTimeout(()=>{
+      const reply=AR[msg]||"Entendi! Em breve conectado à IA real via API. Posso ajudar com dúvidas sobre vendas e afiliados!";
+      setMsgs(p=>[...p,{role:"ai",text:reply}]);
+    },600);
+  };
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 140px)",minHeight:380}}>
+      <div style={{background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:14,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>Site ativo</div>
+          <div style={{color:TEXT,fontSize:13,fontWeight:600}}>protocolog9.josephpay.com</div>
+        </div>
+        <span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>
+      </div>
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+            <div style={{maxWidth:"76%",padding:"11px 15px",borderRadius:16,fontSize:13,lineHeight:1.55,background:m.role==="user"?`${GOLD}18`:"rgba(255,255,255,0.05)",color:TEXT,border:`1px solid ${m.role==="user"?GOLD+"30":BDR}`}}>{m.text}</div>
+          </div>
+        ))}
+        {showQ&&(
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+            <div style={{color:MUTED,fontSize:11,marginBottom:2}}>Perguntas rápidas:</div>
+            {QQ.map(q=>(
+              <button key={q} onClick={()=>send(q)} style={{textAlign:"left",padding:"10px 14px",borderRadius:12,background:CARD,border:`1px solid ${BDR}`,color:"rgba(255,255,255,0.75)",fontSize:13,cursor:"pointer",fontWeight:500,fontFamily:F}}>{q}</button>
+            ))}
+          </div>
+        )}
+        <div ref={bottom}/>
+      </div>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+        <button onClick={()=>send()} style={{width:46,height:46,borderRadius:14,background:GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:"pointer",fontWeight:900,flexShrink:0}}>→</button>
+      </div>
+    </div>
+  );
+}
+
+function Afiliados({isAdmin}){
+  const list=[
+    {name:"Carlos M.",code:"CARLOS10",vendas:12,comissao:"R$ 216,00",status:"ativo",cli:"Renato G9",cliques:124,conv:"9.7%"},
+    {name:"Fernanda R.",code:"FER20",vendas:8,comissao:"R$ 144,00",status:"ativo",cli:"Dra. Deise",cliques:98,conv:"8.2%"},
+    {name:"João K.",code:"JOAO5",vendas:3,comissao:"R$ 54,00",status:"inativo",cli:"Renato G9",cliques:42,conv:"7.1%"},
+    {name:"Ana P.",code:"ANA30",vendas:6,comissao:"R$ 108,00",status:"ativo",cli:"Dr. Chayenne",cliques:67,conv:"9.0%"},
+  ];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {isAdmin?(
+        <>
+          <div className="kpi-grid">
+            <KPICard label="Total afiliados" value="9" accent={GOLD} icon="◉"/>
+            <KPICard label="Comissão total" value="R$ 522" sub="este mês" accent={GOLD} icon="◈"/>
+            <KPICard label="Cliques totais" value="331" accent={GOLD} icon="◎"/>
+            <KPICard label="Conversão média" value="8.5%" accent={GOLD} icon="⊕"/>
+          </div>
+          <div className="jp-promo-card" style={{marginBottom:12}}>
+            <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
+              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGkuyzZnqoUM08agRXlkrfxyMPG1tGTOsGJ-31vPSQjy3rEEHMBFLq2ZLNqvyvHLkkTTYW-_hLzpuoBRJTrvv4xSSGB-jp3sbsOFDReLicp6zd81gmzD9BwYODCdJPBXvM2_GVLDhTvSbz4JL8gWYb4wMHdhb7NIrK8bm9KwT90lqkusGrmpiu97ip26oz_yQjoLrQB-6d84oW1NYU6dSKW2_4wfU_YMoZsy5I6jBpdbdPI2oUjKs7A_e065DuDo1ss2lfiD1la8c" alt="asset" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+            </div>
+            <div style={{position:"relative",zIndex:1,padding:"20px 18px",maxWidth:"60%"}}>
+              <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Programa de Afiliados</div>
+              <div style={{color:TEXT,fontSize:15,fontWeight:600,lineHeight:1.3,marginBottom:10}}>Cresça sua rede e aumente suas comissões</div>
+              <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
+            </div>
+          </div>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Todos os afiliados</span>
+              <Btn sm outline color={GOLD}>+ Convidar</Btn>
+            </div>
+            {list.map((a,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<list.length-1?`1px solid ${BDR}`:"none"}}>
+                <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas · {a.cliques} cliques</div>
+                  <div style={{color:"rgba(255,255,255,0.22)",fontSize:11,marginTop:1}}>{a.cli}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{color:GOLD,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div>
+                  <Tag status={a.status}/>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Métricas globais</span></div>
+            {[{l:"Cliques totais na plataforma",v:"331"},{l:"Vendas geradas por afiliados",v:"29"},{l:"Taxa de conversão média",v:"8.5%"},{l:"Comissão total pendente",v:"R$ 198,00"},{l:"Comissão total paga",v:"R$ 324,00"},{l:"Afiliados ativos",v:"3"},{l:"Afiliados inativos",v:"1"}].map((r,i,arr)=>(
+              <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+                <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
+                <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ):(
+        <>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seu link de afiliado</div>
+            <div style={{color:GOLD,fontWeight:700,fontSize:14,marginBottom:14}}>josephpay.com/ref/RENATO15</div>
+            <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>Copiar link</Btn><Btn sm outline color={MUTED}>Compartilhar</Btn></div>
+          </div>
+          <div className="two-col">
+            <Pill label="Total afiliados" value="3" accent={GOLD}/>
+            <Pill label="Comissão total" value="R$ 414" accent={GOLD} sub="este mês"/>
+          </div>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Meu desempenho</span></div>
+            {[{l:"Cliques no link",v:"234"},{l:"Vendas geradas",v:"12"},{l:"Taxa de conversão",v:"5.1%"},{l:"Comissão pendente",v:"R$ 72,00"}].map((r,i,arr)=>(
+              <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+                <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
+                <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Afiliados ativos</span>
+              <Btn sm outline color={GOLD}>+ Convidar</Btn>
+            </div>
+            {list.slice(0,3).map((a,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<2?`1px solid ${BDR}`:"none"}}>
+                <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
+                <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas</div></div>
+                <div style={{textAlign:"right"}}><div style={{color:GREEN,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div><Tag status={a.status}/></div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Assinaturas(){
+  const subs=[{nome:"Renato G9",plano:"Protocolo G9 — 3x R$60",status:"ativo",prox:"15/04/2026",pago:2},{nome:"Cliente #4",plano:"Protocolo G9 — 3x R$60",status:"ativo",prox:"20/04/2026",pago:1},{nome:"Cliente #5",plano:"Protocolo G9 — 3x R$60",status:"cancelado",prox:"—",pago:1}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="kpi-grid">
+        <KPICard label="Ativas" value="2" icon="⟳" accent={GOLD}/>
+        <KPICard label="Canceladas" value="1" icon="✕" accent={RED}/>
+        <KPICard label="MRR" value="R$ 120" sub="Recorrência mensal" icon="◈" accent={GOLD}/>
+      </div>
+      <div className="jp-promo-card" style={{marginBottom:12}}>
+        <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuZ_p6XSf1uPm-R1aQQsYyjWjaq4-_sF_1tba9Q78fPdieeJejqTR9qEqNrBTI_XwIf7AnKCw1D19ucEXPWoPrTTMx-SU1IL3V7kHObKXOG-_wxOKR4Xy2bNGtTx2CF3oBgKaVgq23FMh-nRTQPPWWA54GxszAv1fE04OKIyR3UJYv32A3EN3XbxGgw7O51XHJjTc6Hfnn6nkmuqdwgCMZCbRydP84er7HMfSTOBLFk2BG7JaqJQTgwAyYiOsuDYe4w9v8ko7V_F0" alt="gold coins" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"20px 18px",maxWidth:"60%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Assinaturas Recorrentes</div>
+          <div style={{color:TEXT,fontSize:15,fontWeight:600,lineHeight:1.3,marginBottom:10}}>Receita previsível todo mês</div>
+          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
+        </div>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Assinaturas</span></div>
+        {subs.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<subs.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{s.nome[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.plano}</div></div>
+            <div style={{textAlign:"right",fontSize:11,color:MUTED,marginRight:8}}><div>{s.pago}/3 pagas</div><div>Próx: {s.prox}</div></div>
+            <Tag status={s.status}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Sacar(){
+  const [val,setVal]=useState("");
+  const [done,setDone]=useState(false);
+  if(done)return(
+    <div style={{textAlign:"center",paddingTop:60,maxWidth:400,margin:"0 auto"}}>
+      <div style={{width:80,height:80,margin:"0 auto 24px",background:`${GREEN}14`,border:`1.5px solid ${GREEN}40`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:GREEN}}>↑</div>
+      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,marginBottom:10}}>Saque solicitado!</div>
+      <div style={{color:MUTED,fontSize:15,marginBottom:6}}>R$ {val} · Conta ••••3421</div>
+      <div style={{color:GREEN,fontSize:13,fontWeight:500,marginBottom:36}}>Previsão: imediato a 1 dia útil</div>
+      <button onClick={()=>{setDone(false);setVal("");}} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"12px 32px",color:MUTED,fontSize:13,cursor:"pointer",fontFamily:F}}>Voltar</button>
+    </div>
+  );
+  return(
+    <div style={{maxWidth:480,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
+      {/* Gold card visual */}
+      <div className="jp-gold-card" style={{padding:"28px 24px 24px"}}>
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.3,pointerEvents:"none"}}/>
+        <div style={{marginBottom:32}}>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",marginBottom:8}}>Disponível para saque</div>
+          <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>R$ 4.832,40</div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+          <div style={{color:"rgba(12,12,12,0.45)",fontFamily:"monospace",fontSize:13,letterSpacing:"0.14em"}}>•••• •••• •••• 3421</div>
+        </div>
+        <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAutN3CNgEjGwomODrN5X4TOoO9lYUUoHWzKR2y1DXVVum-OCBnFZmfHd2oYxnFCsmaUBG-S_-p6CWLcawruI2o0xiEwgFYokwkCFGLUfdM9RYuEIRHnX8wCbHpYb-4baj1zvlB22kJCSGiAkMvBZRhKEAKASdlbVILoAl0rAMz3UaOE3KDx0JEeQ8TaSKRsY26BaU-RIbocWAJLApHHLz_k-nvZw5mlk47BFd6YWyMCbFRd0NPZjSrc-8buFoJ0PZm5n76xi3_erY" alt="Gold Card" style={{position:"absolute",top:0,right:0,width:"45%",height:"100%",objectFit:"cover",opacity:0.35,mixBlendMode:"overlay"}}/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px",display:"flex",flexDirection:"column",gap:16}}>
+        <div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Quanto sacar?</div>
+          <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:16}}>
+            <span style={{padding:"0 18px",color:GOLD,fontWeight:600,fontSize:16}}>R$</span>
+            <input value={val} onChange={e=>setVal(e.target.value)} placeholder="0,00" style={{flex:1,background:"none",border:"none",padding:"16px 0",color:TEXT,fontFamily:SF,fontSize:26,fontWeight:600,outline:"none"}}/>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          {["100","500","4.832"].map(v=>(
+            <button key={v} onClick={()=>setVal(v)} style={{padding:"11px 0",borderRadius:100,background:CARD2,border:`1.5px solid ${BDR}`,color:MUTED,fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:F}}>R$ {v}</button>
+          ))}
+        </div>
+        <div style={{padding:"14px 18px",background:CARD2,borderRadius:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:MUTED,fontSize:13}}>Conta destino</span>
+          <span style={{color:TEXT,fontSize:13,fontWeight:600}}>Inter ••••3421</span>
+        </div>
+        <button onClick={()=>val&&setDone(true)} style={{background:val?GOLD:"rgba(201,168,76,0.2)",border:"none",borderRadius:100,padding:16,color:val?"#0C0C0C":MUTED,fontWeight:600,fontSize:15,cursor:val?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>Sacar agora →</button>
+      </div>
+      <div style={{background:CARD,borderRadius:20,overflow:"hidden",position:"relative",minHeight:100,marginTop:4}}>
+        <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeQJm4QL9qsw7QaD-_Ap2d1GmXDitz5Q2p8_yAJ2_XVFDk4zhAIeiFEIbH5qQpMcugGC43qS0X2Eumf_M0kb_8nq5UDwnK32r_USpGYAI62IbSa7_y5BRISwuUUQwQwGGPY6nmxGdylfHshszyUN66z_N6CbCbo4lC21c-wFVYnd9_zMM_8IzfaG9vsO41pfnu1zvUrAdafKLpyEEOWaitIpwa0xdFlFp7DeFRLFZsoEldd1DgT9Dgs_IqeO0LbAPxDceIfKiTq7I"
+          alt="Gold" style={{position:"absolute",right:0,top:0,height:"100%",width:"40%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 60%, transparent)"}}/>
+        <div style={{position:"relative",zIndex:1,padding:"18px 20px"}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Saque seguro</div>
+          <div style={{color:TEXT,fontFamily:SF,fontSize:15,fontWeight:500}}>Processamento imediato · 256-bit SSL</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Config(){
+  const [fees,setFees]=useState({pct:"2",fixo:"1.99",recPct:"2",recFixo:"1.99"});
+  const [saved,setSaved]=useState(false);
+  const save=()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Taxas da plataforma</span></div>
+        <div style={{padding:"18px",display:"flex",flexDirection:"column",gap:14}}>
+          {[{label:"Porcentagem",desc:"% sobre cada venda",color:GOLD,key:"pct",sym:"%",right:true},{label:"Taxa Fixa",desc:"Valor fixo por transação",color:GOLD,key:"fixo",sym:"R$",right:false}].map(m=>(
+            <div key={m.key} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{m.label}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{m.desc}</div></div>
+                <span style={{background:`${m.color}15`,color:m.color,border:`1px solid ${m.color}25`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Ativo</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:12}}>
+                {!m.right&&<span style={{padding:"0 14px",color:m.color,fontWeight:700}}>{m.sym}</span>}
+                <input value={fees[m.key]} onChange={e=>setFees({...fees,[m.key]:e.target.value})} style={{flex:1,background:"none",border:"none",padding:"11px 14px",color:TEXT,fontSize:18,fontWeight:800,outline:"none",fontFamily:F}}/>
+                {m.right&&<span style={{padding:"0 14px",color:m.color,fontWeight:700}}>{m.sym}</span>}
+              </div>
+            </div>
+          ))}
+          <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div><div style={{color:TEXT,fontWeight:700,fontSize:13}}>Assinatura</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>Por cada cobrança recorrente</div></div>
+              <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Ativo</span>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              {[{label:"% por cobrança",key:"recPct",sym:"%",right:true},{label:"+ fixo (R$)",key:"recFixo",sym:"R$",right:false}].map(f=>(
+                <div key={f.key} style={{flex:1}}>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>{f.label}</div>
+                  <div style={{display:"flex",alignItems:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:12}}>
+                    {!f.right&&<span style={{padding:"0 12px",color:GOLD,fontWeight:700}}>{f.sym}</span>}
+                    <input value={fees[f.key]} onChange={e=>setFees({...fees,[f.key]:e.target.value})} style={{flex:1,background:"none",border:"none",padding:"10px 8px",color:TEXT,fontSize:16,fontWeight:800,outline:"none",fontFamily:F}}/>
+                    {f.right&&<span style={{padding:"0 12px",color:GOLD,fontWeight:700}}>{f.sym}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <button onClick={save} style={{background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:16,padding:14,color:saved?GREEN:"#0A0A0A",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:F}}>{saved?"✓ Salvo!":"Salvar taxas"}</button>
+        </div>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Conexão Asaas</span></div>
+        <div style={{padding:"18px",display:"flex",flexDirection:"column",gap:12}}>
+          {[{l:"API Key",p:"$aact_xxxx...",t:"password"},{l:"Wallet ID",p:"wallet-id-aqui"}].map(f=>(
+            <div key={f.l}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>{f.l}</div>
+              <input type={f.t||"text"} placeholder={f.p} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace"}}/>
+            </div>
+          ))}
+          <div style={{padding:"11px 14px",background:`${GREEN}0C`,borderRadius:12,border:`1px solid ${GREEN}20`}}><span style={{color:GREEN,fontSize:13,fontWeight:600}}>● Sandbox · pronto para testar</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SiteView({accent=GOLD}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seu site</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:14}}>protocolog9.josephpay.com</div>
+        <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>Abrir site</Btn><button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F,letterSpacing:"0.01em"}}>Editar página</button></div>
+      </div>
+      <VisitorChart/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ALL_CLIENTS=[
+  {name:"Renato G9",produto:"Protocolo G9",vol:"R$ 12.600",taxa:"R$ 378",status:"ativo",site:"protocolog9.josephpay.com",email:"renato@g9.com",saldo:"R$ 4.832",receita:"R$ 8.280",vendas:"R$ 360",ticket:"R$ 180",assinaturas:3,afiliados:5,conversao:"2.3%",visitors:847,link:"RENATO15"},
+  {name:"Dra. Deise",produto:"Cirurgia Plástica",vol:"R$ 20.000",taxa:"R$ 401",status:"pendente",site:"dradeise.josephpay.com",email:"deise@clinica.com",saldo:"R$ 31.200",receita:"R$ 45.500",vendas:"R$ 8.500",ticket:"R$ 547",assinaturas:2,afiliados:3,conversao:"1.8%",visitors:1240,link:"DEISE20"},
+  {name:"Dr. Chayenne",produto:"Consulta Online",vol:"R$ 2.100",taxa:"R$ 63",status:"ativo",site:"chayenne.josephpay.com",email:"chayenne@clinica.com",saldo:"R$ 1.600",receita:"R$ 4.200",vendas:"R$ 350",ticket:"R$ 350",assinaturas:1,afiliados:1,conversao:"3.1%",visitors:320,link:"CHAY10"},
+];
+
+function DashAdmin({onNav}){
+  const [vis,setVis]=useState(true);
+  const recentSales=[{cli:"Renato G9",name:"João P.",val:180,met:"PIX",h:"14:32",st:"pago"},{cli:"Dra. Deise",name:"Maria L.",val:20000,met:"Cartão",h:"12:10",st:"pago"},{cli:"Dr. Chayenne",name:"Ana R.",val:350,met:"PIX",h:"10:48",st:"pago"},{cli:"Renato G9",name:"Carlos M.",val:60,met:"PIX",h:"09:05",st:"pendente"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Saldo disponível · Plataforma</div>
+          <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
+        </div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?"R$ 34.700,00":"R$ ••••••"}</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +24% este mês</span>
+          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>3 clientes · Volume: R$ 34.700</span>
+        </div>
+      </div>
+      <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
+        <div className="kpi-grid">
+          <KPICard label="Suas taxas" value="R$ 842" accent={GOLD} icon="◈"/>
+          <KPICard label="Transações" value="47" accent={GOLD} icon="↑"/>
+          <KPICard label="Afiliados" value="9 ativos" accent={GOLD} icon="◉"/>
+          <KPICard label="MRR" value="R$ 1.260" accent={GOLD} icon="⟳"/>
+          <KPICard label="Ticket médio" value="R$ 738" accent={GOLD} icon="◎"/>
+          <KPICard label="Conversão" value="2.4%" accent={GOLD} icon="⊕"/>
+          <KPICard label="Visitantes" value="2.407" accent={GOLD} icon="◎"/>
+          <KPICard label="Sites ativos" value="3" accent={GOLD} icon="◈"/>
+        </div>
+      </div>
+      <div className="jp-promo-card" style={{marginBottom:10}}>
+        <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3E80x53g2UjTg5zt_bloK6G8ydx3xV_6wLbUXCQHoHhenlKMMkjd5tguuq9zIbawappmALMBQBpjBfqp3uiLpkKaRkb41CVyacl8EaN60HpovHpWHR6rx3Cc91p6ga8lneU6wG06RSx9hYwcNYvQrOrNTxJiRmIEAs1zHHFrhc5gktrt1Mfir-cX7f9nEufikt_IRN5_4DbDZwpi9flQxndPhO_DZ85uDjgMJ2-Hwhb_SD6lOq1TqtIS6u41KD80FXJh2EciQ4VA"
+            alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"60%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>JosephPay Premium</div>
+          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Pagamentos digitais de nova geração</div>
+          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
+        </div>
+      </div>
+      <div className="jp-promo-card" style={{marginBottom:10}}>
+        <div style={{position:"absolute",top:0,right:0,width:"50%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxh5OLk2w6hgrUUSFyr_QXYJSdoHSBuMilbkZaj9nsTgO_u1HiY1Ijn0EQOusHuPn1EVAiiLpV6q_GhxGcl-IhRhuChQmXZFTMaanH6l61YhfjJ1YvpJiKC3cKSYqrpO49dHJgjDQXeLYeYdHsnYCZoZJLTYVnhiLpecYUJbtykT0s_wJ8x0T-As_FLsbjzsZf3KA6hki12KulV1m1mqtptH3rZHl-l_QG9g0n-42yqDKLRHqS_NaOroHpHVdPHLIZvhVI_wU0w4g"
+            alt="Vault" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.6,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"58%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>Pagamentos Elite</div>
+          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Processe com segurança e velocidade</div>
+          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Ver recursos →</button>
+        </div>
+      </div>
+      <AdvancedChart accent={GOLD}/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
+          <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+        </div>
+        {recentSales.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<recentSales.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h} · <span style={{color:"rgba(255,255,255,0.55)"}}>{s.cli}</span></div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
+              <div style={{marginTop:4}}><Tag status={s.st}/></div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Clientes</span>
+          <button onClick={()=>onNav("clientes")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todos →</button>
+        </div>
+        {ALL_CLIENTS.map((c,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<ALL_CLIENTS.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produto}</div></div>
+            <div style={{textAlign:"right",flexShrink:0}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{c.vol}</div><div style={{color:GOLD,fontSize:11,fontWeight:600,marginTop:2}}>{c.taxa} taxas</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClientePerfilAdmin({c,onBack}){
+  const accent=GOLD;
+  const sales=[{name:"João P.",val:c.name.includes("Deise")?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:c.name.includes("Deise")?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:c.name.includes("Deise")?5000:60,met:"PIX",h:"10:48",st:"pendente"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+          <div style={{width:50,height:50,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+          <div style={{flex:1}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:2}}>🔗 {c.site}</div>
+          </div>
+          <Tag status={c.status}/>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Saldo: {c.saldo}</span>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {c.taxa}</span>
+        </div>
+      </div>
+      <div className="kpi-grid">
+        <KPICard label="Receita total" value={c.receita} accent={accent} icon="◈"/>
+        <KPICard label="Vendas hoje" value={c.vendas} accent={GOLD} icon="↑"/>
+        <KPICard label="Assinaturas" value={`${c.assinaturas} ativas`} accent={GOLD} icon="⟳"/>
+        <KPICard label="Ticket médio" value={c.ticket} accent={GOLD} icon="◎"/>
+        <KPICard label="Afiliados" value={`${c.afiliados} ativos`} accent={GOLD} icon="◉"/>
+        <KPICard label="Conversão" value={c.conversao} accent={GOLD} icon="⊕"/>
+        <KPICard label="Visitantes" value={c.visitors.toLocaleString()} accent={GOLD} icon="◎"/>
+        <KPICard label="Volume total" value={c.vol} accent={GOLD} icon="◈"/>
+      </div>
+      <AdvancedChart accent={accent}/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
+        {sales.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
+            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div><div style={{marginTop:4}}><Tag status={s.st}/></div></div>
+          </div>
+        ))}
+      </div>
+      <VisitorChart/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Checkouts ativos</span></div>
+        {[{n:`${c.produto} — Assinatura`,tipo:"Assinatura",tx:"2% + R$1,99",status:"ativo"},{n:`${c.produto} — Avulso`,tipo:"Taxa Fixa",tx:"R$1,99",status:"ativo"}].map((ch,i,arr)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{ch.n}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{ch.tipo} · {ch.tx}</div></div>
+            <Tag status={ch.status}/>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <Btn sm outline color={GOLD}>Configurar taxa</Btn>
+        <Btn sm outline color={MUTED}>Editar checkout</Btn>
+        <Btn sm outline color={RED}>Bloquear acesso</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ClientesAdmin(){
+  const [sel,setSel]=useState(null);
+  if(sel!==null) return <ClientePerfilAdmin c={ALL_CLIENTS[sel]} onBack={()=>setSel(null)}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>3 ativos</span>
+      </div>
+      <div className="jp-promo-card" style={{marginBottom:16}}>
+        <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeQJm4QL9qsw7QaD-_Ap2d1GmXDitz5Q2p8_yAJ2_XVFDk4zhAIeiFEIbH5qQpMcugGC43qS0X2Eumf_M0kb_8nq5UDwnK32r_USpGYAI62IbSa7_y5BRISwuUUQwQwGGPY6nmxGdylfHshszyUN66z_N6CbCbo4lC21c-wFVYnd9_zMM_8IzfaG9vsO41pfnu1zvUrAdafKLpyEEOWaitIpwa0xdFlFp7DeFRLFZsoEldd1DgT9Dgs_IqeO0LbAPxDceIfKiTq7I" alt="gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Clientes</div>
+          <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Todos os seus produtores em um só lugar</div>
+        </div>
+      </div>
+      {ALL_CLIENTS.map((c,i)=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+            <div style={{width:44,height:44,borderRadius:14,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produto}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:1}}>📧 {c.email}</div>
+            </div>
+            <Tag status={c.status}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+            {[{l:"Volume",v:c.vol,c:TEXT},{l:"Taxas",v:c.taxa,c:GOLD},{l:"Saldo",v:c.saldo,c:TEXT}].map(item=>(
+              <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
+                <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{color:MUTED,fontSize:11,marginBottom:12}}>🔗 {c.site}</div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn sm outline color={GOLD} onClick={()=>setSel(i)}>Ver perfil completo</Btn>
+            <Btn sm outline color={MUTED}>Config. taxa</Btn>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VendasAdmin(){
+  const [filtro,setFiltro]=useState("todos");
+  const allSales=[
+    {cli:"Renato G9",name:"João P.",val:180,met:"Cartão",h:"14:32",st:"pago",data:"20/03"},
+    {cli:"Renato G9",name:"Maria L.",val:180,met:"PIX",h:"12:10",st:"pago",data:"20/03"},
+    {cli:"Renato G9",name:"Carlos M.",val:60,met:"PIX",h:"10:48",st:"pendente",data:"20/03"},
+    {cli:"Dra. Deise",name:"João P.",val:20000,met:"Cartão",h:"09:00",st:"pago",data:"20/03"},
+    {cli:"Dra. Deise",name:"Maria L.",val:8500,met:"PIX",h:"11:30",st:"pago",data:"19/03"},
+    {cli:"Dra. Deise",name:"Ana R.",val:12000,met:"Cartão",h:"15:20",st:"pago",data:"19/03"},
+    {cli:"Dr. Chayenne",name:"Pedro S.",val:350,met:"PIX",h:"08:15",st:"pago",data:"19/03"},
+    {cli:"Dr. Chayenne",name:"Lucia T.",val:350,met:"Cartão",h:"16:40",st:"cancelado",data:"18/03"},
+  ];
+  const clientes=["todos","Renato G9","Dra. Deise","Dr. Chayenne"];
+  const filtered=filtro==="todos"?allSales:allSales.filter(s=>s.cli===filtro);
+  const totalRec=filtered.filter(s=>s.st==="pago").reduce((a,s)=>a+s.val,0);
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas · Plataforma</div>
+      <div className="jp-promo-card" style={{marginBottom:16}}>
+        <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCh2qlJ6n9z6dNQtynkppsjCpRvd3CwMwAJaYRokRhRolunRsXQD63Qrclg-UaZJoSNJJXDobg6xVkzDpOMhOMmfUU3pjaE56JpXxFUO3PwYS-AelFfqvvz5jY7nPQ_hh066Ld_O8q5Lh0vs9Izx7ukBLhjdzj1noSysUuRPhgpQRCCT-agmZ7gxN7whArUmUsMnB0eReex0rZnkPyAfbrvmk2l409w8XG1rDQFO3wDZxX5_yIdA7zhicf4dMJIafpJS6TKX11INks" alt="mystery" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Central de Vendas</div>
+          <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Acompanhe todas as transações em tempo real</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+        {clientes.map(c=>(
+          <button key={c} onClick={()=>setFiltro(c)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${c===filtro?GOLD+"55":BDR}`,background:c===filtro?`${GOLD}14`:"transparent",color:c===filtro?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{c==="todos"?"Todos":c}</button>
+        ))}
+      </div>
+      <div className="kpi-grid">
+        <KPICard label="Receita total" value={`R$ ${totalRec.toLocaleString()}`} accent={GOLD} icon="◈"/>
+        <KPICard label="Suas taxas" value={`R$ ${Math.round(totalRec*0.022).toLocaleString()}`} accent={GOLD} icon="◈"/>
+        <KPICard label="Transações" value={filtered.length.toString()} accent={GOLD} icon="↑"/>
+        <KPICard label="Pendentes" value={filtered.filter(s=>s.st==="pendente").length.toString()} accent={GOLD} icon="⟳"/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{filtered.length} transações</span>
+          <span style={{color:MUTED,fontSize:12}}>{filtro==="todos"?"Todas as contas":filtro}</span>
+        </div>
+        {filtered.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<filtered.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.data} {s.h} · <span style={{color:"rgba(255,255,255,0.5)"}}>{s.cli}</span></div>
+            </div>
+            <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
+              <Tag status={s.st}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SiteAdmin(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Site & Analytics</div>
+      <div className="kpi-grid">
+        <KPICard label="Total visitantes" value="2.407" accent={GOLD} icon="◎"/>
+        <KPICard label="Sites ativos" value="3" accent={GOLD} icon="◈"/>
+        <KPICard label="Conversão média" value="2.4%" accent={GOLD} icon="⊕"/>
+        <KPICard label="Sessões únicas" value="1.847" accent={GOLD} icon="⟳"/>
+      </div>
+      <VisitorChart/>
+      {ALL_CLIENTS.map((c,i)=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>🔗 {c.site}</div></div>
+            <Tag status={c.status}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {[{l:"Visitantes",v:c.visitors.toLocaleString(),c:TEXT},{l:"Conversão",v:c.conversao,c:GOLD},{l:"Volume",v:c.vol,c:TEXT}].map(item=>(
+              <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
+                <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashClient({accent=GOLD,isDeise,onNav}){
+  const [vis,setVis]=useState(true);
+  const sales=[{name:"João P.",val:isDeise?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:isDeise?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:isDeise?5000:60,met:"PIX",h:"10:48",st:"pendente"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Saldo disponível</div>
+          <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
+        </div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(isDeise?"R$ 31.200,00":"R$ 1.840,00"):"R$ ••••••"}</div>
+        <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +{isDeise?"8":"22"}% este mês</span>
+      </div>
+      <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
+        <div className="kpi-grid">
+          <KPICard label="Receita do mês" value={isDeise?"R$ 45.500":"R$ 8.280"} accent={accent} icon="◈"/>
+          <KPICard label="Vendas hoje" value={isDeise?"R$ 8.500":"R$ 360"} accent={GOLD} icon="↑"/>
+          <KPICard label="Assinaturas ativas" value={isDeise?"2 ativas":"3 ativas"} accent={GOLD} icon="⟳"/>
+        </div>
+      </div>
+      <AdvancedChart accent={accent}/>
+      <div className="jp-promo-card" style={{marginBottom:10}}>
+        <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCSGB2g5qeBUQ32i7H2wBd0Fj9XRuLGk1G1PRM4rAzvhEMSwOKT079f620o7qVHTZhguz14cVIh4APzZV7Mhfxhfdn0-DYkaMWyvorMnmidSDwu_iwP7sbhQ-rCHXcw0FLLNMLstsxr7oem9j2QBDYEsfZIy3CK84gjmdxbb48KCM8XhaEGEJ_fpUA3dImiV6a359XcC_qyzxCMm0Px01fW3HpfkK_TUgxy5TmNLztCusp5BQ9jJgKNS1ddSno-vkUAmnzndPz6UZA"
+            alt="Gold Coins" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"60%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>JosephPay Premium</div>
+          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Pagamentos digitais de nova geração</div>
+          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
+        </div>
+      </div>
+      <div className="jp-promo-card" style={{marginBottom:10}}>
+        <div style={{position:"absolute",top:0,right:0,width:"50%",height:"100%"}}>
+          <img src="https://lh3.googleusercontent.com/aida/ADBb0ui29YkiDkpyVsa9cfDW1krB1rl3sJe4LIrwmUN7XXuSNf0FVDlU5_tiy8xNQs0Np_sBlOJ9DnC8A0_O-mHBYAGqSywt3vaQYmg6D-8mR3tn0exgefotG5yi5iutGI-TwB2B4q4TzyZ-uHytHMMfzWCoMGG2BCcyVUkYaQst25yKYp8gv3e1Mxr9LiQSRJnqf1XUSknfmoieMBjC5zlEsHt_44f-DmsB42fhshzmyOhUU7nn5F8EnVRWJvnEwXCksKp5N3aZwIdPEA"
+            alt="Eagle" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.6,mixBlendMode:"luminosity"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
+        </div>
+        <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"58%"}}>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:13,fontStyle:"italic",marginBottom:8}}>Pagamentos Elite</div>
+          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:18,lineHeight:1.3,marginBottom:12}}>Processe com segurança e velocidade</div>
+          <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Ver recursos →</button>
+        </div>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
+          <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+        </div>
+        {sales.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
+            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div><div style={{marginTop:4}}><Tag status={s.st}/></div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Vendas({accent=GOLD,isDeise}){
+  const sales=[{name:"João P.",val:isDeise?20000:180,met:"Cartão",h:"14:32",st:"pago"},{name:"Maria L.",val:isDeise?8500:180,met:"PIX",h:"12:10",st:"pago"},{name:"Carlos M.",val:isDeise?5000:60,met:"PIX",h:"10:48",st:"pendente"},{name:"Ana R.",val:isDeise?12000:180,met:"Cartão",h:"09:05",st:"pago"},{name:"Pedro S.",val:isDeise?3000:60,met:"PIX",h:"08:22",st:"cancelado"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas</div>
+      <div className="two-col">
+        <Pill label="Total vendas" value={sales.length.toString()} accent={accent}/>
+        <Pill label="Receita" value={`R$ ${sales.reduce((a,s)=>a+s.val,0).toLocaleString()}`} accent={GOLD}/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        {sales.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<sales.length-1?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{s.name[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{s.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{s.met} · {s.h}</div></div>
+            <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {s.val.toLocaleString()}</div>
+              <Tag status={s.st}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({tab,setTab,nav,userName,initial}){
+  return(
+    <aside className="jp-sidebar">
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"22px 16px 16px",marginBottom:8}}>
+        <div className="logo-text" style={{display:"none"}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:15,letterSpacing:"-0.02em",fontFamily:F}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
+        </div>
+      </div>
+      <nav style={{flex:1,padding:"0 8px",display:"flex",flexDirection:"column",gap:2}}>
+        {nav.map(n=>{
+          const a=tab===n.id;
+          return(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:11,padding:"11px 12px",borderRadius:12,background:a?`${GOLD}15`:"transparent",border:"none",cursor:"pointer",textAlign:"left",transition:"background 0.15s"}}>
+              <span style={{fontSize:15,flexShrink:0,width:20,textAlign:"center",color:a?GOLD:"rgba(255,255,255,0.35)",fontWeight:a?700:400}}>{n.icon}</span>
+              <span className="lbl" style={{display:"none",color:a?"white":"rgba(255,255,255,0.55)",fontSize:13,fontWeight:a?600:400,letterSpacing:"0em",fontFamily:F}}>{n.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div style={{margin:"0 8px 20px",padding:"12px",borderRadius:12,borderTop:`1px solid ${BDR}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:30,height:30,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:TEXT,flexShrink:0,fontFamily:F}}>{initial}</div>
+          <div className="lbl" style={{display:"none",minWidth:0}}>
+            <div style={{color:TEXT,fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:F}}>{userName}</div>
+            <div style={{color:MUTED,fontSize:10,marginTop:1,fontFamily:F}}>Pro</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function BottomNav({tab,setTab,nav}){
+  return(
+    <div className="jp-bnav" style={{
+      display: "flex", 
+      justifyContent: "space-around", 
+      padding: "12px 24px", 
+      background: "rgba(19, 19, 18, 0.85)", 
+      backdropFilter: "blur(20px)", 
+      WebkitBackdropFilter: "blur(20px)",
+      borderTop: `1px solid ${BDR}`,
+      boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.4)",
+      paddingBottom: "env(safe-area-inset-bottom, 24px)"
+    }}>
+      {nav.map(n=>{
+        const a=tab===n.id;
+        return(
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{
+            display: "flex", 
+            flexDirection: "column", 
+            alignItems: "center", 
+            gap: "6px", 
+            background: "none", 
+            border: "none", 
+            cursor: "pointer", 
+            position: "relative",
+            flex: 1,
+            transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}>
+            {a && (
+              <div style={{
+                position: "absolute", 
+                top: "-12px", 
+                left: "50%", 
+                transform: "translateX(-50%)", 
+                width: "30%", 
+                height: "3px", 
+                borderRadius: "0 0 4px 4px", 
+                background: GOLD,
+                boxShadow: `0 2px 10px ${GOLD}60`
+              }}/>
+            )}
+            <div style={{
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center", 
+              width: "40px", 
+              height: "40px", 
+              borderRadius: "14px", 
+              background: a ? `${GOLD}15` : "transparent",
+              color: a ? GOLD : "rgba(255, 255, 255, 0.35)",
+              fontSize: "20px",
+              transition: "all 0.2s"
+            }}>
+              {n.icon}
+            </div>
+            <span style={{
+              fontSize: "10px", 
+              fontWeight: a ? 700 : 500, 
+              color: a ? GOLD : "rgba(255, 255, 255, 0.4)", 
+              letterSpacing: "0.03em", 
+              fontFamily: F,
+              transition: "color 0.2s"
+            }}>
+              {n.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Topbar({title,sub,onLogout,initial,onOpenPerfil}){
+  return(
+    <div className="jp-glass" style={{position:"sticky",top:0,zIndex:30,borderBottom:"1px solid rgba(212,175,55,0.08)"}}>
+      <div style={{padding:"18px 24px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:26,letterSpacing:"-0.01em",lineHeight:1.1}}>{title}</div>
+          {sub&&<div style={{color:MUTED,fontSize:12,marginTop:4,fontFamily:F}}>{sub}</div>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+          <button onClick={onOpenPerfil} style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0}}>{initial}</button>
+          <button onClick={onLogout} style={{background:"none",border:`1px solid rgba(255,255,255,0.12)`,borderRadius:20,padding:"6px 16px",color:MUTED,fontSize:12,cursor:"pointer",fontWeight:500,fontFamily:F}}>Sair</button>
+        </div>
+      </div>
+      <div style={{height:"1px",background:`linear-gradient(90deg,${GOLD}60,${GOLD}20,transparent)`,margin:"0 24px"}}/>
+    </div>
+  );
+}
+
+function PerfilModal({userName,product,email,onClose,onLogout}){
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
+        {/* handle */}
+        <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
+        {/* header */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:CARD3,border:`2px solid ${GOLD}30`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{userName?.[0]||"R"}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{userName}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{product}</div>
+          </div>
+          <span style={{background:`${GOLD}18`,color:GOLD,border:`1px solid ${GOLD}30`,fontSize:10,fontWeight:700,padding:"3px 12px",borderRadius:20,flexShrink:0}}>Pro</span>
+        </div>
+        {/* status */}
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
+        <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
+          {[{icon:"●",label:"WhatsApp",val:"conectado",c:GREEN},{icon:"●",label:"Site",val:"ativo",c:GREEN},{icon:"●",label:"Automações",val:"ligadas",c:GREEN}].map((s,i,arr)=>(
+            <div key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:s.c,flexShrink:0}}/>
+              <span style={{color:MUTED,fontSize:13,flex:1}}>{s.label}</span>
+              <span style={{color:s.c,fontWeight:700,fontSize:13}}>{s.val}</span>
+            </div>
+          ))}
+        </div>
+        {/* conta */}
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Conta</div>
+        <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:24}}>
+          {[{icon:"📧",label:email||"renato@g9.com"},{icon:"🔒",label:"Alterar senha"},{icon:"📞",label:"Suporte"}].map((item,i,arr)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:"pointer"}}>
+              <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
+              <span style={{color:TEXT,fontSize:13}}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* logout */}
+        <button onClick={onLogout} style={{width:"100%",background:`${RED}14`,border:`1px solid ${RED}30`,borderRadius:100,padding:14,color:RED,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Sair da conta</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminPanel({onLogout}){
+  const [tab,setTab]=useState("dashboard");
+  const NAV=[
+    {id:"dashboard",icon:"⌂",label:"Dashboard"},
+    {id:"clientes",icon:"◻",label:"Clientes"},
+    {id:"vendas",icon:"↗",label:"Vendas"},
+    {id:"site",icon:"◯",label:"Site"},
+    {id:"afiliados",icon:"⊙",label:"Afiliados"},
+    {id:"assinaturas",icon:"↺",label:"Assinaturas"},
+    {id:"sacar",icon:"↑",label:"Sacar"},
+    {id:"chat",icon:"✧",label:"Chat IA"},
+    {id:"config",icon:"⚙",label:"Config"},
+  ];
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay"/>,config:<Config/>};
+  return(
+    <>
+      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName="Joseph Admin" initial="J"/>
+      <div className="jp-main">
+        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial="J"/>
+        <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
+      </div>
+      <BottomNav tab={tab} setTab={setTab} nav={NAV}/>
+    </>
+  );
+}
+
+function ClientPanel({clientName,onLogout}){
+  const [tab,setTab]=useState("dashboard");
+  const [showPerfil,setShowPerfil]=useState(false);
+  const isDeise=clientName?.includes("Deise");
+  const accent=GOLD;
+  const product=isDeise?"Cirurgia Plástica":"Protocolo G9";
+  const email=isDeise?"deise@clinica.com":"renato@g9.com";
+  const NAV=[
+    {id:"dashboard",icon:"⌂",label:"Início"},
+    {id:"produtos",icon:"◈",label:"Produtos"},
+    {id:"clientes",icon:"◻",label:"Clientes"},
+    {id:"maquina",icon:"⚙",label:"Máquina"},
+    {id:"chat",icon:"✧",label:"Chat IA"},
+  ];
+  const TITLES={dashboard:clientName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
+  const VIEWS={
+    dashboard:<InicioTab accent={accent} isDeise={isDeise} onNav={setTab}/>,
+    produtos:<ProdutosTab accent={accent} isDeise={isDeise}/>,
+    clientes:<ClientesTab/>,
+    maquina:<MaquinaTab/>,
+    chat:<ChatIA productName={product}/>,
+  };
+  return(
+    <>
+      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={clientName} initial={clientName?.[0]||"C"}/>
+      <div className="jp-main">
+        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${product}`:null} onLogout={onLogout} initial={clientName?.[0]||"C"} onOpenPerfil={()=>setShowPerfil(true)}/>
+        <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
+      </div>
+      <BottomNav tab={tab} setTab={setTab} nav={NAV}/>
+      {showPerfil&&<PerfilModal userName={clientName} product={product} email={email} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}}/>}
+    </>
+  );
+}
+
+function InicioTab({accent,isDeise,onNav}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <DashClient accent={accent} isDeise={isDeise} onNav={onNav}/>
+    </div>
+  );
+}
+
+function InicioTab_STATUS_UNUSED({accent,isDeise,onNav}){
+  const [wapStatus,setWapStatus]=useState("conectado");
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginRight:4,flexShrink:0}}>Status</span>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>WhatsApp: <span style={{color:wapStatus==="conectado"?GREEN:RED}}>{wapStatus}</span></span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Site: <span style={{color:GREEN}}>ativo</span></span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Automações: <span style={{color:GREEN}}>ligadas</span></span>
+          </div>
+          {wapStatus==="desconectado"&&(
+            <button onClick={()=>setWapStatus("conectado")} style={{background:GOLD,border:"none",borderRadius:20,padding:"5px 16px",color:"#0C0C0C",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Reconectar</button>
+          )}
+        </div>
+      </div>
+      <DashClient accent={accent} isDeise={isDeise} onNav={onNav}/>
+    </div>
+  );
+}
+
+function CoproducaoView(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div className="two-col">
+        <KPICard label="Coprodutor" value="—" icon="◉" accent={GOLD}/>
+        <KPICard label="Divisão" value="—" icon="◈" accent={GOLD}/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
+        <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◉</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Adicionar Coprodutor</div>
+        <div style={{color:MUTED,fontSize:13,lineHeight:1.6,marginBottom:18}}>Compartilhe a receita deste produto com outro produtor da plataforma.</div>
+        <Btn sm outline color={GOLD}>+ Convidar coprodutor</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ProdutoDetalhe({produto,onBack,isDeise,accent}){
+  const [detTab,setDetTab]=useState("vendas");
+  const tabs=[{id:"vendas",label:"Vendas"},{id:"assinaturas",label:"Assinaturas"},{id:"afiliados",label:"Afiliados"},{id:"coproducao",label:"Coprodução"},{id:"saque",label:"Saque"}];
+  const content={vendas:<Vendas accent={accent} isDeise={isDeise}/>,assinaturas:<Assinaturas/>,afiliados:<Afiliados isAdmin={false}/>,coproducao:<CoproducaoView/>,saque:<Sacar/>};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para produtos</button>
+      {/* header card */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{height:100,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+          <span style={{fontSize:40,color:GOLD,opacity:0.65}}>◈</span>
+        </div>
+        <div style={{padding:"18px 20px"}}>
+          <div style={{color:TEXT,fontWeight:800,fontSize:20,marginBottom:4}}>{produto.name}</div>
+          <div style={{color:GOLD,fontWeight:700,fontSize:17,marginBottom:3}}>{produto.receita} <span style={{color:MUTED,fontWeight:400,fontSize:12}}>este mês</span></div>
+          <div style={{color:MUTED,fontSize:12,marginBottom:14}}>🔗 {produto.site}</div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn sm outline color={GOLD}>Editar produto</Btn>
+            <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir site</button>
+          </div>
+        </div>
+      </div>
+      {/* tabs horizontais */}
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2,msOverflowStyle:"none",scrollbarWidth:"none"}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setDetTab(t.id)} style={{padding:"8px 16px",borderRadius:100,border:`1px solid ${t.id===detTab?GOLD+"55":BDR}`,background:t.id===detTab?`${GOLD}14`:"transparent",color:t.id===detTab?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {/* conteúdo */}
+      {content[detTab]}
+    </div>
+  );
+}
+
+function ProdutosTab({accent,isDeise}){
+  const [sel,setSel]=useState(null);
+  const produtos=isDeise?[
+    {name:"Cirurgia Plástica",receita:"R$ 45.500",vendas:47,assinaturas:2,afiliados:3,site:"dradeise.josephpay.com",tipo:"Produto próprio"},
+  ]:[
+    {name:"Protocolo G9",receita:"R$ 8.280",vendas:89,assinaturas:32,afiliados:5,site:"protocolog9.josephpay.com",tipo:"Produto próprio"},
+  ];
+  if(sel!==null) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Produtos</div>
+        <button onClick={()=>alert("Em breve: criar produto")} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
+      </div>
+      {produtos.map((p,i)=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
+          {/* capa */}
+          <div style={{height:90,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:32,color:GOLD,opacity:0.7}}>◈</span>
+            <div style={{position:"absolute",top:10,right:12,display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{background:"rgba(0,0,0,0.5)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,backdropFilter:"blur(4px)"}}>{p.tipo}</span>
+              <Tag status="ativo"/>
+            </div>
+          </div>
+          {/* info */}
+          <div style={{padding:"16px 18px"}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>{p.name}</div>
+            <div style={{color:MUTED,fontSize:11,marginBottom:12}}>🔗 {p.site}</div>
+            <div style={{color:GOLD,fontWeight:800,fontSize:16,marginBottom:4}}>{p.receita} <span style={{color:MUTED,fontWeight:500,fontSize:12}}>· {p.vendas} vendas (mês)</span></div>
+            <div style={{display:"flex",gap:6,marginBottom:14}}>
+              <span style={{background:`${GOLD}10`,color:GOLD,border:`1px solid ${GOLD}25`,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20}}>Afiliados: {p.afiliados}</span>
+              <span style={{background:"rgba(255,255,255,0.05)",color:MUTED,border:`1px solid ${BDR}`,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20}}>Assin: {p.assinaturas}</span>
+            </div>
+            <button onClick={()=>setSel(i)} style={{width:"100%",background:`${GOLD}14`,border:`1px solid ${GOLD}30`,borderRadius:100,padding:"12px",color:GOLD,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Gerenciar →</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AutomacoesZap(){
+  const [wapStatus]=useState("conectado");
+  const [anivOn,setAnivOn]=useState(true);
+  const [anivMsg,setAnivMsg]=useState("Feliz aniversário, {nome}! 🎂 Aqui vai um presentinho especial para você.");
+  const [cashOn,setCashOn]=useState(false);
+  const [cashDias,setCashDias]=useState("7");
+  const [cashMsg,setCashMsg]=useState("Oi {nome}, você tem cashback esperando! Use hoje.");
+  const [posOn,setPosOn]=useState(true);
+  const [posDias,setPosDias]=useState("3");
+  const [posMsg,setPosMsg]=useState("Olá {nome}! Como foi sua experiência? Posso te oferecer algo mais?");
+  function Toggle({on,setOn}){
+    return(
+      <button onClick={()=>setOn(!on)} style={{width:44,height:24,borderRadius:100,background:on?GOLD:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        <div style={{width:18,height:18,borderRadius:"50%",background:on?"#0C0C0C":"rgba(255,255,255,0.4)",position:"absolute",top:3,left:on?23:3,transition:"left 0.2s"}}/>
+      </button>
+    );
+  }
+  function AutoBlock({title,on,setOn,dias,setDias,msg,setMsg,showDias}){
+    return(
+      <div style={{background:CARD,border:`1px solid ${on?GOLD+"30":BDR}`,borderRadius:18,padding:"18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:on?14:0}}>
+          <div>
+            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{title}</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{on?"Ativo":"Inativo"}</div>
+          </div>
+          <Toggle on={on} setOn={setOn}/>
+        </div>
+        {on&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {showDias&&(
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Dias após a compra</div>
+                <input value={dias} onChange={e=>setDias(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+              </div>
+            )}
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Mensagem</div>
+              <textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,lineHeight:1.5}}/>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>WhatsApp</div>
+          <div style={{color:TEXT,fontSize:13,fontWeight:600}}>{wapStatus==="conectado"?"Conectado e pronto":"Desconectado"}</div>
+        </div>
+        {wapStatus==="conectado"&&<span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>}
+      </div>
+      <AutoBlock title="Mensagem de Aniversário" on={anivOn} setOn={setAnivOn} msg={anivMsg} setMsg={setAnivMsg} showDias={false}/>
+      <AutoBlock title="Cashback" on={cashOn} setOn={setCashOn} dias={cashDias} setDias={setCashDias} msg={cashMsg} setMsg={setCashMsg} showDias={true}/>
+      <AutoBlock title="Pós-compra" on={posOn} setOn={setPosOn} dias={posDias} setDias={setPosDias} msg={posMsg} setMsg={setPosMsg} showDias={true}/>
+    </div>
+  );
+}
+
+function ClientesCRM(){
+  const clientes=[
+    {name:"João P.",whatsapp:"(11) 99910-0001",ultima:"20/03/2026",aniv:"15/05",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"Cartão",st:"pago"},{prod:"Protocolo G9",val:"R$ 180",data:"05/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Maria L.",whatsapp:"(11) 99910-0002",ultima:"20/03/2026",aniv:"22/08",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"PIX",st:"pago"}]},
+    {name:"Carlos M.",whatsapp:"(11) 99910-0003",ultima:"20/03/2026",aniv:"03/12",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"20/03/2026",met:"PIX",st:"pendente"}]},
+    {name:"Ana R.",whatsapp:"(11) 99910-0004",ultima:"09/03/2026",aniv:"19/04",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"09/03/2026",met:"Cartão",st:"pago"}]},
+    {name:"Pedro S.",whatsapp:"(11) 99910-0005",ultima:"08/03/2026",aniv:"07/10",status:"inativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"08/03/2026",met:"PIX",st:"cancelado"}]},
+  ];
+  const [sel,setSel]=useState(null);
+  if(sel!==null){
+    const c=clientes[sel];
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.whatsapp}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {c.aniv}</div>
+            </div>
+            <Tag status={c.status}/>
+          </div>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {c.ultima}</span>
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {["Entrou","Comprou",c.status==="inativo"?"Parou":"Ativo"].map((s,i,arr)=>(
+            <React.Fragment key={s}>
+              <span style={{background:i===arr.length-1?`${GOLD}18`:"rgba(255,255,255,0.05)",color:i===arr.length-1?GOLD:MUTED,border:`1px solid ${i===arr.length-1?GOLD+"30":BDR}`,fontSize:11,fontWeight:700,padding:"3px 12px",borderRadius:20}}>{s}</span>
+              {i<arr.length-1&&<span style={{color:MUTED,fontSize:12}}>→</span>}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
+          {c.compras.map((cp,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<c.compras.length-1?`1px solid ${BDR}`:"none"}}>
+              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{cp.prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{cp.met} · {cp.data}</div></div>
+              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cp.val}</div><div style={{marginTop:4}}><Tag status={cp.st}/></div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clientes.filter(c=>c.status==="ativo").length} ativos</span>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn sm outline color={GOLD}>+ Adicionar cliente</Btn>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar Excel</button>
+      </div>
+      {clientes.map((c,i)=>(
+        <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
+          <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
+              <Tag status={c.status}/>
+            </div>
+            <div style={{color:MUTED,fontSize:12}}>📱 {c.whatsapp}</div>
+            <div style={{display:"flex",gap:12,marginTop:2}}>
+              <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{c.ultima}</span></span>
+              <span style={{color:MUTED,fontSize:11}}>🎂 {c.aniv}</span>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PainelClientesTab(){
+  const anivs=[
+    {name:"Ana R.",data:"19/04",dias:5},
+    {name:"João P.",data:"15/05",dias:31},
+    {name:"Maria L.",data:"22/08",dias:130},
+  ];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+        <span style={{color:TEXT,fontSize:13,fontWeight:600,flex:1}}>WhatsApp: <span style={{color:GREEN}}>conectado</span></span>
+        <span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <Btn sm outline color={GOLD}>+ Adicionar</Btn>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar</button>
+        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
+      </div>
+      <div className="kpi-grid">
+        <KPICard label="Msgs hoje" value="24" icon="✉" accent={GOLD}/>
+        <KPICard label="Msgs este mês" value="312" icon="✉" accent={GOLD}/>
+        <KPICard label="Total clientes" value="5" icon="◻" accent={GOLD}/>
+        <KPICard label="Clientes ativos" value="4" icon="◉" accent={GOLD}/>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Próximos aniversários</span>
+        </div>
+        {anivs.map((a,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none"}}>
+            <span style={{fontSize:18,flexShrink:0}}>🎂</span>
+            <div style={{flex:1}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{a.data}</div>
+            </div>
+            {a.dias<=30&&<span style={{background:`${GOLD}18`,color:GOLD,border:`1px solid ${GOLD}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{a.dias} dias</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClientesTab(){
+  const [sub,setSub]=useState("painel");
+  const segTabs=[{id:"painel",label:"Painel"},{id:"clientes",label:"Clientes"},{id:"automacoes",label:"Automações"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",background:CARD,borderRadius:14,padding:3,gap:2}}>
+        {segTabs.map(s=>(
+          <button key={s.id} onClick={()=>setSub(s.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:s.id===sub?CARD3:"transparent",border:"none",color:s.id===sub?TEXT:MUTED,fontSize:12,fontWeight:s.id===sub?700:500,cursor:"pointer",fontFamily:F,transition:"background 0.15s"}}>{s.label}</button>
+        ))}
+      </div>
+      {sub==="painel"?<PainelClientesTab/>:sub==="clientes"?<ClientesCRM/>:<AutomacoesZap/>}
+    </div>
+  );
+}
+
+function MaquinaTab(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <VisitorChart/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:16}}>Reputação</div>
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+          <div style={{textAlign:"center",flexShrink:0}}>
+            <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:38,lineHeight:1}}>4.8</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:4}}>nota média</div>
+          </div>
+          <div style={{flex:1}}>
+            {[{s:"5 ★",w:"72%"},{s:"4 ★",w:"18%"},{s:"3 ★",w:"6%"},{s:"2 ★",w:"2%"},{s:"1 ★",w:"2%"}].map(r=>(
+              <div key={r.s} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                <span style={{color:MUTED,fontSize:11,width:28,flexShrink:0}}>{r.s}</span>
+                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:r.w}}/></div>
+                <span style={{color:MUTED,fontSize:11,width:28,textAlign:"right",flexShrink:0}}>{r.w}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>📊 Baseado em 47 avaliações Google</div>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${GOLD}20`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Campanha</div>
+          <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20}}>Em breve</span>
+        </div>
+        <div style={{color:MUTED,fontSize:13,lineHeight:1.6,marginBottom:14}}>Suba um vídeo, defina o orçamento e rode sua campanha direto pelo JosephPay.</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.4,pointerEvents:"none"}}>
+          {["📹 Subir vídeo","💰 Definir orçamento","🚀 Rodar campanha"].map(item=>(
+            <div key={item} style={{background:CARD2,borderRadius:12,padding:"12px 16px",color:MUTED,fontSize:13}}>{item}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Login({onLogin}){
+  const [role,setRole]=useState(null);
+  const [client,setClient]=useState(null);
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [step,setStep]=useState(1);
+  const CLIENTS=[{name:"Renato G9",email:"renato@g9.com"},{name:"Dra. Deise",email:"deise@clinica.com"}];
+  const isAdminMode=typeof window!=="undefined"&&(window.location.search.includes("admin=1") || window.location.pathname.includes("/admin"));
+  const doLogin=()=>{
+    if(!email||!pass)return;
+    if(role==="admin")onLogin({role:"admin",name:"Joseph"});
+    else{const m=CLIENTS.find(c=>c.email.toLowerCase()===email.toLowerCase())||CLIENTS[0];onLogin({role:"client",name:m.name});}
+  };
+  return(
+    <div style={{background:BG,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",padding:0}}>
+      <div style={{width:"100%",maxWidth:480,position:"relative",height:220,overflow:"hidden",flexShrink:0}}>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,#1a1500 0%,#2d2200 30%,#1a1200 60%,#0d0d0c 100%)"}}/>
+        <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 60% 40%,${GOLD}22 0%,transparent 65%)`}}/>
+        <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, transparent 0%, ${BG} 100%)`}}/>
+          <div style={{position:"absolute",bottom:24,left:0,right:0,textAlign:"center"}}>
+            <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:36,letterSpacing:"-0.01em",lineHeight:1.1}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
+          <div style={{width:40,height:1,background:`linear-gradient(90deg,transparent,${GOLD}80,transparent)`,margin:"12px auto"}}/>
+          <div style={{color:MUTED,fontSize:13,fontFamily:F,fontWeight:400,letterSpacing:"0.01em"}}>Plataforma de pagamentos</div>
+        </div>
+      </div>
+      <div style={{width:"100%",maxWidth:380,padding:"24px 24px 48px"}}>
+        {step===1&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{color:MUTED,fontSize:11,fontWeight:600,textAlign:"center",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Como você quer entrar?</div>
+            {isAdminMode&&(
+              <button onClick={()=>{setRole("admin");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+                <div style={{width:44,height:44,borderRadius:14,background:`${GOLD}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,fontFamily:SF,fontWeight:700,color:GOLD}}>⊞</div>
+                <div>
+                  <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Admin</div>
+                  <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Painel JosephPay completo</div>
+                  <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Acesso total</span>
+                </div>
+              </button>
+            )}
+            <button onClick={()=>{setRole("client");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>◈</div>
+              <div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou produtor</div>
+                <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Acesse seu painel de vendas</div>
+                <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Produtor</span>
+              </div>
+            </button>
+            <button onClick={()=>{setRole("afiliado");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>⊙</div>
+              <div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou afiliado</div>
+                <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Acompanhe suas comissões</div>
+                <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Afiliado</span>
+              </div>
+            </button>
+          </div>
+        )}
+        {step===2&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar</button>
+            <div style={{background:CARD,border:`1px solid ${role==="admin"?GOLD+"35":BDR}`,borderRadius:18,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:2}}>
+              <div style={{width:40,height:40,borderRadius:12,background:role==="admin"?GOLD:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:role==="admin"?16:18,color:role==="admin"?"#0A0A0A":MUTED,flexShrink:0}}>{role==="admin"?"J":role==="afiliado"?"⊙":"◈"}</div>
+              <div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":role==="afiliado"?"Painel do afiliado":"Painel do produtor"}</div>
+                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{role==="admin"?"Acesso completo":role==="afiliado"?"Comissões e links":"Suas vendas e receitas"}</div>
+              </div>
+            </div>
+            {[{l:"E-mail",p:role==="admin"?"admin@josephpay.com":"seu@email.com",t:"email"},{l:"Senha",p:"••••••••",t:"password"}].map(f=>(
+              <div key={f.l}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{f.l}</div>
+                <input type={f.t} placeholder={f.p} value={f.t==="email"?email:pass} onChange={e=>f.t==="email"?setEmail(e.target.value):setPass(e.target.value)} style={{width:"100%",background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 15px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+              </div>
+            ))}
+            <div style={{textAlign:"right"}}><span style={{color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer"}}>Esqueci a senha</span></div>
+            <button onClick={doLogin} style={{background:GOLD,border:"none",borderRadius:100,padding:"16px",color:"#0C0C0C",fontWeight:600,fontSize:15,cursor:"pointer",fontFamily:F,letterSpacing:"0.01em"}}>Entrar →</button>
+            <div style={{textAlign:"center",color:MUTED,fontSize:11}}>🔒 Acesso seguro · JosephPay</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [user,setUser]=useState(null);
+  return(
+    <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
+      {!user&&<Login onLogin={setUser}/>}
+      {user?.role==="admin"&&<AdminPanel onLogout={()=>setUser(null)}/>}
+      {user?.role==="client"&&<ClientPanel clientName={user.name} onLogout={()=>setUser(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
