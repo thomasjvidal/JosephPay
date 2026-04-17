@@ -240,7 +240,7 @@ function VisitorChart(){
 }
 
 const QQ=["📊 Vendas hoje?","💰 Receita da semana?","🔗 Gerar link de afiliado","📈 Minha conversão?","❓ Configurar checkout","🆘 Suporte"];
-const AR={"📊 Vendas hoje?":"Hoje você teve 4 vendas totalizando R$ 1.240. Melhor hora: 14h com R$ 480. +18% acima da média! 🚀","💰 Receita da semana?":"Esta semana você recebeu R$ 7.270 líquidos. Quarta foi seu melhor dia.","🔗 Gerar link de afiliado":"Seu link: josephpay.com/ref/SEU_CODIGO — já ativo! Cada venda gera comissão automática.","📈 Minha conversão?":"Sua conversão atual é 2.3%. Média do mercado: 1.5-3%. Você está bem posicionado!","❓ Configurar checkout":"Vá em Templates, escolha o modelo, preencha produto e valor e clique Criar.","🆘 Suporte":"Me conta o que aconteceu. Contato: suporte@josephpay.com"};
+// AR removido — chat IA sempre chama a API real (Anthropic), respostas hardcoded não são usadas
 
 function ChatIA({productName, onBack}){
   const [msgs,setMsgs]=useState([]);
@@ -560,27 +560,7 @@ function Config(){
   );
 }
 
-function SiteView({accent=GOLD}){
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seu site</div>
-        <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:14}}>protocolog9.josephpay.com</div>
-        <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>Abrir site</Btn><button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F,letterSpacing:"0.01em"}}>Editar página</button></div>
-      </div>
-      <VisitorChart/>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
-        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
-          <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// SiteView removido — nunca foi renderizado (admin usa SiteAdmin, cliente usa MaquinaTab)
 
 // ALL_CLIENTS removido — dados reais via /api/admin/clients
 
@@ -1141,7 +1121,7 @@ function Topbar({title,sub,onLogout,initial,onOpenPerfil}){
   );
 }
 
-function PerfilModal({userName,product,email,onClose,onLogout}){
+function PerfilModal({userName,product,email,onClose,onLogout,wapConnected}){
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
@@ -1158,7 +1138,11 @@ function PerfilModal({userName,product,email,onClose,onLogout}){
         {/* status */}
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
-          {[{icon:"●",label:"WhatsApp",val:"conectado",c:GREEN},{icon:"●",label:"Site",val:"ativo",c:GREEN},{icon:"●",label:"Automações",val:"ligadas",c:GREEN}].map((s,i,arr)=>(
+          {[
+            {label:"WhatsApp",val:wapConnected===null?"verificando…":wapConnected?"conectado":"desconectado",c:wapConnected===null?MUTED:wapConnected?GREEN:RED},
+            {label:"Site",val:"ativo",c:GREEN},
+            {label:"Automações",val:"ligadas",c:GREEN}
+          ].map((s,i,arr)=>(
             <div key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:s.c,flexShrink:0}}/>
               <span style={{color:MUTED,fontSize:13,flex:1}}>{s.label}</span>
@@ -1213,6 +1197,10 @@ function AdminPanel({onLogout}){
 function ClientPanel({clientName,userEmail,onLogout}){
   const [tab,setTab]=useState("dashboard");
   const [showPerfil,setShowPerfil]=useState(false);
+  const [wapConnected,setWapConnected]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/whatsapp/status').then(d=>{setWapConnected(d?.connected??false);}).catch(()=>setWapConnected(false));
+  },[]);
   const isDeise=clientName?.includes("Deise");
   const accent=GOLD;
   const product=isDeise?"Cirurgia Plástica":"Protocolo G9";
@@ -1240,7 +1228,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
         <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
-      {showPerfil&&<PerfilModal userName={clientName} product={product} email={email} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}}/>}
+      {showPerfil&&<PerfilModal userName={clientName} product={product} email={email} wapConnected={wapConnected} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}}/>}
     </>
   );
 }
@@ -1473,7 +1461,10 @@ function ProdutosTab({accent,isDeise}){
 }
 
 function AutomacoesZap(){
-  const [wapStatus]=useState("conectado");
+  const [wapStatus,setWapStatus]=useState("verificando");
+  useEffect(()=>{
+    apiCall('/api/whatsapp/status').then(d=>{setWapStatus(d?.connected?"conectado":"desconectado");}).catch(()=>setWapStatus("desconectado"));
+  },[]);
   const [anivOn,setAnivOn]=useState(true);
   const [anivMsg,setAnivMsg]=useState("Feliz aniversário, {nome}! 🎂 Aqui vai um presentinho especial para você.");
   const [cashOn,setCashOn]=useState(false);
