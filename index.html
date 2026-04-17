@@ -720,7 +720,7 @@ function ClientePerfilAdmin({c,onBack}){
         <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
         <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
       </div>
-      <AdvancedChart accent={accent} endpoint={`/api/admin/chart`}/>
+      <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
         {sales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
@@ -1210,13 +1210,13 @@ function AdminPanel({onLogout}){
   );
 }
 
-function ClientPanel({clientName,onLogout}){
+function ClientPanel({clientName,userEmail,onLogout}){
   const [tab,setTab]=useState("dashboard");
   const [showPerfil,setShowPerfil]=useState(false);
   const isDeise=clientName?.includes("Deise");
   const accent=GOLD;
   const product=isDeise?"Cirurgia Plástica":"Protocolo G9";
-  const email=isDeise?"deise@clinica.com":"renato@g9.com";
+  const email=userEmail||"—";
   const NAV=[
     {id:"dashboard",icon:"⌂",label:"Início"},
     {id:"produtos",icon:"◈",label:"Produtos"},
@@ -1253,34 +1253,7 @@ function InicioTab({accent,isDeise,onNav}){
   );
 }
 
-function InicioTab_STATUS_UNUSED({accent,isDeise,onNav}){
-  const [wapStatus,setWapStatus]=useState("conectado");
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 18px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginRight:4,flexShrink:0}}>Status</span>
-          <div style={{display:"flex",alignItems:"center",gap:6,background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:20,padding:"4px 12px"}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
-            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>WhatsApp: <span style={{color:wapStatus==="conectado"?GREEN:RED}}>{wapStatus}</span></span>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Site: <span style={{color:GREEN}}>ativo</span></span>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,background:`${GREEN}0D`,border:`1px solid ${GREEN}25`,borderRadius:20,padding:"4px 12px"}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Automações: <span style={{color:GREEN}}>ligadas</span></span>
-          </div>
-          {wapStatus==="desconectado"&&(
-            <button onClick={()=>setWapStatus("conectado")} style={{background:GOLD,border:"none",borderRadius:20,padding:"5px 16px",color:"#0C0C0C",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Reconectar</button>
-          )}
-        </div>
-      </div>
-      <DashClient accent={accent} isDeise={isDeise} onNav={onNav}/>
-    </div>
-  );
-}
+// InicioTab_STATUS_UNUSED removido — status migrado para PerfilModal
 
 function CoproducaoView(){
   return(
@@ -1330,10 +1303,10 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>{produto.name}</div>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{produto.receita}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{fmtBRL(produto.receitaMes||0)}</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:24}}>
-          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>↑ +22% este mês</span>
-          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.site}</span>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>{produto.totalVendas||0} vendas este mês</span>
+          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.url||`${(produto.name||"produto").toLowerCase().replace(/\s+/g,"")}.josephpay.com`}</span>
         </div>
         <div style={{display:"flex",gap:10,marginBottom:16,position:"relative",zIndex:1}}>
           <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Editar produto</button>
@@ -1377,8 +1350,9 @@ function CriarProdutoModal({onClose,onCreated}){
     const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
-    setLink(d.paymentUrl);
-    if(onCreated)onCreated();
+    // Mostra tela de sucesso com o link primeiro, recarrega a lista em background
+    setLink(d.paymentUrl||"");
+    if(onCreated) onCreated();
   };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
@@ -1449,7 +1423,7 @@ function ProdutosTab({accent,isDeise}){
   if(sel!==null&&produtos) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {showCriar&&<CriarProdutoModal onClose={()=>{setShowCriar(false);setRefresh(r=>r+1);}} onCreated={()=>setRefresh(r=>r+1)}/>}
+      {showCriar&&<CriarProdutoModal onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
         <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
@@ -1559,81 +1533,7 @@ function AutomacoesZap(){
   );
 }
 
-function ClientesCRM(){
-  const clientes=[
-    {name:"João P.",whatsapp:"(11) 99910-0001",ultima:"20/03/2026",aniv:"15/05",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"Cartão",st:"pago"},{prod:"Protocolo G9",val:"R$ 180",data:"05/03/2026",met:"PIX",st:"pago"}]},
-    {name:"Maria L.",whatsapp:"(11) 99910-0002",ultima:"20/03/2026",aniv:"22/08",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"20/03/2026",met:"PIX",st:"pago"}]},
-    {name:"Carlos M.",whatsapp:"(11) 99910-0003",ultima:"20/03/2026",aniv:"03/12",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"20/03/2026",met:"PIX",st:"pendente"}]},
-    {name:"Ana R.",whatsapp:"(11) 99910-0004",ultima:"09/03/2026",aniv:"19/04",status:"ativo",compras:[{prod:"Protocolo G9",val:"R$ 180",data:"09/03/2026",met:"Cartão",st:"pago"}]},
-    {name:"Pedro S.",whatsapp:"(11) 99910-0005",ultima:"08/03/2026",aniv:"07/10",status:"inativo",compras:[{prod:"Protocolo G9",val:"R$ 60",data:"08/03/2026",met:"PIX",st:"cancelado"}]},
-  ];
-  const [sel,setSel]=useState(null);
-  if(sel!==null){
-    const c=clientes[sel];
-    return(
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.whatsapp}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {c.aniv}</div>
-            </div>
-            <Tag status={c.status}/>
-          </div>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {c.ultima}</span>
-        </div>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          {["Entrou","Comprou",c.status==="inativo"?"Parou":"Ativo"].map((s,i,arr)=>(
-            <React.Fragment key={s}>
-              <span style={{background:i===arr.length-1?`${GOLD}18`:"rgba(255,255,255,0.05)",color:i===arr.length-1?GOLD:MUTED,border:`1px solid ${i===arr.length-1?GOLD+"30":BDR}`,fontSize:11,fontWeight:700,padding:"3px 12px",borderRadius:20}}>{s}</span>
-              {i<arr.length-1&&<span style={{color:MUTED,fontSize:12}}>→</span>}
-            </React.Fragment>
-          ))}
-        </div>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
-          {c.compras.map((cp,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<c.compras.length-1?`1px solid ${BDR}`:"none"}}>
-              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{cp.prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{cp.met} · {cp.data}</div></div>
-              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cp.val}</div><div style={{marginTop:4}}><Tag status={cp.st}/></div></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
-        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clientes.filter(c=>c.status==="ativo").length} ativos</span>
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <Btn sm outline color={GOLD}>+ Adicionar cliente</Btn>
-        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 22px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar Excel</button>
-      </div>
-      {clientes.map((c,i)=>(
-        <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
-          <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-              <Tag status={c.status}/>
-            </div>
-            <div style={{color:MUTED,fontSize:12}}>📱 {c.whatsapp}</div>
-            <div style={{display:"flex",gap:12,marginTop:2}}>
-              <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{c.ultima}</span></span>
-              <span style={{color:MUTED,fontSize:11}}>🎂 {c.aniv}</span>
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
+// ClientesCRM removido — substituído por PainelClientesTab com dados reais do Supabase
 
 function PainelClientesTab(){
   const [clientes,setClientes]=useState(null);
@@ -1976,7 +1876,7 @@ function App(){
     <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
       {!user&&<Login onLogin={handleLogin}/>}
       {user?.role==="admin"&&<AdminPanel onLogout={handleLogout}/>}
-      {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} onLogout={handleLogout}/>}
+      {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout}/>}
     </div>
   );
 }

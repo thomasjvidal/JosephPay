@@ -427,18 +427,21 @@ app.get("/api/admin/kpis", requireAuth, async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const [salesMonth, totalTx, profs, afils, subs] = await Promise.all([
-      supabase.from("sales").select("amount").eq("status", "pago").gte("created_at", monthStart),
+      supabase.from("sales").select("amount,platform_fee").eq("status", "pago").gte("created_at", monthStart),
       supabase.from("sales").select("id", { count: "exact", head: true }),
       supabase.from("profiles").select("id", { count: "exact", head: true }),
       supabase.from("affiliates").select("id", { count: "exact", head: true }).eq("status", "ativo"),
       supabase.from("subscriptions").select("amount").eq("status", "ativo"),
     ]);
     const receitaMes = (salesMonth.data || []).reduce((a, s) => a + Number(s.amount), 0);
+    // Usa platform_fee real do banco; fallback para estimativa 0.99% se coluna ainda não existir
+    const taxasMes = Math.round(
+      (salesMonth.data || []).reduce((a, s) => a + Number(s.platform_fee ?? (Number(s.amount) * 0.0099)), 0) * 100
+    ) / 100;
     const mrr = (subs.data || []).reduce((a, s) => a + Number(s.amount), 0);
     res.json({
       receitaMes,
-      taxasMes: Math.round(receitaMes * 0.0099 * 100) / 100, // 0.99% taxa de conveniência
-
+      taxasMes,
       transacoes: totalTx.count || 0,
       clientes: profs.count || 0,
       afiliados: afils.count || 0,
@@ -494,18 +497,22 @@ app.get("/api/admin/clients", requireAuth, async (req, res) => {
   }
 });
 
-/** GET /api/admin/chart?period=mes — Vendas agregadas para gráfico (admin) */
+/** GET /api/admin/chart?period=mes&owner=uuid — Vendas agregadas para gráfico (admin) */
 app.get("/api/admin/chart", requireAuth, async (req, res) => {
   try {
     const period = req.query.period || "mes";
+    const owner  = req.query.owner;   // opcional — filtra por produtor específico
     const now = new Date();
     let from;
-    if (period === "hoje") from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    else if (period === "semana") from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    else if (period === "mes") from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    if (period === "hoje")      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    else if (period === "semana")    from = new Date(now.getTime() - 7  * 86400000).toISOString();
+    else if (period === "mes")       from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 86400000).toISOString();
     else from = new Date(now.getFullYear(), 0, 1).toISOString();
-    const { data } = await supabase.from("sales").select("amount,created_at").eq("status", "pago").gte("created_at", from);
+
+    let q = supabase.from("sales").select("amount,created_at").eq("status", "pago").gte("created_at", from);
+    if (owner) q = q.eq("owner_id", owner);
+    const { data } = await q;
     res.json({ sales: data || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -575,49 +582,38 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       }
     }
 
-    // Salva produto no Supabase — tenta com colunas extras, cai no base se schema antigo
+    // Salva produto no Supabase — 3 tentativas em ordem decrescente de schema
     let product = null;
-    let insertErr = null;
+    let lastErr  = null;
 
-    // Tentativa 1: schema novo (com asaas_price e asaas_link_id)
-    ({ data: product, error: insertErr } = await supabase
-      .from("products")
-      .insert({
-        name,
-        description:   description || "",
-        price:         basePrice,
-        asaas_price:   clientPrice,
-        asaas_link_id: asaasLinkId,
-        status:        "ativo",
-        owner_id:      req.user.id,
-        url:           paymentUrl,
-      })
-      .select()
-      .single());
+    const tentativas = [
+      // Schema completo (após migration_v2)
+      { name, description: description||"", price: basePrice, asaas_price: clientPrice, asaas_link_id: asaasLinkId, status: "ativo", owner_id: req.user.id, url: paymentUrl },
+      // Schema original (sem colunas extras)
+      { name, description: description||"", price: basePrice, status: "ativo", owner_id: req.user.id, url: paymentUrl },
+      // Mínimo absoluto
+      { name, price: basePrice, owner_id: req.user.id, url: paymentUrl },
+    ];
 
-    // Tentativa 2: schema original (sem colunas extras) se a 1ª falhar
-    if (insertErr) {
-      console.warn("[products/create] insert com schema novo falhou, usando base:", insertErr.message);
-      ({ data: product, error: insertErr } = await supabase
-        .from("products")
-        .insert({
-          name,
-          description: description || "",
-          price:       basePrice,
-          status:      "ativo",
-          owner_id:    req.user.id,
-          url:         paymentUrl,
-        })
-        .select()
-        .single());
+    for (const payload of tentativas) {
+      const { data, error } = await supabase.from("products").insert(payload).select().single();
+      if (!error) { product = data; lastErr = null; break; }
+      lastErr = error;
+      console.warn(`[products/create] tentativa falhou (${Object.keys(payload).join(",")}):`, error.message);
     }
 
-    if (insertErr) {
-      console.error("[products/create] falha final no Supabase:", insertErr.message);
+    if (!product) {
+      // Produto não salvou — retorna erro explícito para o front mostrar
+      console.error("[products/create] todas tentativas falharam:", lastErr?.message);
+      return res.status(500).json({
+        error: `Produto criado no Asaas mas não salvo no banco: ${lastErr?.message}. Execute a migração SQL no Supabase.`,
+        paymentUrl,
+        asaasLinkId,
+      });
     }
 
-    console.log(`[products/create] "${name}" — base: R$${basePrice}, cliente paga: R$${clientPrice}, produto: ${product?.id || "falhou"}`);
-    res.json({ product: product || { name, price: basePrice }, paymentUrl, asaasLinkId });
+    console.log(`[products/create] "${name}" salvo id=${product.id} — base R$${basePrice}, cliente R$${clientPrice}`);
+    res.json({ product, paymentUrl, asaasLinkId });
   } catch (err) {
     console.error("[products/create]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
