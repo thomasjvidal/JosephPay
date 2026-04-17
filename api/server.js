@@ -539,37 +539,48 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
     let paymentUrl = "";
     let asaasLinkId = "";
 
-    // Tenta criar Payment Link reutilizável (ideal para produtos digitais)
-    try {
-      const link = await asaas.post("/paymentLinks", {
+    // Helper: cria payment link reutilizável no Asaas
+    const criarPaymentLink = async (billingTypeOverride) => {
+      const res = await asaas.post("/paymentLinks", {
         name,
-        billingType:  billingType || "UNDEFINED",
-        chargeType:   "DETACHED",   // nova cobrança por cliente — link reutilizável
-        value:        clientPrice,
-        description:  name + (description ? " — " + description : ""),
-        isActive:     true,
-      });
-      paymentUrl  = link.data.url           || link.data.paymentLinkUrl || "";
-      asaasLinkId = link.data.id            || "";
-    } catch (linkErr) {
-      console.warn("[products/create] paymentLinks indisponível, usando /payments:", linkErr.response?.data?.errors?.[0]?.description || linkErr.message);
-      // Fallback: cobrança avulsa sem customer (link compartilhável)
-      const dueDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-      const charge  = await asaas.post("/payments", {
-        billingType: billingType || "UNDEFINED",
+        billingType: billingTypeOverride || "UNDEFINED",
+        chargeType:  "DETACHED",   // link reutilizável — nova cobrança por cliente
         value:       clientPrice,
-        dueDate,
         description: name + (description ? " — " + description : ""),
+        isActive:    true,
       });
-      paymentUrl  = charge.data.invoiceUrl || charge.data.bankSlipUrl || "";
-      asaasLinkId = charge.data.id         || "";
+      return {
+        url:  res.data.url || res.data.paymentLinkUrl || "",
+        id:   res.data.id  || "",
+      };
+    };
+
+    try {
+      // Tentativa 1: tipo escolhido pelo produtor
+      const link = await criarPaymentLink(billingType);
+      paymentUrl  = link.url;
+      asaasLinkId = link.id;
+    } catch (firstErr) {
+      const msg1 = firstErr.response?.data?.errors?.[0]?.description || firstErr.message;
+      console.warn("[products/create] tipo", billingType, "falhou:", msg1);
+      try {
+        // Tentativa 2: UNDEFINED aceita qualquer método — nunca pede customer
+        const link = await criarPaymentLink("UNDEFINED");
+        paymentUrl  = link.url;
+        asaasLinkId = link.id;
+        console.log("[products/create] fallback UNDEFINED OK");
+      } catch (secondErr) {
+        // Nenhum link — continua sem URL (produto salvo sem checkout)
+        console.warn("[products/create] payment link indisponível:", secondErr.response?.data?.errors?.[0]?.description || secondErr.message);
+      }
     }
 
-    // Salva produto no Supabase
-    //   price       = preço base que o produtor vê e recebe
-    //   asaas_price = preço que o cliente paga (com taxa embutida)
-    //   asaas_link_id = ID do link/cobrança no Asaas (para rastrear webhook)
-    const { data: product, error: prodErr } = await supabase
+    // Salva produto no Supabase — tenta com colunas extras, cai no base se schema antigo
+    let product = null;
+    let insertErr = null;
+
+    // Tentativa 1: schema novo (com asaas_price e asaas_link_id)
+    ({ data: product, error: insertErr } = await supabase
       .from("products")
       .insert({
         name,
@@ -582,11 +593,30 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
         url:           paymentUrl,
       })
       .select()
-      .single();
+      .single());
 
-    if (prodErr) console.warn("[products/create] Supabase insert warn:", prodErr.message);
+    // Tentativa 2: schema original (sem colunas extras) se a 1ª falhar
+    if (insertErr) {
+      console.warn("[products/create] insert com schema novo falhou, usando base:", insertErr.message);
+      ({ data: product, error: insertErr } = await supabase
+        .from("products")
+        .insert({
+          name,
+          description: description || "",
+          price:       basePrice,
+          status:      "ativo",
+          owner_id:    req.user.id,
+          url:         paymentUrl,
+        })
+        .select()
+        .single());
+    }
 
-    console.log(`[products/create] "${name}" — base: R$${basePrice}, cliente paga: R$${clientPrice}`);
+    if (insertErr) {
+      console.error("[products/create] falha final no Supabase:", insertErr.message);
+    }
+
+    console.log(`[products/create] "${name}" — base: R$${basePrice}, cliente paga: R$${clientPrice}, produto: ${product?.id || "falhou"}`);
     res.json({ product: product || { name, price: basePrice }, paymentUrl, asaasLinkId });
   } catch (err) {
     console.error("[products/create]", err.response?.data || err.message);
