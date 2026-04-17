@@ -105,6 +105,25 @@ app.post("/api/asaas/checkout", requireAuth, async (req, res) => {
 app.post("/api/asaas/withdraw", requireAuth, async (req, res) => {
   try {
     const { amount, pixKey, pixKeyType = "CPF" } = req.body;
+    const uid = req.user.id;
+    const PLATFORM_FEE_RATE = 0.0099;
+
+    // Calcula saldo interno disponível (vendas pagas - taxas - saques já feitos)
+    const [{ data: sales }, { data: withdrawals }] = await Promise.all([
+      supabase.from("sales").select("amount, platform_fee").eq("owner_id", uid).eq("status", "pago"),
+      supabase.from("withdrawals").select("amount, status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
+    ]);
+
+    const totalSales    = (sales || []).reduce((a, s) => a + Number(s.amount), 0);
+    const totalFees     = (sales || []).reduce((a, s) => a + Number(s.platform_fee ?? (Number(s.amount) * PLATFORM_FEE_RATE)), 0);
+    const totalWithdrawn = (withdrawals || []).reduce((a, w) => a + Number(w.amount), 0);
+    const available     = Math.max(0, totalSales - totalFees - totalWithdrawn);
+
+    if (Number(amount) > available) {
+      return res.status(400).json({
+        error: `Saldo insuficiente. Disponível: ${available.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+      });
+    }
 
     const transfer = await asaas.post("/transfers", {
       value: amount,
@@ -114,11 +133,11 @@ app.post("/api/asaas/withdraw", requireAuth, async (req, res) => {
     });
 
     await supabase.from("withdrawals").insert({
-      owner_id:  req.user.id,
+      owner_id: uid,
       amount,
-      status:    "processando",
-      asaas_id:  transfer.data.id,
-      pix_key:   pixKey,
+      status:   "processando",
+      asaas_id: transfer.data.id,
+      pix_key:  pixKey,
     });
 
     res.json({ status: "processando", transferId: transfer.data.id });
@@ -138,18 +157,61 @@ app.post("/api/asaas/webhook", async (req, res) => {
   console.log("[asaas/webhook]", event.event, event.payment?.id);
 
   if (event.event === "PAYMENT_RECEIVED" || event.event === "PAYMENT_CONFIRMED") {
-    await supabase
+    const payment = event.payment;
+    // Valor que o cliente pagou (inclui a taxa 0,99% embutida)
+    const clientAmount    = Number(payment?.value || payment?.netValue || 0);
+    // Taxa JosephPay = clientAmount - (clientAmount / 1.0099)  → exato
+    const platformFee     = Math.round((clientAmount - clientAmount / 1.0099) * 100) / 100;
+    // Valor que fica para o produtor = o preço base original
+    const producerAmount  = Math.round((clientAmount / 1.0099) * 100) / 100;
+
+    // ── CASO 1: Venda criada via /api/asaas/checkout (já existe em sales) ─────
+    const { data: existingSale } = await supabase
       .from("sales")
-      .update({ status: "pago" })
-      .eq("asaas_id", event.payment.id);
+      .select("id")
+      .eq("asaas_id", payment.id)
+      .maybeSingle();
+
+    if (existingSale) {
+      await supabase.from("sales")
+        .update({ status: "pago", platform_fee: platformFee, producer_amount: producerAmount })
+        .eq("asaas_id", payment.id);
+      console.log(`[webhook] cobrança direta paga — taxa: R$${platformFee}, produtor: R$${producerAmount}`);
+
+    } else if (payment.paymentLink) {
+      // ── CASO 2: Pagamento via link de produto (/paymentLinks) ──────────────
+      // Encontra qual produto gerou esse link
+      const { data: product } = await supabase
+        .from("products")
+        .select("id, owner_id, price, name")
+        .eq("asaas_link_id", payment.paymentLink)
+        .maybeSingle();
+
+      if (product) {
+        await supabase.from("sales").insert({
+          product_id:      product.id,
+          owner_id:        product.owner_id,
+          amount:          clientAmount,
+          platform_fee:    platformFee,
+          producer_amount: producerAmount,
+          status:          "pago",
+          asaas_id:        payment.id,
+        });
+        console.log(`[webhook] link-produto "${product.name}" pago — taxa: R$${platformFee}, produtor: R$${producerAmount}`);
+      } else {
+        console.warn("[webhook] paymentLink sem produto mapeado:", payment.paymentLink);
+      }
+    } else {
+      console.warn("[webhook] pagamento sem sale nem paymentLink mapeado:", payment.id);
+    }
+
   } else if (event.event === "PAYMENT_REFUNDED") {
-    await supabase
-      .from("sales")
-      .update({ status: "estornado" })
+    await supabase.from("sales")
+      .update({ status: "estornado", platform_fee: 0, producer_amount: 0 })
       .eq("asaas_id", event.payment.id);
+
   } else if (event.event === "TRANSFER_DONE") {
-    await supabase
-      .from("withdrawals")
+    await supabase.from("withdrawals")
       .update({ status: "concluido" })
       .eq("asaas_id", event.transfer?.id);
   }
@@ -375,7 +437,8 @@ app.get("/api/admin/kpis", requireAuth, async (req, res) => {
     const mrr = (subs.data || []).reduce((a, s) => a + Number(s.amount), 0);
     res.json({
       receitaMes,
-      taxasMes: Math.round(receitaMes * 0.022 * 100) / 100,
+      taxasMes: Math.round(receitaMes * 0.0099 * 100) / 100, // 0.99% taxa de conveniência
+
       transacoes: totalTx.count || 0,
       clientes: profs.count || 0,
       afiliados: afils.count || 0,
@@ -417,11 +480,12 @@ app.get("/api/admin/clients", requireAuth, async (req, res) => {
     if (error) throw error;
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount] = await Promise.all([
-        supabase.from("sales").select("amount").eq("owner_id", p.id).eq("status", "pago"),
+        supabase.from("sales").select("amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
       ]);
       const vol = (salesSum.data || []).reduce((a, s) => a + Number(s.amount), 0);
-      return { ...p, vol, taxa: Math.round(vol * 0.022 * 100) / 100, produtos: prodCount.count || 0 };
+      const platformFeeVol = (salesSum.data || []).reduce((a, s) => a + (Number(s.platform_fee) || Math.round(Number(s.amount) * 0.0099 * 100) / 100), 0);
+      return { ...p, vol, taxa: Math.round(platformFeeVol * 100) / 100, produtos: prodCount.count || 0 };
     }));
     res.json({ clients: enriched });
   } catch (err) {
@@ -454,42 +518,190 @@ app.get("/api/admin/chart", requireAuth, async (req, res) => {
 
 /**
  * POST /api/products/create
- * Cria produto no Supabase + link de pagamento no Asaas
+ * Cria produto no Supabase + link de pagamento reutilizável no Asaas.
+ *
+ * Regra de taxa:
+ *   - Produtor define preço base (ex: R$297)
+ *   - JosephPay embute 0,99% no preço final do cliente (ex: R$299,94)
+ *   - O link Asaas é criado com o preço final — o cliente paga o valor maior
+ *   - Internamente, JosephPay separa a taxa e credita o valor base ao produtor
+ *   - O produtor nunca vê a taxa — ele sempre vê o preço base
  */
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
     const { name, description, price, billingType = "UNDEFINED" } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
-    // 1. Cria link de pagamento no Asaas primeiro
-    const dueDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const charge = await asaas.post("/payments", {
-      billingType: billingType || "UNDEFINED",
-      value: Number(price),
-      dueDate,
-      description: name + (description ? " — " + description : ""),
-    });
-    const paymentUrl = charge.data.invoiceUrl || charge.data.bankSlipUrl || "";
+    const basePrice   = Math.round(Number(price) * 100) / 100;
+    // Preço que o cliente final paga (taxa embutida — o produtor nunca vê isso)
+    const clientPrice = Math.round(basePrice * 1.0099 * 100) / 100;
 
-    // 2. Salva produto no Supabase (url = link do checkout Asaas)
+    let paymentUrl = "";
+    let asaasLinkId = "";
+
+    // Tenta criar Payment Link reutilizável (ideal para produtos digitais)
+    try {
+      const link = await asaas.post("/paymentLinks", {
+        name,
+        billingType:  billingType || "UNDEFINED",
+        chargeType:   "DETACHED",   // nova cobrança por cliente — link reutilizável
+        value:        clientPrice,
+        description:  name + (description ? " — " + description : ""),
+        isActive:     true,
+      });
+      paymentUrl  = link.data.url           || link.data.paymentLinkUrl || "";
+      asaasLinkId = link.data.id            || "";
+    } catch (linkErr) {
+      console.warn("[products/create] paymentLinks indisponível, usando /payments:", linkErr.response?.data?.errors?.[0]?.description || linkErr.message);
+      // Fallback: cobrança avulsa sem customer (link compartilhável)
+      const dueDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const charge  = await asaas.post("/payments", {
+        billingType: billingType || "UNDEFINED",
+        value:       clientPrice,
+        dueDate,
+        description: name + (description ? " — " + description : ""),
+      });
+      paymentUrl  = charge.data.invoiceUrl || charge.data.bankSlipUrl || "";
+      asaasLinkId = charge.data.id         || "";
+    }
+
+    // Salva produto no Supabase
+    //   price       = preço base que o produtor vê e recebe
+    //   asaas_price = preço que o cliente paga (com taxa embutida)
+    //   asaas_link_id = ID do link/cobrança no Asaas (para rastrear webhook)
     const { data: product, error: prodErr } = await supabase
       .from("products")
       .insert({
         name,
-        description: description || "",
-        price: Number(price),
-        status: "ativo",
-        owner_id: req.user.id,
-        url: paymentUrl,
+        description:   description || "",
+        price:         basePrice,
+        asaas_price:   clientPrice,
+        asaas_link_id: asaasLinkId,
+        status:        "ativo",
+        owner_id:      req.user.id,
+        url:           paymentUrl,
       })
       .select()
       .single();
-    if (prodErr) console.warn("[products/create] Supabase insert:", prodErr.message);
 
-    res.json({ product: product || { name, price }, paymentUrl, chargeId: charge.data.id });
+    if (prodErr) console.warn("[products/create] Supabase insert warn:", prodErr.message);
+
+    console.log(`[products/create] "${name}" — base: R$${basePrice}, cliente paga: R$${clientPrice}`);
+    res.json({ product: product || { name, price: basePrice }, paymentUrl, asaasLinkId });
   } catch (err) {
     console.error("[products/create]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — PRODUTOS (lista com stats)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/products
+ * Lista produtos do produtor autenticado com receita do mês, total vendas,
+ * assinaturas ativas e afiliados ativos.
+ */
+app.get("/api/products", requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("owner_id", uid)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const enriched = await Promise.all((products || []).map(async (p) => {
+      const [salesMonth, totalSales, activeSubs, activeAffils] = await Promise.all([
+        supabase.from("sales").select("amount").eq("product_id", p.id).eq("status", "pago").gte("created_at", monthStart),
+        supabase.from("sales").select("id", { count: "exact", head: true }).eq("product_id", p.id).eq("status", "pago"),
+        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("product_id", p.id).eq("status", "ativo"),
+        supabase.from("affiliates").select("id", { count: "exact", head: true }).eq("product_id", p.id).eq("status", "ativo"),
+      ]);
+      const receitaMes = (salesMonth.data || []).reduce((a, s) => a + Number(s.amount), 0);
+      return {
+        ...p,
+        receitaMes,
+        totalVendas:      totalSales.count  || 0,
+        assinaturasAtivas: activeSubs.count  || 0,
+        afiliadosAtivos:   activeAffils.count || 0,
+      };
+    }));
+
+    res.json({ products: enriched });
+  } catch (err) {
+    console.error("[products]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — LEDGER (saldo interno por produtor)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/ledger/balance
+ * Saldo interno disponível para saque.
+ * Fórmula: total vendas pagas - taxa plataforma (0.99%) - saques realizados
+ */
+app.get("/api/ledger/balance", requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const PLATFORM_FEE_RATE = 0.0099;
+
+    const [{ data: sales }, { data: withdrawals }] = await Promise.all([
+      supabase.from("sales").select("amount, platform_fee").eq("owner_id", uid).eq("status", "pago"),
+      supabase.from("withdrawals").select("amount, status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
+    ]);
+
+    const totalSales     = (sales || []).reduce((a, s) => a + Number(s.amount), 0);
+    const totalFees      = (sales || []).reduce((a, s) => a + Number(s.platform_fee ?? (Number(s.amount) * PLATFORM_FEE_RATE)), 0);
+    const totalWithdrawn = (withdrawals || []).reduce((a, w) => a + Number(w.amount), 0);
+    const balance        = Math.max(0, totalSales - totalFees - totalWithdrawn);
+
+    res.json({ balance, totalSales, totalFees, totalWithdrawn });
+  } catch (err) {
+    console.error("[ledger/balance]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — GRÁFICO DO PRODUTOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/dashboard/chart?period=mes
+ * Vendas do produtor autenticado por período para alimentar o gráfico.
+ */
+app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
+  try {
+    const uid    = req.user.id;
+    const period = req.query.period || "mes";
+    const now    = new Date();
+    let from;
+    if (period === "hoje")      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    else if (period === "semana")   from = new Date(now.getTime() - 7  * 86400000).toISOString();
+    else if (period === "mes")      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 86400000).toISOString();
+    else from = new Date(now.getFullYear(), 0, 1).toISOString();
+
+    const { data } = await supabase
+      .from("sales")
+      .select("amount, created_at")
+      .eq("owner_id", uid)
+      .eq("status", "pago")
+      .gte("created_at", from);
+
+    res.json({ sales: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
