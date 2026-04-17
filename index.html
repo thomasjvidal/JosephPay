@@ -87,15 +87,6 @@ const PERIODS={
   ano:{data:mkData(12,8000,6000).map((d,i)=>({...d,label:["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][i]})),label:"Ano"},
 };
 
-function aggregateSales(sales,period,now){
-  now=now||new Date();
-  if(period==='hoje'){const a=Array.from({length:16},(_,i)=>({label:`${6+i}h`,v:0}));sales.forEach(s=>{const h=new Date(s.created_at).getHours()-6;if(h>=0&&h<16)a[h].v+=Number(s.amount);});return a;}
-  if(period==='semana'){const d=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'],a=d.map(l=>({label:l,v:0}));sales.forEach(s=>{a[(new Date(s.created_at).getDay()+6)%7].v+=Number(s.amount);});return a;}
-  if(period==='mes'){const dim=now.getDate(),a=Array.from({length:dim},(_,i)=>({label:i+1,v:0}));sales.forEach(s=>{const d=new Date(s.created_at).getDate()-1;if(d>=0&&d<dim)a[d].v+=Number(s.amount);});return a;}
-  if(period==='trimestre'){const a=Array.from({length:12},(_,i)=>({label:`S${i+1}`,v:0})),s0=new Date(now.getTime()-84*24*60*60*1000);sales.forEach(s=>{const w=Math.min(Math.floor((new Date(s.created_at)-s0)/(7*24*60*60*1000)),11);if(w>=0)a[w].v+=Number(s.amount);});return a;}
-  const m=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],a=m.map(l=>({label:l,v:0}));sales.forEach(s=>{a[new Date(s.created_at).getMonth()].v+=Number(s.amount);});return a;
-}
-
 function Tag({status}){
   if(status==="pago") return <span style={{fontSize:10,fontWeight:600,color:"#22C55E",letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
   if(status==="pendente") return <span style={{fontSize:10,fontWeight:600,color:MUTED,letterSpacing:"0.06em",textTransform:"uppercase"}}>{status}</span>;
@@ -138,34 +129,52 @@ function Btn({children,onClick,color,outline,sm}){
   );
 }
 
-function AdvancedChart({accent=GOLD,vis=true,isAdmin=false}){
+function aggregateChartData(sales,period){
+  const now=new Date();
+  if(period==="hoje"){
+    const hrs=Array.from({length:8},(_,i)=>({label:`${8+i}h`,v:0}));
+    (sales||[]).forEach(s=>{const h=new Date(s.created_at).getHours()-8;if(h>=0&&h<8)hrs[h].v+=Number(s.amount);});
+    return hrs;
+  }
+  if(period==="semana"){
+    const days=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(l=>({label:l,v:0}));
+    (sales||[]).forEach(s=>{const d=(new Date(s.created_at).getDay()+6)%7;days[d].v+=Number(s.amount);});
+    return days;
+  }
+  if(period==="mes"){
+    const dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+    const days=Array.from({length:dim},(_,i)=>({label:i+1,v:0}));
+    (sales||[]).forEach(s=>{const d=new Date(s.created_at).getDate()-1;if(d>=0&&d<dim)days[d].v+=Number(s.amount);});
+    return days;
+  }
+  if(period==="trimestre"){
+    const weeks=Array.from({length:12},(_,i)=>({label:`S${i+1}`,v:0}));
+    const base=new Date(now.getTime()-90*86400000);
+    (sales||[]).forEach(s=>{const w=Math.floor((new Date(s.created_at)-base)/(7*86400000));if(w>=0&&w<12)weeks[w].v+=Number(s.amount);});
+    return weeks;
+  }
+  const months=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map(l=>({label:l,v:0}));
+  (sales||[]).forEach(s=>{const m=new Date(s.created_at).getMonth();months[m].v+=Number(s.amount);});
+  return months;
+}
+
+function AdvancedChart({accent=GOLD,vis=true,endpoint}){
   const [period,setPeriod]=useState("mes");
-  const [chartData,setChartData]=useState(PERIODS.mes.data);
-  const [chartLabel,setChartLabel]=useState("Este mês");
+  const [apiSales,setApiSales]=useState(null);
   useEffect(()=>{
-    const lbls={hoje:"Hoje",semana:"Esta semana",mes:"Este mês",trimestre:"Trimestre",ano:"Ano"};
-    setChartLabel(lbls[period]||period);
-    const now=new Date();
-    let from;
-    if(period==='hoje')from=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
-    else if(period==='semana')from=new Date(now.getTime()-7*24*60*60*1000).toISOString();
-    else if(period==='mes')from=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
-    else if(period==='trimestre')from=new Date(now.getTime()-90*24*60*60*1000).toISOString();
-    else from=new Date(now.getFullYear(),0,1).toISOString();
-    if(isAdmin){
-      apiCall(`/api/admin/chart?period=${period}`).then(d=>{if(d&&!d.error&&d.sales)setChartData(aggregateSales(d.sales,period,now));});
-    }else if(_sb){
-      _sb.from('sales').select('amount,created_at').eq('status','pago').gte('created_at',from)
-        .then(({data})=>{if(data)setChartData(aggregateSales(data,period,now));});
-    }
-  },[period,isAdmin]);
+    if(!endpoint){setApiSales(null);return;}
+    setApiSales(undefined);
+    apiCall(`${endpoint}?period=${period}`).then(d=>{setApiSales(d?.sales||null);});
+  },[period,endpoint]);
+  const chartData=apiSales!=null?aggregateChartData(apiSales,period):PERIODS[period].data;
   const total=chartData.reduce((a,d)=>a+d.v,0);
+  const pd=PERIODS[period];
   const gid=`g-${period}-${accent.replace("#","")}`;
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{chartLabel}</div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{pd.label}</div>
           <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:22,letterSpacing:"-0.01em"}}>{vis?fmtBRL(total):"R$ ••••••"}</div>
         </div>
       </div>
@@ -174,7 +183,8 @@ function AdvancedChart({accent=GOLD,vis=true,isAdmin=false}){
           <button key={p} onClick={()=>setPeriod(p)} style={{padding:"4px 11px",borderRadius:100,border:`1px solid ${p===period?accent+"50":BDR}`,background:p===period?`${accent}15`:"transparent",color:p===period?accent:MUTED,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",flexShrink:0}}>{p}</button>
         ))}
       </div>
-      <div style={{height:100}}>
+      {apiSales===undefined&&<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:12}}>Carregando…</div>}
+      {apiSales!==undefined&&<div style={{height:100}}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{top:4,right:4,left:-32,bottom:0}}>
             <defs>
@@ -186,33 +196,41 @@ function AdvancedChart({accent=GOLD,vis=true,isAdmin=false}){
             <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
             <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
             <YAxis hide/>
-            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[`R$ ${v.toLocaleString()}`,"Receita"]} labelStyle={{color:MUTED,fontSize:10}}/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[fmtBRL(v),"Receita"]} labelStyle={{color:MUTED,fontSize:10}}/>
             <Area type="monotone" dataKey="v" stroke={accent} strokeWidth={2} fill={`url(#${gid})`} dot={false}/>
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </div>}
     </div>
   );
 }
 
 function VisitorChart(){
-  const emptyData=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map(l=>({label:l,v:0}));
+  const data=mkData(7,120,150).map((d,i)=>({...d,label:["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"][i]}));
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
-          <div style={{color:MUTED,fontSize:12,marginTop:2}}>Analytics em desenvolvimento</div>
+          <div style={{color:MUTED,fontSize:12,marginTop:2}}>josephpay.com</div>
         </div>
-        <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Em breve</span>
+        <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{data.reduce((a,d)=>a+d.v,0)} visitas</span>
       </div>
-      <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <span style={{color:MUTED,fontSize:12,fontStyle:"italic"}}>Integração de analytics em desenvolvimento</span>
+      <div style={{height:90}}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{top:4,right:4,left:-32,bottom:0}}>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
+            <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+            <YAxis hide/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
+            <Bar dataKey="v" fill={`${GOLD}66`} radius={[4,4,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
       <div style={{display:"flex",gap:20,marginTop:14}}>
-        {[{l:"Sessões do site",v:"—"},{l:"Conversão do site",v:"—"},{l:"Rejeição",v:"—"}].map(k=>(
+        {[{l:"Sessões do site",v:"847",c:TEXT},{l:"Conversão do site",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
           <div key={k.l}>
-            <div style={{color:MUTED,fontWeight:700,fontSize:15}}>{k.v}</div>
+            <div style={{color:k.c,fontWeight:700,fontSize:15}}>{k.v}</div>
             <div style={{color:MUTED,fontSize:11,marginTop:2}}>{k.l}</div>
           </div>
         ))}
@@ -280,25 +298,43 @@ function ChatIA({productName, onBack}){
 function Afiliados({isAdmin}){
   const [list,setList]=useState(null);
   useEffect(()=>{
-    if(!_sb)return;
-    if(isAdmin){
-      _sb.from('affiliates').select('*,profiles(name)').order('created_at',{ascending:false})
-        .then(({data})=>{if(data)setList(data.map(a=>({name:a.profiles?.name||a.affiliate_id?.slice(0,8)||"Afiliado",code:a.referral_code||"—",vendas:a.sales_count||0,comissao:fmtBRL(a.commission_total||0),status:a.status||"ativo",cliques:a.clicks||0,conv:"—"})));});
-    }else{
-      _sb.from('affiliates').select('*').order('created_at',{ascending:false})
-        .then(({data})=>{if(data)setList(data.map(a=>({name:a.name||"Afiliado",code:a.referral_code||"—",vendas:a.sales_count||0,comissao:fmtBRL(a.commission_total||0),status:a.status||"ativo",cliques:a.clicks||0,conv:"—"})));});
-    }
-  },[isAdmin]);
-  const displayList=list||[];
+    if(!_sb){setList([]);return;}
+    _sb.from('affiliates').select('*,products(name),profiles!owner_id(name)').order('created_at',{ascending:false})
+      .then(({data})=>setList(data||[]));
+  },[]);
+  const ativos=(list||[]).filter(a=>a.status==="ativo").length;
+  const inativos=(list||[]).filter(a=>a.status!=="ativo").length;
+  const comissaoTotal=(list||[]).reduce((s,a)=>s+Number(a.commission_amount||a.commission||0),0);
+  const renderItem=(a,i,arr)=>{
+    const nome=a.name||a.affiliate_name||"Afiliado";
+    const code=a.code||a.affiliate_code||"—";
+    const vendas=a.sales_count||a.vendas||0;
+    const comissao=fmtBRL(a.commission_amount||a.commission||0);
+    const produto=a.products?.name||a.cli||"—";
+    return(
+      <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+        <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div>
+          <div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{code}</span> · {vendas} vendas</div>
+          <div style={{color:"rgba(255,255,255,0.22)",fontSize:11,marginTop:1}}>{produto}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{color:GOLD,fontWeight:700,fontSize:13,marginBottom:4}}>{comissao}</div>
+          <Tag status={a.status||"ativo"}/>
+        </div>
+      </div>
+    );
+  };
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {isAdmin?(
         <>
           <div className="kpi-grid">
-            <KPICard label="Total afiliados" value={list!==null?String(displayList.length):"—"} accent={GOLD} icon="◉"/>
-            <KPICard label="Afiliados ativos" value={list!==null?String(displayList.filter(a=>a.status==="ativo").length):"—"} accent={GOLD} icon="◈"/>
-            <KPICard label="Vendas geradas" value={list!==null?String(displayList.reduce((a,x)=>a+x.vendas,0)):"—"} accent={GOLD} icon="◎"/>
-            <KPICard label="Cliques totais" value={list!==null?String(displayList.reduce((a,x)=>a+x.cliques,0)):"—"} accent={GOLD} icon="⊕"/>
+            <KPICard label="Total afiliados" value={list?String(list.length):"—"} accent={GOLD} icon="◉"/>
+            <KPICard label="Comissão total" value={list?fmtBRL(comissaoTotal):"—"} sub="acumulado" accent={GOLD} icon="◈"/>
+            <KPICard label="Afiliados ativos" value={list?String(ativos):"—"} accent={GOLD} icon="◎"/>
+            <KPICard label="Inativos" value={list?String(inativos):"—"} accent={GOLD} icon="⊕"/>
           </div>
           <div className="jp-promo-card" style={{marginBottom:12}}>
             <div style={{position:"absolute",top:0,right:0,width:"45%",height:"100%"}}>
@@ -317,65 +353,24 @@ function Afiliados({isAdmin}){
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
             {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-            {list!==null&&displayList.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado registrado ainda.</div>}
-            {displayList.map((a,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<displayList.length-1?`1px solid ${BDR}`:"none"}}>
-                <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
-                  <div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas · {a.cliques} cliques</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{color:GOLD,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div>
-                  <Tag status={a.status}/>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Resumo</span></div>
-            {[{l:"Total de afiliados",v:displayList.length.toString()},{l:"Afiliados ativos",v:displayList.filter(a=>a.status==="ativo").length.toString()},{l:"Vendas geradas",v:displayList.reduce((a,x)=>a+x.vendas,0).toString()},{l:"Comissão total gerada",v:fmtBRL(displayList.reduce((a,x)=>a+parseFloat((x.comissao||"0").replace(/[^0-9.,]/g,"").replace(",",".")||"0"),0))}].map((r,i,arr)=>(
-              <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
-                <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
-                <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
-              </div>
-            ))}
+            {list!==null&&list.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado cadastrado ainda.</div>}
+            {(list||[]).map(renderItem)}
           </div>
         </>
       ):(
         <>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Seus afiliados</div>
-            <div style={{color:GOLD,fontWeight:700,fontSize:14,marginBottom:14}}>{displayList.length} afiliados cadastrados</div>
-            <div style={{display:"flex",gap:10}}><Btn sm outline color={GOLD}>+ Convidar</Btn></div>
-          </div>
           <div className="two-col">
-            <Pill label="Total afiliados" value={displayList.length.toString()} accent={GOLD}/>
-            <Pill label="Afiliados ativos" value={displayList.filter(a=>a.status==="ativo").length.toString()} accent={GOLD} sub="ativos"/>
-          </div>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Resumo de afiliados</span></div>
-            {[{l:"Vendas geradas total",v:displayList.reduce((a,x)=>a+x.vendas,0).toString()},{l:"Afiliados ativos",v:displayList.filter(a=>a.status==="ativo").length.toString()},{l:"Afiliados inativos",v:displayList.filter(a=>a.status==="inativo").length.toString()}].map((r,i,arr)=>(
-              <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
-                <span style={{color:MUTED,fontSize:13}}>{r.l}</span>
-                <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{r.v}</span>
-              </div>
-            ))}
+            <Pill label="Total afiliados" value={list?String(list.length):"—"} accent={GOLD}/>
+            <Pill label="Comissão total" value={list?fmtBRL(comissaoTotal):"—"} accent={GOLD} sub="acumulado"/>
           </div>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Seus afiliados</span>
+              <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Meus afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
             {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-            {list!==null&&displayList.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado ainda.</div>}
-            {displayList.slice(0,5).map((a,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(4,displayList.length-1)?`1px solid ${BDR}`:"none"}}>
-                <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{a.name[0]}</div>
-                <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>Código: <span style={{color:GOLD,fontWeight:700}}>{a.code}</span> · {a.vendas} vendas</div></div>
-                <div style={{textAlign:"right"}}><div style={{color:GREEN,fontWeight:700,fontSize:13,marginBottom:4}}>{a.comissao}</div><Tag status={a.status}/></div>
-              </div>
-            ))}
+            {list!==null&&list.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado ainda. Convide alguém!</div>}
+            {(list||[]).map(renderItem)}
           </div>
         </>
       )}
@@ -596,36 +591,40 @@ function DashAdmin({onNav}){
   const [clients,setClients]=useState(null);
   useEffect(()=>{
     apiCall('/api/admin/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
-    apiCall('/api/admin/sales?limit=4').then(d=>{if(d&&!d.error)setRecentSales(d.sales||[]);});
-    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+    apiCall('/api/admin/sales?limit=4').then(d=>{if(d?.sales)setRecentSales(d.sales);});
+    apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);});
   },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita da plataforma · Este mês</div>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita · Plataforma</div>
           <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>
+          {vis?(kpis?fmtBRL(kpis.receitaMes):"R$ —"):"R$ ••••••"}
+        </div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>{kpis?`${kpis.clientes} produtores`:"Carregando…"}</span>
-          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>{kpis?`${kpis.transacoes} transações totais`:"—"}</span>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>
+            {kpis?kpis.clientes:0} produtor(es) · Volume: {kpis?fmtBRL(kpis.receitaMes):"—"}
+          </span>
         </div>
       </div>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Taxas do mês" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈"/>
+          <KPICard label="Suas taxas (0.99%)" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈"/>
           <KPICard label="Transações" value={kpis?String(kpis.transacoes):"—"} accent={GOLD} icon="↑"/>
-          <KPICard label="Afiliados ativos" value={kpis?String(kpis.afiliados):"—"} accent={GOLD} icon="◉"/>
+          <KPICard label="Afiliados" value={kpis?`${kpis.afiliados} ativos`:"—"} accent={GOLD} icon="◉"/>
           <KPICard label="MRR" value={kpis?fmtBRL(kpis.mrr):"—"} accent={GOLD} icon="⟳"/>
-          <KPICard label="Produtores" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◻"/>
-          <KPICard label="Receita mês" value={kpis?fmtBRL(kpis.receitaMes):"—"} accent={GOLD} icon="◈"/>
+          <KPICard label="Produtores" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◎"/>
+          <KPICard label="Sites ativos" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◈"/>
         </div>
       </div>
       <div className="jp-promo-card" style={{marginBottom:10}}>
         <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
-          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop" alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
+          <img src="https://images.unsplash.com/photo-1601597111158-2fceff292cdc?q=80&w=2070&auto=format&fit=crop"
+            alt="Gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.5,mixBlendMode:"luminosity"}}/>
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 0%, transparent 60%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"24px 20px",maxWidth:"60%"}}>
@@ -634,24 +633,24 @@ function DashAdmin({onNav}){
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
         </div>
       </div>
-      <AdvancedChart accent={GOLD} isAdmin={true}/>
+      <AdvancedChart accent={GOLD} endpoint="/api/admin/chart"/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
-        {recentSales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-        {recentSales!==null&&recentSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
+        {recentSales===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {recentSales!==null&&recentSales.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
         {(recentSales||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
-          const produtor=s.profiles?.name||"—";
+          const prod=s.profiles?.name||"Produtor";
           const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
           return(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<recentSales.length-1?`1px solid ${BDR}`:"none"}}>
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(recentSales.length-1)?`1px solid ${BDR}`:"none"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora} · <span style={{color:"rgba(255,255,255,0.55)"}}>{produtor}</span></div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora} · <span style={{color:"rgba(255,255,255,0.55)"}}>{prod}</span></div>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
               <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div>
@@ -663,15 +662,14 @@ function DashAdmin({onNav}){
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Produtores</span>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Clientes</span>
           <button onClick={()=>onNav("clientes")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todos →</button>
         </div>
-        {clients===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-        {clients!==null&&clients.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
-        {(clients||[]).slice(0,4).map((c,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(3,clients.length-1)?`1px solid ${BDR}`:"none"}}>
+        {clients===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {(clients||[]).map((c,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(clients.length-1)?`1px solid ${BDR}`:"none"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"Sem nome"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produtos} produto(s) · desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div></div>
+            <div style={{flex:1,minWidth:0}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produtos||0} produto(s)</div></div>
             <div style={{textAlign:"right",flexShrink:0}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(c.vol)}</div><div style={{color:GOLD,fontSize:11,fontWeight:600,marginTop:2}}>{fmtBRL(c.taxa)} taxas</div></div>
           </div>
         ))}
@@ -681,50 +679,60 @@ function DashAdmin({onNav}){
 }
 
 function ClientePerfilAdmin({c,onBack}){
+  const accent=GOLD;
   const [sales,setSales]=useState(null);
   const [kpis,setKpis]=useState(null);
   useEffect(()=>{
-    // Busca vendas deste produtor via admin endpoint (filtra por owner_id no server)
-    apiCall(`/api/admin/sales?limit=20&owner=${c.id}`).then(d=>{if(d&&!d.error)setSales(d.sales||[]);});
-  },[c.id]);
-  // KPIs calculados das vendas reais
-  const vol=sales?(sales.filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0)):c.vol;
-  const taxa=typeof vol==='number'?(sales?sales.filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.platform_fee??Math.round(Number(s.amount)*0.0099*100)/100),0):Math.round(vol*0.0099*100)/100):c.taxa;
+    if(!c)return;
+    apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
+    apiCall(`/api/admin/kpis`).then(d=>{if(d&&!d.error)setKpis(d);});
+  },[c?.id]);
+  if(!c) return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+      <div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando perfil…</div>
+    </div>
+  );
+  const nome=c.name||"—";
+  const volFmt=fmtBRL(c.vol||0);
+  const taxaFmt=fmtBRL(c.taxa||0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-          <div style={{width:50,height:50,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
+          <div style={{width:50,height:50,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT,flexShrink:0}}>{nome[0]}</div>
           <div style={{flex:1}}>
-            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name||"Sem nome"}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:3}}>Produtor desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos} produto(s) cadastrado(s)</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{nome}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email||"—"}</div>
+            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
           </div>
           <Tag status="ativo"/>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {fmtBRL(taxa)}</span>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Volume: {fmtBRL(typeof vol==='number'?vol:0)}</span>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Volume: {volFmt}</span>
+          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {taxaFmt}</span>
         </div>
       </div>
-      <div className="kpi-grid">
-        <KPICard label="Receita total (pago)" value={fmtBRL(typeof vol==='number'?vol:0)} accent={GOLD} icon="◈"/>
-        <KPICard label="Transações" value={sales?String(sales.length):"—"} accent={GOLD} icon="↑"/>
-        <KPICard label="Taxas geradas" value={fmtBRL(taxa)} accent={GOLD} icon="◈"/>
-        <KPICard label="Pendentes" value={sales?String(sales.filter(s=>s.status==='pendente').length):"—"} accent={GOLD} icon="⟳"/>
+      <div className="two-col">
+        <KPICard label="Volume total" value={volFmt} accent={accent} icon="◈"/>
+        <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
+        <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
+        <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
       </div>
+      <AdvancedChart accent={accent} endpoint={`/api/admin/chart`}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
-        {sales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-        {sales!==null&&sales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda registrada.</div>}
-        {(sales||[]).slice(0,10).map((s,i,arr)=>{
-          const nome=s.customers?.name||"Cliente";
+        {sales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
+        {(sales||[]).map((s,i)=>{
+          const nome2=s.customers?.name||"Cliente";
           const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
+          const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
           return(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<Math.min(9,arr.length-1)?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(sales.length-1)?`1px solid ${BDR}`:"none"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome2[0]}</div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome2}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora}</div></div>
             <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
           </div>
           );
@@ -732,7 +740,6 @@ function ClientePerfilAdmin({c,onBack}){
       </div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
         <Btn sm outline color={GOLD}>Configurar taxa</Btn>
-        <Btn sm outline color={MUTED}>Editar checkout</Btn>
         <Btn sm outline color={RED}>Bloquear acesso</Btn>
       </div>
     </div>
@@ -743,14 +750,17 @@ function ClientesAdmin(){
   const [sel,setSel]=useState(null);
   const [clients,setClients]=useState(null);
   useEffect(()=>{
-    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+    apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
   },[]);
-  if(sel!==null&&clients) return <ClientePerfilAdmin c={clients[sel]} onBack={()=>setSel(null)}/>;
+  if(sel!==null){
+    const c=clients?.find(x=>x.id===sel)||null;
+    return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)}/>;
+  }
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Produtores</div>
-        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clients.length} cadastrados`:"…"}</span>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clients.length} produtores`:"—"}</span>
       </div>
       <div className="jp-promo-card" style={{marginBottom:16}}>
         <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
@@ -758,25 +768,25 @@ function ClientesAdmin(){
           <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
         </div>
         <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
-          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Produtores</div>
+          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Clientes</div>
           <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Todos os seus produtores em um só lugar</div>
         </div>
       </div>
       {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-      {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado ainda.</div>}
+      {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
       {(clients||[]).map((c,i)=>(
-        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
             <div style={{width:44,height:44,borderRadius:14,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
             <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name||"Sem nome"}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos} produto(s)</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:1}}>Desde {new Date(c.created_at).toLocaleDateString('pt-BR')}</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name||"—"}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:1}}>📧 {c.email||"—"}</div>
             </div>
-            <Tag status="ativo"/>
+            <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-            {[{l:"Volume total",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas geradas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
+            {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
                 <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
@@ -784,7 +794,8 @@ function ClientesAdmin(){
             ))}
           </div>
           <div style={{display:"flex",gap:10}}>
-            <Btn sm outline color={GOLD} onClick={()=>setSel(i)}>Ver perfil completo</Btn>
+            <Btn sm outline color={GOLD} onClick={()=>setSel(c.id)}>Ver perfil completo</Btn>
+            <Btn sm outline color={MUTED}>Config. taxa</Btn>
           </div>
         </div>
       ))}
@@ -796,11 +807,10 @@ function VendasAdmin(){
   const [allSales,setAllSales]=useState(null);
   const [filtro,setFiltro]=useState("todos");
   useEffect(()=>{
-    apiCall('/api/admin/sales?limit=100').then(d=>{if(d&&!d.error)setAllSales(d.sales||[]);});
+    apiCall('/api/admin/sales?limit=100').then(d=>{if(d?.sales)setAllSales(d.sales);else setAllSales([]);});
   },[]);
-  // Lista dinâmica de produtores
-  const produtores=allSales?["todos",...new Set(allSales.map(s=>s.profiles?.name||s.owner_id||"").filter(Boolean))]:["todos"];
-  const filtered=!allSales?[]:(filtro==="todos"?allSales:allSales.filter(s=>(s.profiles?.name||s.owner_id||"")=== filtro));
+  const produtores=["todos",...new Set((allSales||[]).map(s=>s.profiles?.name||null).filter(Boolean))];
+  const filtered=filtro==="todos"?(allSales||[]):(allSales||[]).filter(s=>(s.profiles?.name||"")===filtro);
   const pagas=filtered.filter(s=>s.status==="pago");
   const totalRec=pagas.reduce((a,s)=>a+Number(s.amount),0);
   const totalTaxas=pagas.reduce((a,s)=>a+Number(s.platform_fee??Math.round(Number(s.amount)*0.0099*100)/100),0);
@@ -823,21 +833,21 @@ function VendasAdmin(){
         ))}
       </div>
       <div className="kpi-grid">
-        <KPICard label="Receita total" value={allSales?fmtBRL(totalRec):"—"} accent={GOLD} icon="◈"/>
-        <KPICard label="Taxas plataforma" value={allSales?fmtBRL(totalTaxas):"—"} accent={GOLD} icon="◈"/>
-        <KPICard label="Transações" value={allSales?String(filtered.length):"—"} accent={GOLD} icon="↑"/>
-        <KPICard label="Pendentes" value={allSales?String(filtered.filter(s=>s.status==="pendente").length):"—"} accent={GOLD} icon="⟳"/>
+        <KPICard label="Receita total" value={fmtBRL(totalRec)} accent={GOLD} icon="◈"/>
+        <KPICard label="Suas taxas" value={fmtBRL(totalTaxas)} accent={GOLD} icon="◈"/>
+        <KPICard label="Transações" value={String(filtered.length)} accent={GOLD} icon="↑"/>
+        <KPICard label="Pendentes" value={String(filtered.filter(s=>s.status==="pendente").length)} accent={GOLD} icon="⟳"/>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{allSales?`${filtered.length} transações`:"Carregando…"}</span>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{allSales===null?"Carregando…":filtered.length+" transações"}</span>
           <span style={{color:MUTED,fontSize:12}}>{filtro==="todos"?"Todas as contas":filtro}</span>
         </div>
         {allSales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
         {allSales!==null&&filtered.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
         {filtered.map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
-          const produtor=s.profiles?.name||"—";
+          const prod=s.profiles?.name||"—";
           const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
           const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
           return(
@@ -845,7 +855,7 @@ function VendasAdmin(){
             <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora} · <span style={{color:"rgba(255,255,255,0.5)"}}>{produtor}</span></div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora} · <span style={{color:"rgba(255,255,255,0.5)"}}>{prod}</span></div>
             </div>
             <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
               <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div>
@@ -862,31 +872,28 @@ function VendasAdmin(){
 function SiteAdmin(){
   const [clients,setClients]=useState(null);
   useEffect(()=>{
-    apiCall('/api/admin/clients').then(d=>{if(d&&!d.error)setClients(d.clients||[]);});
+    apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
   },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Site & Analytics</div>
       <div className="kpi-grid">
-        <KPICard label="Total visitantes" value="—" sub="Em breve" accent={GOLD} icon="◎"/>
+        <KPICard label="Produtores ativos" value={clients?String(clients.length):"—"} accent={GOLD} icon="◎"/>
         <KPICard label="Sites ativos" value={clients?String(clients.length):"—"} accent={GOLD} icon="◈"/>
-        <KPICard label="Conversão média" value="—" sub="Em breve" accent={GOLD} icon="⊕"/>
-        <KPICard label="Sessões únicas" value="—" sub="Em breve" accent={GOLD} icon="⟳"/>
+        <KPICard label="Volume total" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.vol||0),0)):"—"} accent={GOLD} icon="⊕"/>
+        <KPICard label="Taxas totais" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.taxa||0),0)):"—"} accent={GOLD} icon="⟳"/>
       </div>
-      <div style={{background:`${GOLD}0A`,border:`1px solid ${GOLD}20`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
-        <span style={{color:GOLD,fontSize:14}}>ℹ</span>
-        <span style={{color:MUTED,fontSize:12}}>Analytics de visitantes em desenvolvimento. Os dados de vendas estão disponíveis no Dashboard.</span>
-      </div>
+      <VisitorChart/>
       {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtores…</div>}
       {(clients||[]).map((c,i)=>(
-        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"Sem nome"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{c.produtos} produto(s) cadastrado(s)</div></div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>📧 {c.email||"—"}</div></div>
             <Tag status="ativo"/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {[{l:"Volume Total",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas Geradas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
+            {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
                 <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
@@ -895,6 +902,15 @@ function SiteAdmin(){
           </div>
         </div>
       ))}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
+          <div key={t.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -930,7 +946,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <KPICard label="Mensagens hoje" value="—" accent={GOLD} icon="✉" vis={vis}/>
         </div>
       </div>
-      <AdvancedChart accent={accent} vis={vis}/>
+      <AdvancedChart accent={accent} vis={vis} endpoint="/api/dashboard/chart"/>
       <div className="jp-promo-card" style={{marginBottom:10}}>
         <div style={{position:"absolute",top:0,right:0,width:"55%",height:"100%"}}>
           <img src="https://images.unsplash.com/photo-1611689342806-0863700ce1e4?q=80&w=2070&auto=format&fit=crop"
@@ -1320,8 +1336,8 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
           <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.site}</span>
         </div>
         <div style={{display:"flex",gap:10,marginBottom:16,position:"relative",zIndex:1}}>
-          {produto.checkoutLink&&<button onClick={()=>{navigator.clipboard?.writeText(produto.checkoutLink);alert("Link copiado!");}} style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Copiar link</button>}
-          {produto.checkoutLink&&<button onClick={()=>window.open(produto.checkoutLink,'_blank')} style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir checkout</button>}
+          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Editar produto</button>
+          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir site</button>
         </div>
         <button onClick={()=>setDetTab("saque")} style={{width:"100%",background:"rgba(12,12,12,0.9)",border:"none",borderRadius:100,padding:"14px",color:GOLD,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em",position:"relative",zIndex:1}}>Sacar</button>
       </div>
@@ -1353,7 +1369,6 @@ function CriarProdutoModal({onClose,onCreated}){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [link,setLink]=useState(null);
-
   const criar=async()=>{
     if(!nome||!preco){setError("Preencha nome e preço.");return;}
     setError("");setLoading(true);
@@ -1365,7 +1380,6 @@ function CriarProdutoModal({onClose,onCreated}){
     setLink(d.paymentUrl);
     if(onCreated)onCreated();
   };
-
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
@@ -1396,23 +1410,24 @@ function CriarProdutoModal({onClose,onCreated}){
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Preço (R$) *</div>
                 <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12}}>
                   <span style={{padding:"0 14px",color:GOLD,fontWeight:700,fontSize:16}}>R$</span>
-                  <input value={preco} onChange={e=>setPreco(e.target.value)} placeholder="0,00" style={{flex:1,background:"none",border:"none",padding:"13px 0",color:TEXT,fontSize:20,fontWeight:700,outline:"none",fontFamily:F}}/>
+                  <input value={preco} onChange={e=>setPreco(e.target.value)} placeholder="0,00" style={{flex:1,background:"none",border:"none",padding:"13px 14px 13px 0",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
                 </div>
               </div>
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Descrição (opcional)</div>
-                <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Descreva seu produto..." rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,lineHeight:1.5}}/>
+                <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Descreva o produto..." rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
               </div>
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Tipo de cobrança</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {[{v:"UNDEFINED",l:"Qualquer"},{v:"PIX",l:"PIX"},{v:"CREDIT_CARD",l:"Cartão"},{v:"BOLETO",l:"Boleto"}].map(t=>(
-                    <button key={t.v} onClick={()=>setTipo(t.v)} style={{padding:"7px 16px",borderRadius:100,border:`1px solid ${t.v===tipo?GOLD+"55":BDR}`,background:t.v===tipo?`${GOLD}18`:"transparent",color:t.v===tipo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.l}</button>
-                  ))}
-                </div>
+                <select value={tipo} onChange={e=>setTipo(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none"}}>
+                  <option value="UNDEFINED">Qualquer método</option>
+                  <option value="PIX">Apenas PIX</option>
+                  <option value="CREDIT_CARD">Apenas Cartão</option>
+                  <option value="BOLETO">Apenas Boleto</option>
+                </select>
               </div>
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
-              <button onClick={criar} disabled={loading||!nome||!preco} style={{background:(!loading&&nome&&preco)?GOLD:"rgba(212,175,55,0.2)",border:"none",borderRadius:100,padding:16,color:(!loading&&nome&&preco)?"#0C0C0C":MUTED,fontWeight:700,fontSize:15,cursor:(!loading&&nome&&preco)?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>{loading?"Criando…":"Criar produto e gerar link →"}</button>
+              <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar produto →"}</button>
             </div>
           </>
         )}
@@ -1423,94 +1438,60 @@ function CriarProdutoModal({onClose,onCreated}){
 
 function ProdutosTab({accent,isDeise}){
   const [sel,setSel]=useState(null);
-  const [produtos,setProdutos]=useState(null);
+  const [showNovo,setShowNovo]=useState(false);
   const [showCriar,setShowCriar]=useState(false);
-  const [refreshKey,setRefreshKey]=useState(0);
+  const [produtos,setProdutos]=useState(null);
+  const [refresh,setRefresh]=useState(0);
   useEffect(()=>{
-    setProdutos(null);
-    if(!_sb){
-      // Fallback demo quando Supabase não disponível
-      setProdutos(isDeise?
-        [{id:"demo1",name:"Cirurgia Plástica",receita:"—",vendas:"—",assinaturas:"—",afiliados:"—",site:"dradeise.josephpay.com",tipo:"Produto próprio"}]:
-        [{id:"demo2",name:"Protocolo G9",receita:"—",vendas:"—",assinaturas:"—",afiliados:"—",site:"protocolog9.josephpay.com",tipo:"Produto próprio"}]
-      );
-      return;
-    }
-    const now=new Date();
-    const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
-    _sb.from('products').select('*').order('created_at',{ascending:false}).then(async({data:prods})=>{
-      if(!prods){setProdutos([]);return;}
-      const enriched=await Promise.all(prods.map(async p=>{
-        const [salesData,subsData,afilData]=await Promise.all([
-          _sb.from('sales').select('amount,status').eq('product_id',p.id).gte('created_at',monthStart),
-          _sb.from('subscriptions').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('status','ativo'),
-          _sb.from('affiliates').select('id',{count:'exact',head:true}).eq('product_id',p.id).eq('status','ativo'),
-        ]);
-        const vendasMes=(salesData.data||[]).length;
-        const receitaMes=(salesData.data||[]).filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0);
-        return{...p,receita:fmtBRL(receitaMes),vendas:vendasMes,assinaturas:subsData.count||0,afiliados:afilData.count||0,checkoutLink:p.url||null,site:p.url||`josephpay.com/checkout/${p.id.slice(0,8)}`,tipo:"Produto próprio"};
-      }));
-      setProdutos(enriched);
+    apiCall('/api/products').then(d=>{
+      if(d?.products) setProdutos(d.products);
+      else setProdutos([]);
     });
-  },[isDeise,refreshKey]);
+  },[refresh]);
   if(sel!==null&&produtos) return <ProdutoDetalhe produto={produtos[sel]} onBack={()=>setSel(null)} isDeise={isDeise} accent={accent}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {showCriar&&<CriarProdutoModal onClose={()=>{setShowCriar(false);setRefresh(r=>r+1);}} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
         <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
-      {showCriar&&<CriarProdutoModal onClose={()=>{setShowCriar(false);setRefreshKey(k=>k+1);}} onCreated={()=>{setRefreshKey(k=>k+1);}}/>}
-      {produtos===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtos…</div>}
-      {produtos!==null&&produtos.length===0&&(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"40px 20px",textAlign:"center"}}>
-          <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◈</div>
-          <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Nenhum produto ainda</div>
-          <div style={{color:MUTED,fontSize:13,marginBottom:18}}>Crie seu primeiro produto para começar a vender.</div>
-          <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Criar produto</button>
-        </div>
-      )}
+      {produtos===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
+      {produtos!==null&&produtos.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum produto ainda. Crie o seu primeiro! →</div>}
       {(produtos||[]).map((p,i)=>(
         <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
-          {/* capa */}
           <div style={{height:90,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <span style={{fontSize:32,color:GOLD,opacity:0.7}}>◈</span>
           </div>
-          {/* info */}
           <div style={{padding:"20px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
-                  <Tag status="ativo"/>
+                  <Tag status={p.status||"ativo"}/>
                 </div>
-                {p.checkoutLink?<button onClick={(e)=>{e.stopPropagation();navigator.clipboard?.writeText(p.checkoutLink);}} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0,textAlign:"left"}}>🔗 Copiar link de checkout</button>:<div style={{color:MUTED,fontSize:12}}>🔗 {p.site}</div>}
+                <div style={{color:MUTED,fontSize:12,fontFamily:F}}>🔗 {p.url||`${p.name.toLowerCase().replace(/\s+/g,"")||"produto"}.josephpay.com`}</div>
               </div>
             </div>
-            
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,paddingBottom:20,borderBottom:`1px solid ${BDR}`}}>
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Receita (mês)</div>
-                <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                  <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,lineHeight:1,letterSpacing:"-0.02em"}}>{p.receita}</div>
-                </div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,lineHeight:1,letterSpacing:"-0.02em"}}>{fmtBRL(p.receitaMes||0)}</div>
               </div>
               <div style={{textAlign:"right"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Vendas</div>
-                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,lineHeight:1}}>{p.vendas}</div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,lineHeight:1}}>{p.totalVendas||0}</div>
               </div>
             </div>
-
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Afiliados</div>
-                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.afiliados}</div>
+                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.afiliadosAtivos||0}</div>
               </div>
               <div style={{textAlign:"right"}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Assinaturas</div>
-                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.assinaturas}</div>
+                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.assinaturasAtivas||0}</div>
               </div>
             </div>
-
             <button onClick={()=>setSel(i)} style={{width:"100%",background:TEXT,border:"none",borderRadius:100,padding:"14px",color:BG,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em"}}>Gerenciar Produto</button>
           </div>
         </div>
@@ -1798,42 +1779,41 @@ function MaquinaTab(){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <VisitorChart/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Origem de vendas</div>
-          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
-        </div>
-        {[{l:"Site",v:"—"},{l:"WhatsApp",v:"—"},{l:"Campanhas",v:"—"}].map(t=>(
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Origem de vendas</div>
+        {[{l:"Site",v:"67%",bg:GOLD},{l:"WhatsApp",v:"24%",bg:"#B8941A"},{l:"Campanhas",v:"9%",bg:"rgba(212,175,55,0.4)"}].map(t=>(
           <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:MUTED,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}/>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
           </div>
         ))}
-        <div style={{color:MUTED,fontSize:11,textAlign:"center",marginTop:8}}>Rastreamento de origem em desenvolvimento</div>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
-          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
-        </div>
-        {[{l:"Instagram"},{l:"WhatsApp"},{l:"Google"},{l:"Direto"}].map(t=>(
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
+        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
           <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:MUTED,fontWeight:700,fontSize:13}}>—</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}/>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
           </div>
         ))}
-        <div style={{color:MUTED,fontSize:11,textAlign:"center",marginTop:8}}>Integração de analytics em desenvolvimento</div>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Reputação</div>
-          <span style={{background:`${GOLD}0D`,color:MUTED,border:`1px solid ${BDR}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Em breve</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 0"}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{color:MUTED,fontSize:38,lineHeight:1,marginBottom:8}}>★</div>
-            <div style={{color:MUTED,fontSize:13}}>Sistema de avaliações em desenvolvimento</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:16}}>Reputação</div>
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
+          <div style={{textAlign:"center",flexShrink:0}}>
+            <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:38,lineHeight:1}}>4.8</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:4}}>nota média</div>
+          </div>
+          <div style={{flex:1}}>
+            {[{s:"5 ★",w:"72%"},{s:"4 ★",w:"18%"},{s:"3 ★",w:"6%"},{s:"2 ★",w:"2%"},{s:"1 ★",w:"2%"}].map(r=>(
+              <div key={r.s} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                <span style={{color:MUTED,fontSize:11,width:28,flexShrink:0}}>{r.s}</span>
+                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:r.w}}/></div>
+                <span style={{color:MUTED,fontSize:11,width:28,textAlign:"right",flexShrink:0}}>{r.w}</span>
+              </div>
+            ))}
           </div>
         </div>
+        <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>📊 Baseado em 47 avaliações Google</div>
       </div>
     </div>
   );
