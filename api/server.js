@@ -40,6 +40,25 @@ async function requireAuth(req, res, next) {
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: "Token inválido" });
   req.user = user;
+
+  // Garante que o profile existe no banco (evita foreign key products_owner_id_fkey)
+  // fire-and-forget: não atrasa a request, garante consistência em background
+  const profileData = {
+    id:   user.id,
+    name: user.user_metadata?.name || user.email?.split("@")[0] || "Produtor",
+    role: user.user_metadata?.role || "client",
+    email: user.email,
+  };
+  supabase.from("profiles")
+    .upsert(profileData, { onConflict: "id" })
+    .then(({ error: e }) => {
+      if (e) {
+        // Pode falhar se coluna email ainda não existe — tenta sem ela
+        const { email: _e, ...sem } = profileData;
+        supabase.from("profiles").upsert(sem, { onConflict: "id" }).then(() => {});
+      }
+    });
+
   next();
 }
 
@@ -379,32 +398,9 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
       supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "ativo"),
     ]);
 
-    let receitaMes = (salesMonth.data || []).reduce((acc, s) => acc + Number(s.amount), 0);
-    let vendasHoje = salesToday.count || 0;
-
-    // Fallback: se DB está vazio, busca histórico de pagamentos do Asaas
-    if (receitaMes === 0 && process.env.ASAAS_API_KEY) {
-      try {
-        const [asaasMes, asaasBalance] = await Promise.all([
-          asaas.get(`/payments?status=RECEIVED&dateCreatedStart=${monthDate}&limit=100`),
-          asaas.get("/finance/balance"),
-        ]);
-        const payments = asaasMes.data?.data || [];
-        receitaMes = payments.reduce((a, p) => a + Number(p.value || 0), 0);
-        vendasHoje = payments.filter(p => (p.dateCreated || "").startsWith(todayDate) || (p.confirmedDate || "").startsWith(todayDate)).length;
-        // Inclui saldo disponível também
-        res.json({
-          receitaMes,
-          vendasHoje,
-          assinaturasAtivas: activeSubs.count || 0,
-          saldoDisponivel: asaasBalance.data?.balance || 0,
-          fonte: "asaas",
-        });
-        return;
-      } catch (e) {
-        console.warn("[kpis] Asaas fallback:", e.message);
-      }
-    }
+    // SSOT: apenas dados do Supabase — sem fallback Asaas (evita dados cruzados entre produtores)
+    const receitaMes = (salesMonth.data || []).reduce((acc, s) => acc + Number(s.amount), 0);
+    const vendasHoje = salesToday.count || 0;
 
     res.json({
       receitaMes,
@@ -547,18 +543,22 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
     let asaasLinkId = "";
 
     // Helper: cria payment link reutilizável no Asaas
+    // billingType "RECURRENT" → assinatura mensal; qualquer outro → pagamento único
     const criarPaymentLink = async (billingTypeOverride) => {
-      const res = await asaas.post("/paymentLinks", {
+      const isRecurrent = (billingTypeOverride || billingType) === "RECURRENT";
+      const payload = {
         name,
-        billingType: billingTypeOverride || "UNDEFINED",
-        chargeType:  "DETACHED",   // link reutilizável — nova cobrança por cliente
-        value:       clientPrice,
-        description: name + (description ? " — " + description : ""),
-        isActive:    true,
-      });
+        billingType:  isRecurrent ? "UNDEFINED" : (billingTypeOverride || "UNDEFINED"),
+        chargeType:   isRecurrent ? "RECURRENT" : "DETACHED",
+        value:        clientPrice,
+        description:  name + (description ? " — " + description : ""),
+        isActive:     true,
+      };
+      if (isRecurrent) payload.subscriptionCycle = "MONTHLY";
+      const resp = await asaas.post("/paymentLinks", payload);
       return {
-        url:  res.data.url || res.data.paymentLinkUrl || "",
-        id:   res.data.id  || "",
+        url: resp.data.url || resp.data.paymentLinkUrl || "",
+        id:  resp.data.id  || "",
       };
     };
 

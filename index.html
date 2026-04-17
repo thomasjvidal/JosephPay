@@ -160,13 +160,16 @@ function aggregateChartData(sales,period){
 
 function AdvancedChart({accent=GOLD,vis=true,endpoint}){
   const [period,setPeriod]=useState("mes");
-  const [apiSales,setApiSales]=useState(null);
+  // Se tem endpoint, começa em "carregando" (undefined) para nunca mostrar dados fake
+  // Se não tem endpoint (modo demo/fallback), começa em null → usa PERIODS
+  const [apiSales,setApiSales]=useState(endpoint?undefined:null);
   useEffect(()=>{
     if(!endpoint){setApiSales(null);return;}
     setApiSales(undefined);
-    apiCall(`${endpoint}?period=${period}`).then(d=>{setApiSales(d?.sales||null);});
+    apiCall(`${endpoint}?period=${period}`).then(d=>{setApiSales(d?.sales||[]);});
   },[period,endpoint]);
-  const chartData=apiSales!=null?aggregateChartData(apiSales,period):PERIODS[period].data;
+  // chartData só usa PERIODS se não tiver endpoint E apiSales for null
+  const chartData=apiSales!=null?aggregateChartData(apiSales,period):(endpoint?[]:PERIODS[period].data);
   const total=chartData.reduce((a,d)=>a+d.v,0);
   const pd=PERIODS[period];
   const gid=`g-${period}-${accent.replace("#","")}`;
@@ -1382,8 +1385,8 @@ function CriarProdutoModal({onClose,onCreated}){
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Tipo de cobrança</div>
                 <select value={tipo} onChange={e=>setTipo(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none"}}>
-                  <option value="UNDEFINED">Qualquer método (PIX, Cartão, Boleto)</option>
-                  <option value="CREDIT_CARD">Apenas Cartão de Crédito</option>
+                  <option value="UNDEFINED">Pagamento único (PIX, Cartão, Boleto)</option>
+                  <option value="RECURRENT">Assinatura recorrente (mensal)</option>
                 </select>
               </div>
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
