@@ -166,7 +166,7 @@ function AdvancedChart({accent=GOLD,vis=true,isAdmin=false}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{chartLabel}</div>
-          <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:22,letterSpacing:"-0.01em"}}>{vis?`R$ ${total.toLocaleString()}`:"R$ ••••••"}</div>
+          <div style={{color:accent,fontFamily:SF,fontWeight:600,fontSize:22,letterSpacing:"-0.01em"}}>{vis?fmtBRL(total):"R$ ••••••"}</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:10,marginBottom:8,scrollbarWidth:"none",msOverflowStyle:"none",WebkitOverflowScrolling:"touch"}} className="hide-scroll">
@@ -441,7 +441,7 @@ function Sacar(){
   const [loading,setLoading]=useState(false);
   const [saqueErr,setSaqueErr]=useState("");
   useEffect(()=>{
-    apiCall('/api/asaas/balance').then(d=>{if(d?.balance!==undefined)setBalance(d.balance);});
+    apiCall('/api/ledger/balance').then(d=>{if(d?.balance!==undefined)setBalance(d.balance);});
   },[]);
   const doSaque=async()=>{
     if(!val||!pixKey){setSaqueErr("Preencha o valor e a chave PIX.");return;}
@@ -587,11 +587,7 @@ function SiteView({accent=GOLD}){
   );
 }
 
-const ALL_CLIENTS=[
-  {name:"Renato G9",produto:"Protocolo G9",vol:"R$ 12.600",taxa:"R$ 378",status:"ativo",site:"protocolog9.josephpay.com",email:"renato@g9.com",saldo:"R$ 4.832",receita:"R$ 8.280",vendas:"R$ 360",ticket:"R$ 180",assinaturas:3,afiliados:5,conversao:"2.3%",visitors:847,link:"RENATO15"},
-  {name:"Dra. Deise",produto:"Cirurgia Plástica",vol:"R$ 20.000",taxa:"R$ 401",status:"pendente",site:"dradeise.josephpay.com",email:"deise@clinica.com",saldo:"R$ 31.200",receita:"R$ 45.500",vendas:"R$ 8.500",ticket:"R$ 547",assinaturas:2,afiliados:3,conversao:"1.8%",visitors:1240,link:"DEISE20"},
-  {name:"Dr. Chayenne",produto:"Consulta Online",vol:"R$ 2.100",taxa:"R$ 63",status:"ativo",site:"chayenne.josephpay.com",email:"chayenne@clinica.com",saldo:"R$ 1.600",receita:"R$ 4.200",vendas:"R$ 350",ticket:"R$ 350",assinaturas:1,afiliados:1,conversao:"3.1%",visitors:320,link:"CHAY10"},
-];
+// ALL_CLIENTS removido — dados reais via /api/admin/clients
 
 function DashAdmin({onNav}){
   const [vis,setVis]=useState(true);
@@ -693,7 +689,7 @@ function ClientePerfilAdmin({c,onBack}){
   },[c.id]);
   // KPIs calculados das vendas reais
   const vol=sales?(sales.filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.amount),0)):c.vol;
-  const taxa=typeof vol==='number'?Math.round(vol*0.022*100)/100:c.taxa;
+  const taxa=typeof vol==='number'?(sales?sales.filter(s=>s.status==='pago').reduce((a,s)=>a+Number(s.platform_fee??Math.round(Number(s.amount)*0.0099*100)/100),0):Math.round(vol*0.0099*100)/100):c.taxa;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
@@ -805,7 +801,9 @@ function VendasAdmin(){
   // Lista dinâmica de produtores
   const produtores=allSales?["todos",...new Set(allSales.map(s=>s.profiles?.name||s.owner_id||"").filter(Boolean))]:["todos"];
   const filtered=!allSales?[]:(filtro==="todos"?allSales:allSales.filter(s=>(s.profiles?.name||s.owner_id||"")=== filtro));
-  const totalRec=filtered.filter(s=>s.status==="pago").reduce((a,s)=>a+Number(s.amount),0);
+  const pagas=filtered.filter(s=>s.status==="pago");
+  const totalRec=pagas.reduce((a,s)=>a+Number(s.amount),0);
+  const totalTaxas=pagas.reduce((a,s)=>a+Number(s.platform_fee??Math.round(Number(s.amount)*0.0099*100)/100),0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Vendas · Plataforma</div>
@@ -826,7 +824,7 @@ function VendasAdmin(){
       </div>
       <div className="kpi-grid">
         <KPICard label="Receita total" value={allSales?fmtBRL(totalRec):"—"} accent={GOLD} icon="◈"/>
-        <KPICard label="Taxas plataforma" value={allSales?fmtBRL(Math.round(totalRec*0.022*100)/100):"—"} accent={GOLD} icon="◈"/>
+        <KPICard label="Taxas plataforma" value={allSales?fmtBRL(totalTaxas):"—"} accent={GOLD} icon="◈"/>
         <KPICard label="Transações" value={allSales?String(filtered.length):"—"} accent={GOLD} icon="↑"/>
         <KPICard label="Pendentes" value={allSales?String(filtered.filter(s=>s.status==="pendente").length):"—"} accent={GOLD} icon="⟳"/>
       </div>
