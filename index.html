@@ -934,8 +934,11 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
           <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
-        <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Receita do mês atual</span>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Líquido do produtor</span>
+          {kpis?.receitaBrutaMes&&kpis.receitaBrutaMes!==kpis.receitaLiquidaMes&&<span style={{background:"rgba(212,175,55,0.1)",color:"rgba(12,12,12,0.5)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Bruto: {vis?fmtBRL(kpis.receitaBrutaMes):"••••••"}</span>}
+        </div>
       </div>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
@@ -1379,9 +1382,10 @@ function CriarProdutoModal({onClose,onCreated}){
     const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
-    setLink(d.paymentUrl||"");
-    setCreated(true);          // mostra tela de sucesso independente de ter URL
-    if(onCreated) onCreated(); // refresh da lista em background
+    if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}
+    setLink(d.paymentUrl);
+    setCreated(true);
+    if(onCreated) onCreated();
   };
   const copiar=()=>{
     if(!link)return;
@@ -1454,6 +1458,11 @@ function ProdutosTab({accent,isDeise}){
   const [produtos,setProdutos]=useState(null);
   const [refresh,setRefresh]=useState(0);
   const [copiedIdx,setCopiedIdx]=useState(null);
+  const handleDelete=async(id)=>{
+    if(!window.confirm("Excluir este produto e recriar?"))return;
+    await apiCall(`/api/products/${id}`,{method:"DELETE"});
+    setRefresh(r=>r+1);
+  };
   useEffect(()=>{
     apiCall('/api/products').then(d=>{
       if(d?.products) setProdutos(d.products);
@@ -1487,7 +1496,10 @@ function ProdutosTab({accent,isDeise}){
                     <button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(p.url).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});}} style={{flexShrink:0,background:copiedIdx===i?`${GREEN}18`:"rgba(212,175,55,0.12)",border:copiedIdx===i?`1px solid ${GREEN}40`:`1px solid ${GOLD}30`,borderRadius:20,padding:"3px 10px",color:copiedIdx===i?GREEN:GOLD,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",transition:"all 0.2s"}}>{copiedIdx===i?"✓ Copiado":"Copiar link"}</button>
                   </div>
                 ):(
-                  <div style={{color:"rgba(239,68,68,0.6)",fontSize:11,fontFamily:F,marginTop:2}}>🔗 Link não gerado — recrie o produto</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+                    <span style={{color:"rgba(239,68,68,0.6)",fontSize:11,fontFamily:F}}>🔗 Link não gerado</span>
+                    <button onClick={e=>{e.stopPropagation();handleDelete(p.id);}} style={{background:"transparent",border:"1px solid rgba(239,68,68,0.3)",borderRadius:20,padding:"2px 10px",color:"rgba(239,68,68,0.7)",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F}}>Excluir e recriar</button>
+                  </div>
                 )}
               </div>
             </div>

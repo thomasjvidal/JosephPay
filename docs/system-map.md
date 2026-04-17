@@ -1,8 +1,19 @@
-# JosephPay — Mapa do Sistema
+# JosephPay — Mapa do Sistema (SSOT)
+
+> **Fonte de verdade absoluta.** Qualquer IA ou dev que mexer neste sistema deve ler este arquivo primeiro.  
+> Última atualização: 2026-04-17
+
+---
 
 ## Visão Geral
 
-JosephPay é uma plataforma SaaS brasileira de pagamentos digitais para infoprodutores. Permite que produtores vendam produtos digitais, gerenciem assinaturas, afiliados, clientes e recebam via PIX/Cartão usando a API Asaas.
+JosephPay é uma plataforma SaaS brasileira de pagamentos digitais para infoprodutores.  
+1 conta Asaas (do Thomas) → múltiplos produtores → identificação via `owner_id` no Supabase.
+
+**Modelo de taxa (Opção B):**  
+- Produtor define preço base → sistema embute 0,99% → cliente paga `base * 1.0099`  
+- `platform_fee` = o que foi embutido (extraído via `gross - gross/1.0099`)  
+- `producer_amount` = `net_amount - platform_fee` (produtor recebe o valor base exato)
 
 ---
 
@@ -12,7 +23,7 @@ JosephPay é uma plataforma SaaS brasileira de pagamentos digitais para infoprod
 ┌─────────────────────────────────────────────────────────────┐
 │  FRONTEND (Vercel)                                          │
 │  josephpay.vercel.app                                       │
-│  index.html — React + Babel standalone (SPA de arquivo único)│
+│  index.html — React 18 + Babel standalone (SPA única)       │
 │  CDNs: React 18, Recharts, Supabase JS, Babel              │
 └────────────────────┬────────────────────────────────────────┘
                      │  Fetch (REST JSON)
@@ -39,17 +50,6 @@ JosephPay é uma plataforma SaaS brasileira de pagamentos digitais para infoprod
 
 **Tecnologia:** React 18 (UMD), Babel Standalone, Recharts, Supabase JS v2
 
-**Acesso:**
-- `https://josephpay.vercel.app` → produção
-- `file:///...index.html` → local (modo demo sem backend)
-
-**Fluxo de autenticação:**
-1. Usuário clica em tipo de conta (Admin / Produtor / Afiliado)
-2. Insere e-mail + senha
-3. `_sb.auth.signInWithPassword()` → Supabase Auth
-4. JWT armazenado na sessão Supabase (auto-refresh)
-5. Todas as chamadas ao Railway incluem `Authorization: Bearer <JWT>`
-
 **Constantes críticas:**
 ```js
 const SUPABASE_URL  = "https://ljpjadwvqocatnqjvuvk.supabase.co";
@@ -61,7 +61,7 @@ const RAILWAY       = "https://josephpay-production.up.railway.app";
 - `fmtBRL(v)` — formata número como `R$ 1.234,56`
 - `getToken()` — retorna JWT da sessão Supabase atual
 - `apiCall(path, opts)` — fetch autenticado para Railway
-- `aggregateSales(sales, period, now)` — agrega array de vendas por período para gráficos
+- `aggregateSales(sales, period, now)` — agrega vendas por período para gráficos
 
 **Painéis:**
 | Painel | Componente raiz | Quem acessa |
@@ -74,39 +74,43 @@ const RAILWAY       = "https://josephpay-production.up.railway.app";
 
 ### 2. Backend — `api/server.js`
 
-**Tecnologia:** Express.js 4, Node.js ≥18, Axios, Supabase JS v2 (service role)
+**Tecnologia:** Express.js 4, Node.js ≥18, Axios, Supabase JS v2 (service role)  
+**Deploy:** Railway → auto-deploy ao push em `main`  
+**Middleware:** `requireAuth` — verifica JWT Supabase + upsert do profile (fire-and-forget)
 
-**Deploy:** Railway → auto-deploy ao push em `main`
-
-**Middleware:** `requireAuth` — verifica JWT Supabase em todas as rotas protegidas
-
-#### Rotas disponíveis
+#### Rotas completas
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | GET | `/api/health` | ✗ | Status do servidor e serviços |
-| POST | `/api/asaas/checkout` | ✓ | Cria cobrança no Asaas |
+| POST | `/api/products/create` | ✓ | Cria produto + link de pagamento no Asaas (BLOQUEIA se Asaas falhar) |
+| GET | `/api/products` | ✓ | Lista produtos do produtor com stats do mês |
+| DELETE | `/api/products/:id` | ✓ | Remove produto (só o dono) |
+| POST | `/api/asaas/checkout` | ✓ | Cria cobrança avulsa no Asaas |
 | POST | `/api/asaas/withdraw` | ✓ | Saque via PIX |
-| POST | `/api/asaas/webhook` | ✗ | Recebe eventos Asaas |
-| GET | `/api/asaas/balance` | ✓ | Saldo disponível na conta |
-| POST | `/api/chat` | ✓ | Chat IA via Anthropic |
-| GET | `/api/whatsapp/status` | ✓ | Status WhatsApp (Evolution API) |
+| POST | `/api/asaas/webhook` | ✗ | Recebe eventos Asaas (PAYMENT_RECEIVED, TRANSFER_DONE, etc.) |
+| GET | `/api/asaas/balance` | ✓ | Saldo disponível na conta Asaas |
+| POST | `/api/chat` | ✓ | Chat IA via Anthropic Claude Haiku |
+| GET | `/api/whatsapp/status` | ✓ | Status da instância WhatsApp |
 | POST | `/api/whatsapp/send` | ✓ | Envia mensagem WhatsApp |
-| POST | `/api/whatsapp/webhook` | ✗ | Recebe mensagens WhatsApp |
-| GET | `/api/dashboard/kpis` | ✓ | KPIs do produtor autenticado |
+| POST | `/api/whatsapp/webhook` | ✗ | Recebe mensagens WhatsApp inbound |
+| GET | `/api/dashboard/kpis` | ✓ | KPIs do produtor (bruto, líquido, taxas) |
+| GET | `/api/dashboard/chart?period=X` | ✓ | Dados de gráfico do produtor |
 | GET | `/api/admin/kpis` | ✓ | KPIs globais da plataforma |
-| GET | `/api/admin/sales` | ✓ | Vendas de todos os produtores |
-| GET | `/api/admin/clients` | ✓ | Lista de produtores cadastrados |
-| GET | `/api/admin/chart` | ✓ | Dados de gráfico (admin) |
+| GET | `/api/admin/sales?limit=N&owner=UUID` | ✓ | Vendas de todos os produtores |
+| GET | `/api/admin/clients` | ✓ | Lista de produtores com volume e taxas |
+| GET | `/api/admin/chart?period=X&owner=UUID` | ✓ | Dados de gráfico (admin) |
+| GET | `/api/ledger/balance` | ✓ | Saldo interno do produtor (produtor_amount - saques) |
+| POST | `/api/sync/history` | ✓ | Importa pagamentos históricos do Asaas com dados financeiros completos |
 
 **Variáveis de ambiente no Railway:**
 ```
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY  ← nunca exposta ao browser
 ASAAS_API_KEY
-ASAAS_API_URL
+ASAAS_API_URL              ← sandbox ou produção
 ANTHROPIC_API_KEY
-EVOLUTION_API_URL
+EVOLUTION_API_URL          ← ⚠️ ainda placeholder: https://evo.seudominio.com
 EVOLUTION_API_KEY
 EVOLUTION_INSTANCE
 PORT
@@ -118,63 +122,72 @@ FRONTEND_ORIGIN
 ### 3. Banco de Dados — Supabase
 
 **Projeto:** `ljpjadwvqocatnqjvuvk.supabase.co`  
-**Schema:** `supabase/schema.sql`
+**Migrations aplicadas:**
+- `supabase/schema.sql` — schema base
+- `supabase/migration_v2.sql` — ✅ APLICADA: `asaas_link_id`, `asaas_price` em products; `platform_fee`, `producer_amount` em sales
+- `supabase/migration_v3.sql` — ⚠️ APLICAR: campos financeiros completos em sales + `asaas_customer_id` em customers
 
-#### Tabelas
+#### Tabelas e colunas críticas
 
-| Tabela | Descrição | RLS |
-|---|---|---|
-| `profiles` | Usuários da plataforma (produtores, admin) | `owner_id = auth.uid()` |
-| `products` | Produtos digitais dos produtores | `owner_id = auth.uid()` |
-| `customers` | Compradores finais dos produtos | `owner_id = auth.uid()` |
-| `sales` | Transações de venda | `owner_id = auth.uid()` |
-| `subscriptions` | Assinaturas recorrentes | `owner_id = auth.uid()` |
-| `affiliates` | Afiliados dos produtos | `owner_id = auth.uid()` |
-| `coproducers` | Coprodutores | `owner_id = auth.uid()` |
-| `messages` | Histórico de mensagens WhatsApp | `owner_id = auth.uid()` |
-| `withdrawals` | Histórico de saques | `owner_id = auth.uid()` |
+**`products`** (migration_v2 required):
+- `asaas_link_id` — ID do payment link no Asaas (chave de lookup do webhook)
+- `asaas_price` — preço com 0.99% embutido (o que o cliente paga)
+- `url` — URL copiável do checkout Asaas
 
-**Trigger automático:** `handle_new_user()` — cria registro em `profiles` ao criar usuário no Supabase Auth.
+**`sales`** (migration_v2 + v3 required):
+- `asaas_id` — ID da cobrança no Asaas (anti-duplicata)
+- `gross_amount` — valor bruto pago pelo cliente
+- `net_amount` — após taxa do gateway Asaas
+- `asaas_fee` — taxa cobrada pelo Asaas
+- `platform_fee` — taxa JosephPay (0.99% do gross)
+- `producer_amount` — valor líquido final do produtor
+- `installment_count` — número de parcelas
+- `billing_type` — PIX, CREDIT_CARD, BOLETO
+- `payment_date` — data real do pagamento (usada para KPIs, não `created_at`)
 
-**Acesso:**
-- **Browser (frontend):** Usa `SUPABASE_ANON` + JWT do usuário → RLS filtra automaticamente `owner_id = auth.uid()`
-- **Railway (backend):** Usa `SUPABASE_SERVICE_ROLE_KEY` → bypass RLS → acesso a todos os dados
+**`customers`** (migration_v3 required):
+- `asaas_customer_id` — ID único do cliente no Asaas (deduplicação — PIX pode não trazer email)
+
+**Trigger automático:** `handle_new_user()` — cria `profiles` ao signup no Auth.
 
 ---
 
-### 4. Pagamentos — Asaas
+### 4. Fluxo de Pagamento (SSOT do dinheiro)
 
-**Ambiente atual:** Sandbox (`https://sandbox.asaas.com/api/v3`)  
-**Produção:** `https://api.asaas.com/api/v3` (trocar `ASAAS_API_URL` no Railway)
+```
+[1] Produtor cria produto
+     → POST /api/products/create
+     → Asaas cria /paymentLinks com externalReference=owner_{uid}
+     → Se Asaas falhar → ERRO 400, produto NÃO salvo
+     → Supabase products: name + price + asaas_link_id + asaas_price + url + owner_id
 
-**Fluxo de checkout:**
-1. Frontend → `POST /api/asaas/checkout` com `{amount, description, billingType, customer}`
-2. Railway cria/busca customer no Asaas
-3. Railway cria payment no Asaas
-4. Railway salva venda em `sales` com status `pendente`
-5. Retorna `{paymentUrl, chargeId}` ao frontend
-6. Asaas notifica via webhook → Railway atualiza `sales.status = 'pago'`
+[2] Cliente acessa o link e paga
+     → Asaas processa o pagamento
+     → Asaas dispara POST /api/asaas/webhook (PAYMENT_RECEIVED ou PAYMENT_CONFIRMED)
 
-**Fluxo de saque:**
-1. Frontend → `POST /api/asaas/withdraw` com `{amount, pixKey, pixKeyType}`
-2. Railway cria transferência PIX no Asaas
-3. Salva em `withdrawals` com status `processando`
-4. Webhook `TRANSFER_DONE` atualiza para `concluido`
+[3] Webhook processa (3 casos):
+     Caso 1: asaas_id já existe em sales → só atualiza status/valores (anti-duplicata)
+     Caso 2: payment.paymentLink → busca product por asaas_link_id → insere em sales
+     Caso 3: fallback externalReference → extrai owner_id → insere em sales sem product_id
+
+[4] Dashboard lê Supabase (não o Asaas diretamente)
+     → /api/dashboard/kpis filtra sales por owner_id + payment_date do mês
+     → Retorna receitaBrutaMes, receitaLiquidaMes, taxasAsaasMes, taxaPlataformaMes
+```
 
 ---
 
 ### 5. Chat IA — Anthropic
 
 **Modelo:** `claude-haiku-4-5-20251001`  
-**Rota:** `POST /api/chat`
-
-**System prompt:** Assistente especializado em marketing digital e vendas de infoprodutos. Responde em português brasileiro.
+**Rota:** `POST /api/chat`  
+**System prompt:** Assistente de marketing digital para infoprodutores, PT-BR.
 
 ---
 
 ### 6. WhatsApp — Evolution API
 
-**Status:** Configuração pendente (variáveis de ambiente com placeholders)
+**Status atual:** ❌ Não configurado — `EVOLUTION_API_URL` é placeholder (`https://evo.seudominio.com`)
 
 **Para ativar:**
 1. Instalar Evolution API em servidor próprio ou usar cloud
@@ -184,92 +197,44 @@ FRONTEND_ORIGIN
 
 ---
 
-## Fluxo de Dados por Aba
-
-### Admin — Dashboard
-```
-/api/admin/kpis → receita, taxas, transações, produtores, afiliados, MRR
-/api/admin/sales?limit=4 → últimas 4 vendas da plataforma
-/api/admin/clients → lista de produtores com volume e taxas
-/api/admin/chart?period=X → dados para gráfico de área
-```
-
-### Admin — Vendas
-```
-/api/admin/sales?limit=100 → todas as vendas (filtrável por produtor)
-```
-
-### Admin — Clientes (Produtores)
-```
-/api/admin/clients → lista com volume e taxas por produtor
-/api/admin/sales?owner=UUID → vendas de um produtor específico (perfil)
-```
-
-### Produtor — Início (Dashboard)
-```
-/api/dashboard/kpis → receitaMes, vendasHoje, assinaturasAtivas
-Supabase: sales (últimas 3) + customers (total)
-Supabase: sales (agregado por período para gráfico)
-```
-
-### Produtor — Produtos
-```
-Supabase: products (lista do produtor)
-Supabase: sales (receita/vendas do mês por produto)
-Supabase: subscriptions (contagem ativas por produto)
-Supabase: affiliates (contagem ativos por produto)
-```
-
-### Produtor — Clientes
-```
-Supabase: customers (lista com sales e aniversários)
-```
-
-### Produtor — Sacar
-```
-/api/asaas/balance → saldo disponível
-/api/asaas/withdraw → solicita saque PIX
-```
-
----
-
-## Status de Implementação
+## Status Real de Implementação
 
 | Funcionalidade | Status | Notas |
 |---|---|---|
-| Login / Auth | ✅ Funcionando | Supabase Auth + localStorage demo |
-| Dashboard Produtor | ✅ Dados reais | KPIs via Railway |
-| Dashboard Admin | ✅ Dados reais | Todos os produtores via service role |
-| Vendas Produtor | ✅ Dados reais | Supabase direto |
-| Vendas Admin | ✅ Dados reais | /api/admin/sales |
-| Assinaturas | ✅ Dados reais | Supabase direto |
-| Produtos | ✅ Dados reais | Supabase com agregações |
-| Afiliados | ✅ Dados reais | Supabase direto |
-| Clientes (Painel) | ✅ Dados reais | Supabase com joins |
-| Saque | ✅ Funcional | Asaas sandbox |
-| Checkout | ✅ Funcional | Asaas sandbox |
-| Chat IA | ✅ Funcional | Anthropic claude-haiku |
-| WhatsApp | ⚠️ Pendente | Aguardando configuração Evolution API |
-| Analytics Visitantes | 🔜 Em breve | Sem infraestrutura de analytics ainda |
-| Gráfico de Receita | ✅ Dados reais | Agrega vendas do Supabase |
+| Login / Auth | ✅ Funcionando | Supabase Auth + trigger profile |
+| Criação de produto com link real | ✅ Corrigido | Bloqueia se Asaas falhar; logs completos |
+| Delete de produto | ✅ Implementado | DELETE /api/products/:id + botão no frontend |
+| Webhook → venda com dono | ✅ Corrigido | 3 casos + anti-duplicata + externalReference |
+| Dados financeiros completos | ✅ Implementado | gross/net/asaas_fee/platform_fee/producer_amount |
+| Dashboard KPIs (bruto + líquido) | ✅ Corrigido | Usa payment_date; retorna 6 campos financeiros |
+| Gráfico de receita | ✅ Corrigido | Usa payment_date; normaliza producer_amount |
+| Sync histórico Asaas | ✅ Implementado | /api/sync/history com dados financeiros completos |
+| Saldo interno (ledger) | ✅ Implementado | /api/ledger/balance usa producer_amount |
+| Vendas / Assinaturas / Afiliados | ✅ Dados reais | Supabase direto |
+| Clientes (deduplicação) | ✅ Corrigido | upsert via asaas_customer_id |
+| Saque PIX | ✅ Funcional | Baseado em producer_amount (não gross) |
+| Chat IA | ✅ Funcional | Anthropic Claude Haiku |
+| WhatsApp | ❌ Não configurado | EVOLUTION_API_URL é placeholder |
+| Analytics Visitantes | 🔜 Futuro | Sem infraestrutura ainda |
 
 ---
 
-## Para Produção
+## Checklist para produção
 
-1. **Trocar sandbox Asaas por produção:**
-   - Alterar `ASAAS_API_URL` no Railway: `https://api.asaas.com/api/v3`
-   - Usar chave de produção em `ASAAS_API_KEY`
-
-2. **Configurar WhatsApp:**
-   - Instalar Evolution API
-   - Preencher `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`
-   - Escanear QR code para conectar número
-
-3. **Configurar webhooks Asaas:**
-   - No painel Asaas → Configurações → Webhooks
+1. **Aplicar migration_v3.sql no Supabase** ← CRÍTICO (sem isso, campos financeiros ficam NULL)
+2. **Configurar webhook no painel Asaas Sandbox:**
    - URL: `https://josephpay-production.up.railway.app/api/asaas/webhook`
-
-4. **Domínio customizado:**
-   - Vercel: adicionar domínio customizado em Settings → Domains
-   - Atualizar `FRONTEND_ORIGIN` no Railway com o novo domínio
+3. **Testar fluxo completo:**
+   - Criar produto → ver log `[products/create] resposta Asaas: {id, url}`
+   - Pagar via link (cartão sandbox: `5500000000000004`)
+   - Ver log `[webhook] produto "X" pago — bruto R$X, produtor R$Y`
+   - Verificar tabela `sales` no Supabase
+   - Verificar dashboard (receita ≠ zero)
+4. **Trocar sandbox por produção quando pronto:**
+   - `ASAAS_API_URL` → `https://api.asaas.com/api/v3`
+   - `ASAAS_API_KEY` → chave de produção
+5. **Configurar WhatsApp:**
+   - `EVOLUTION_API_URL` → URL real da Evolution API
+6. **Domínio customizado:**
+   - Vercel Settings → Domains
+   - Atualizar `FRONTEND_ORIGIN` no Railway
