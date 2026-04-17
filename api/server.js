@@ -544,6 +544,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
 
     // Helper: cria payment link reutilizável no Asaas
     // billingType "RECURRENT" → assinatura mensal; qualquer outro → pagamento único
+    const asaasBaseUrl = ASAAS_URL.replace("/api/v3", ""); // ex: https://sandbox.asaas.com
     const criarPaymentLink = async (billingTypeOverride) => {
       const isRecurrent = (billingTypeOverride || billingType) === "RECURRENT";
       const payload = {
@@ -556,10 +557,20 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       };
       if (isRecurrent) payload.subscriptionCycle = "MONTHLY";
       const resp = await asaas.post("/paymentLinks", payload);
-      return {
-        url: resp.data.url || resp.data.paymentLinkUrl || "",
-        id:  resp.data.id  || "",
-      };
+      // Log para debug — ver exatamente o que Asaas retorna
+      console.log("[products/create] Asaas paymentLink resp:", JSON.stringify({
+        id: resp.data.id,
+        url: resp.data.url,
+        paymentLinkUrl: resp.data.paymentLinkUrl,
+        shortUrl: resp.data.shortUrl,
+      }));
+      // URL: tenta vários campos; fallback constrói a URL a partir do ID
+      const linkId  = resp.data.id || "";
+      const linkUrl = resp.data.url
+        || resp.data.paymentLinkUrl
+        || resp.data.shortUrl
+        || (linkId ? `${asaasBaseUrl}/c/${linkId}` : "");
+      return { url: linkUrl, id: linkId };
     };
 
     try {
@@ -727,6 +738,113 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
 
     res.json({ sales: data || [] });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SYNC — importa pagamentos históricos do Asaas para Supabase
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/sync/history
+ * Puxa os últimos 90 dias de pagamentos RECEIVED/CONFIRMED do Asaas e,
+ * para cada um que ainda não está na tabela sales, tenta vinculá-lo a um
+ * produto via asaas_link_id.
+ *
+ * Retorna: { inserted, skipped, errors }
+ */
+app.post("/api/sync/history", requireAuth, async (req, res) => {
+  try {
+    const uid    = req.user.id;
+    const since  = new Date(Date.now() - 90 * 86400000).toISOString().split("T")[0];
+
+    // 1. Busca pagamentos do Asaas dos últimos 90 dias
+    let asaasPayments = [];
+    try {
+      const r1 = await asaas.get(`/payments?status=RECEIVED&dateCreatedStart=${since}&limit=100`);
+      const r2 = await asaas.get(`/payments?status=CONFIRMED&dateCreatedStart=${since}&limit=100`);
+      asaasPayments = [...(r1.data?.data || []), ...(r2.data?.data || [])];
+      // Remove duplicatas pelo id
+      const seen = new Set();
+      asaasPayments = asaasPayments.filter(p => seen.has(p.id) ? false : seen.add(p.id));
+    } catch (e) {
+      console.warn("[sync/history] Asaas fetch error:", e.message);
+    }
+
+    // 2. Busca todos os produtos do produtor logado (com asaas_link_id)
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, owner_id, price, name, asaas_link_id, url")
+      .eq("owner_id", uid);
+
+    // 3. IDs de vendas já existentes no banco
+    const { data: existingSales } = await supabase
+      .from("sales")
+      .select("asaas_id")
+      .eq("owner_id", uid);
+    const existingIds = new Set((existingSales || []).map(s => s.asaas_id));
+
+    const PLATFORM_FEE_RATE = 0.0099;
+    let inserted = 0, skipped = 0, errors = 0;
+
+    for (const payment of asaasPayments) {
+      if (existingIds.has(payment.id)) { skipped++; continue; }
+
+      const clientAmount   = Number(payment.value || payment.netValue || 0);
+      const platformFee    = Math.round((clientAmount - clientAmount / 1.0099) * 100) / 100;
+      const producerAmount = Math.round((clientAmount / 1.0099) * 100) / 100;
+
+      // Tenta vincular ao produto pelo asaas_link_id
+      const product = (products || []).find(p =>
+        p.asaas_link_id && payment.paymentLink && p.asaas_link_id === payment.paymentLink
+      );
+
+      // Dados do cliente (se disponível na resposta do Asaas)
+      let customerId = null;
+      if (payment.customer) {
+        // Tenta criar/achar customer no Supabase
+        const custName  = payment.customerObject?.name  || payment.customer || "Cliente";
+        const custEmail = payment.customerObject?.email || null;
+        const custPhone = payment.customerObject?.phone || null;
+        const { data: custRow } = await supabase
+          .from("customers")
+          .upsert({ name: custName, email: custEmail, phone: custPhone }, { onConflict: "email", ignoreDuplicates: false })
+          .select("id")
+          .maybeSingle();
+        customerId = custRow?.id || null;
+      }
+
+      const salePayload = {
+        product_id:      product?.id      || null,
+        owner_id:        product?.owner_id || uid,
+        customer_id:     customerId,
+        amount:          clientAmount,
+        platform_fee:    platformFee,
+        producer_amount: producerAmount,
+        status:          "pago",
+        asaas_id:        payment.id,
+        created_at:      payment.confirmedDate || payment.dateCreated
+                         ? new Date(payment.confirmedDate || payment.dateCreated).toISOString()
+                         : undefined,
+      };
+      // Remove campos undefined
+      Object.keys(salePayload).forEach(k => salePayload[k] === undefined && delete salePayload[k]);
+
+      const { error: insErr } = await supabase.from("sales").insert(salePayload);
+      if (insErr) {
+        console.warn("[sync/history] insert error:", insErr.message, "payment:", payment.id);
+        errors++;
+      } else {
+        inserted++;
+        existingIds.add(payment.id); // evita duplicata dentro do mesmo sync
+      }
+    }
+
+    console.log(`[sync/history] user=${uid} — inserted:${inserted} skipped:${skipped} errors:${errors}`);
+    res.json({ inserted, skipped, errors, total: asaasPayments.length });
+  } catch (err) {
+    console.error("[sync/history]", err.message);
     res.status(500).json({ error: err.message });
   }
 });

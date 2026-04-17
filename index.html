@@ -903,13 +903,29 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   const [kpis,setKpis]=useState(null);
   const [lastSales,setLastSales]=useState(null);
   const [totalClientes,setTotalClientes]=useState(null);
-  useEffect(()=>{
+  const [syncing,setSyncing]=useState(false);
+  const [syncResult,setSyncResult]=useState(null);
+  const refreshData=()=>{
     apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     if(_sb){
       _sb.from('sales').select('amount,status,created_at,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
       _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
     }
-  },[]);
+  };
+  const syncHistory=async()=>{
+    setSyncing(true);setSyncResult(null);
+    const r=await apiCall('/api/sync/history',{method:'POST'});
+    setSyncing(false);
+    if(r&&!r.error){
+      setSyncResult(`✓ ${r.inserted} vendas sincronizadas`);
+      refreshData(); // recarrega KPIs e lista
+      setTimeout(()=>setSyncResult(null),5000);
+    } else {
+      setSyncResult("Erro ao sincronizar. Tente novamente.");
+      setTimeout(()=>setSyncResult(null),4000);
+    }
+  };
+  useEffect(()=>{refreshData();},[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
@@ -945,10 +961,14 @@ function DashClient({accent=GOLD,isDeise,onNav}){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
-          <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={syncHistory} disabled={syncing} title="Sincronizar vendas do Asaas" style={{background:syncing?"rgba(212,175,55,0.1)":"rgba(212,175,55,0.08)",border:`1px solid ${GOLD}20`,borderRadius:20,padding:"4px 11px",color:syncing?MUTED:GOLD,fontSize:11,fontWeight:700,cursor:syncing?"not-allowed":"pointer",fontFamily:F,transition:"all 0.2s"}}>{syncing?"⟳ Sync…":"⟳ Sync"}</button>
+            <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+          </div>
         </div>
+        {syncResult&&<div style={{padding:"10px 18px",background:syncResult.startsWith("✓")?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)",color:syncResult.startsWith("✓")?GREEN:RED,fontSize:12,fontWeight:600,borderBottom:`1px solid ${BDR}`}}>{syncResult}</div>}
         {lastSales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
-        {lastSales!==null&&lastSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
+        {lastSales!==null&&lastSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda. Clique em ⟳ Sync para importar vendas do Asaas.</div>}
         {(lastSales||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
           const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -1265,6 +1285,11 @@ function CoproducaoView(){
 
 function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   const [detTab,setDetTab]=useState(null);
+  const [copiedLink,setCopiedLink]=useState(false);
+  const copiarLink=()=>{
+    if(!produto.url)return;
+    navigator.clipboard?.writeText(produto.url).then(()=>{setCopiedLink(true);setTimeout(()=>setCopiedLink(false),2500);});
+  };
   
   const CARDS = [
     {id:"vendas", label:"Vendas", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuAGkuyzZnqoUM08agRXlkrfxyMPG1tGTOsGJ-31vPSQjy3rEEHMBFLq2ZLNqvyvHLkkTTYW-_hLzpuoBRJTrvv4xSSGB-jp3sbsOFDReLicp6zd81gmzD9BwYODCdJPBXvM2_GVLDhTvSbz4JL8gWYb4wMHdhb7NIrK8bm9KwT90lqkusGrmpiu97ip26oz_yQjoLrQB-6d84oW1NYU6dSKW2_4wfU_YMoZsy5I6jBpdbdPI2oUjKs7A_e065DuDo1ss2lfiD1la8c"},
@@ -1295,13 +1320,24 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>{produto.name}</div>
         </div>
         <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{fmtBRL(produto.receitaMes||0)}</div>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:24}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:16}}>
           <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>{produto.totalVendas||0} vendas este mês</span>
-          <span style={{color:"rgba(12,12,12,0.5)",fontSize:12}}>🔗 {produto.url||`${(produto.name||"produto").toLowerCase().replace(/\s+/g,"")}.josephpay.com`}</span>
         </div>
+        {/* Link de checkout — destaque visual */}
+        {produto.url?(
+          <div style={{background:"rgba(12,12,12,0.15)",borderRadius:14,padding:"12px 16px",marginBottom:16,position:"relative",zIndex:1}}>
+            <div style={{color:"rgba(12,12,12,0.5)",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Link de checkout</div>
+            <div style={{color:"rgba(12,12,12,0.8)",fontSize:12,fontWeight:600,wordBreak:"break-all",lineHeight:1.5,marginBottom:10}}>{produto.url}</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={copiarLink} style={{flex:1,background:copiedLink?"rgba(34,197,94,0.15)":"rgba(12,12,12,0.2)",border:copiedLink?"1px solid rgba(34,197,94,0.4)":"1px solid rgba(12,12,12,0.15)",borderRadius:100,padding:"9px",color:copiedLink?"#22C55E":"rgba(12,12,12,0.8)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,transition:"all 0.2s"}}>{copiedLink?"✓ Copiado!":"Copiar link"}</button>
+              <button onClick={()=>window.open(produto.url,"_blank")} style={{flex:1,background:"rgba(12,12,12,0.2)",border:"1px solid rgba(12,12,12,0.15)",borderRadius:100,padding:"9px",color:"rgba(12,12,12,0.8)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>Abrir checkout →</button>
+            </div>
+          </div>
+        ):(
+          <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:14,padding:"12px 16px",marginBottom:16,color:"rgba(239,68,68,0.8)",fontSize:12,position:"relative",zIndex:1}}>Link não gerado — delete e recrie o produto.</div>
+        )}
         <div style={{display:"flex",gap:10,marginBottom:16,position:"relative",zIndex:1}}>
           <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Editar produto</button>
-          <button style={{background:"transparent",border:"1.5px solid rgba(12,12,12,0.2)",borderRadius:100,padding:"8px 22px",color:"rgba(12,12,12,0.7)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Abrir site</button>
         </div>
         <button onClick={()=>setDetTab("saque")} style={{width:"100%",background:"rgba(12,12,12,0.9)",border:"none",borderRadius:100,padding:"14px",color:GOLD,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em",position:"relative",zIndex:1}}>Sacar</button>
       </div>
@@ -1332,7 +1368,9 @@ function CriarProdutoModal({onClose,onCreated}){
   const [tipo,setTipo]=useState("UNDEFINED");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
-  const [link,setLink]=useState(null);
+  const [created,setCreated]=useState(false); // boolean — produto foi criado
+  const [link,setLink]=useState("");           // URL do checkout (pode ser vazia)
+  const [copied,setCopied]=useState(false);
   const criar=async()=>{
     if(!nome||!preco){setError("Preencha nome e preço.");return;}
     setError("");setLoading(true);
@@ -1341,27 +1379,37 @@ function CriarProdutoModal({onClose,onCreated}){
     const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
-    // Mostra tela de sucesso com o link primeiro, recarrega a lista em background
     setLink(d.paymentUrl||"");
-    if(onCreated) onCreated();
+    setCreated(true);          // mostra tela de sucesso independente de ter URL
+    if(onCreated) onCreated(); // refresh da lista em background
+  };
+  const copiar=()=>{
+    if(!link)return;
+    navigator.clipboard?.writeText(link).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
   };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
-        {link?(
+        {created?(
           <div style={{textAlign:"center",padding:"20px 0 10px"}}>
             <div style={{color:GREEN,fontSize:40,marginBottom:12}}>✓</div>
             <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:8}}>Produto criado!</div>
-            <div style={{color:MUTED,fontSize:13,marginBottom:20}}>Link de pagamento gerado com sucesso.</div>
-            <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",marginBottom:20,wordBreak:"break-all"}}>
-              <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Link de checkout</div>
-              <div style={{color:GOLD,fontSize:13,fontWeight:600}}>{link}</div>
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>{navigator.clipboard?.writeText(link);}} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Copiar link</button>
-              <button onClick={onClose} style={{flex:1,background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
-            </div>
+            <div style={{color:MUTED,fontSize:13,marginBottom:20}}>Já aparece na sua lista de produtos.</div>
+            {link?(
+              <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",marginBottom:20}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Link de checkout</div>
+                <div style={{color:GOLD,fontSize:12,fontWeight:600,wordBreak:"break-all",marginBottom:12,lineHeight:1.5}}>{link}</div>
+                <button onClick={copiar} style={{width:"100%",background:copied?`${GREEN}18`:GOLD,border:copied?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:"12px",color:copied?GREEN:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"all 0.2s"}}>
+                  {copied?"✓ Copiado!":"Copiar link"}
+                </button>
+              </div>
+            ):(
+              <div style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 16px",marginBottom:20}}>
+                <div style={{color:MUTED,fontSize:13}}>Link sendo gerado… veja em Gerenciar produto.</div>
+              </div>
+            )}
+            <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
           </div>
         ):(
           <>
@@ -1405,6 +1453,7 @@ function ProdutosTab({accent,isDeise}){
   const [showCriar,setShowCriar]=useState(false);
   const [produtos,setProdutos]=useState(null);
   const [refresh,setRefresh]=useState(0);
+  const [copiedIdx,setCopiedIdx]=useState(null);
   useEffect(()=>{
     apiCall('/api/products').then(d=>{
       if(d?.products) setProdutos(d.products);
@@ -1432,7 +1481,14 @@ function ProdutosTab({accent,isDeise}){
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
                   <Tag status={p.status||"ativo"}/>
                 </div>
-                <div style={{color:MUTED,fontSize:12,fontFamily:F}}>🔗 {p.url||`${p.name.toLowerCase().replace(/\s+/g,"")||"produto"}.josephpay.com`}</div>
+                {p.url?(
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+                    <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>🔗 {p.url}</span>
+                    <button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(p.url).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});}} style={{flexShrink:0,background:copiedIdx===i?`${GREEN}18`:"rgba(212,175,55,0.12)",border:copiedIdx===i?`1px solid ${GREEN}40`:`1px solid ${GOLD}30`,borderRadius:20,padding:"3px 10px",color:copiedIdx===i?GREEN:GOLD,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",transition:"all 0.2s"}}>{copiedIdx===i?"✓ Copiado":"Copiar link"}</button>
+                  </div>
+                ):(
+                  <div style={{color:"rgba(239,68,68,0.6)",fontSize:11,fontFamily:F,marginTop:2}}>🔗 Link não gerado — recrie o produto</div>
+                )}
               </div>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,paddingBottom:20,borderBottom:`1px solid ${BDR}`}}>
