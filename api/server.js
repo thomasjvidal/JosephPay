@@ -433,18 +433,10 @@ app.post("/api/asaas/webhook", async (req, res) => {
 
     const existingSale = alreadyExists || existsByRef;
     if (existingSale) {
-      // Só atualiza status e dados financeiros, não cria nova linha
-      const gross = Number(payment.value || 0);
-      const net   = Number(payment.netValue || gross);
-      const { platformFee, asaasFee, producerAmount } = calcFees(gross, net);
+      // Atualiza só campos operacionais — valores financeiros já foram calculados corretamente no checkout
       await supabase.from("sales").update({
         status:            "pago",
         asaas_id:          payment.id,
-        gross_amount:      gross,
-        net_amount:        net,
-        asaas_fee:         asaasFee,
-        platform_fee:      platformFee,
-        producer_amount:   producerAmount,
         installment_count: payment.installmentCount || 1,
         billing_type:      payment.billingType || "UNKNOWN",
         payment_date:      payment.confirmedDate || payment.paymentDate || new Date().toISOString(),

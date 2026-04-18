@@ -1626,7 +1626,7 @@ function PainelClientesTab({targetCustomerId}){
   const [sel,setSel]=useState(null);
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,status,created_at,products(name))').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[clientes]",error.message);setClientes(data||[]);});
   },[]);
   useEffect(()=>{
