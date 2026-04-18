@@ -420,19 +420,42 @@ app.post("/api/asaas/webhook", async (req, res) => {
     if (payment.paymentLink) {
       // ── CASO 2: Pagamento via link de produto ─────────────────────────────
       const { data: product } = await supabase.from("products")
-        .select("id,owner_id,name")
+        .select("id,owner_id,name,price")
         .eq("asaas_link_id", payment.paymentLink)
         .maybeSingle();
 
       if (product) {
+        // Opção B: produtor recebe exatamente o preço base que ele definiu
+        saleBase.producer_amount = Number(product.price);
+        saleBase.platform_fee    = Math.round((grossAmount - Number(product.price)) * 100) / 100;
+
         await supabase.from("sales").insert({ ...saleBase, product_id: product.id, owner_id: product.owner_id });
-        console.log(`[webhook] produto "${product.name}" pago — bruto R$${grossAmount}, produtor R$${producerAmount}`);
+        console.log(`[webhook] produto "${product.name}" pago — bruto R$${grossAmount}, produtor R$${product.price}`);
+
+        if (payment.subscription) {
+          await supabase.from("subscriptions").upsert(
+            {
+              asaas_id:    payment.subscription,
+              product_id:  product.id,
+              owner_id:    product.owner_id,
+              customer_id: customerId,
+              amount:      Number(product.price),
+              status:      "ativo",
+              plan:        "mensal",
+            },
+            { onConflict: "asaas_id", ignoreDuplicates: false }
+          );
+          console.log(`[webhook] assinatura ${payment.subscription} upserted`);
+        }
 
       } else if (payment.externalReference?.startsWith("owner_")) {
         // ── CASO 3: Fallback via externalReference ────────────────────────
         const ownerId = payment.externalReference.replace("owner_", "");
+        // Sem product.price: extrai valor base pelo inverso da taxa embutida
+        saleBase.producer_amount = Math.round(grossAmount / (1 + PLATFORM_FEE_RATE) * 100) / 100;
+        saleBase.platform_fee    = Math.round((grossAmount - saleBase.producer_amount) * 100) / 100;
         await supabase.from("sales").insert({ ...saleBase, owner_id: ownerId });
-        console.log(`[webhook] venda via externalReference owner=${ownerId} — bruto R$${grossAmount}`);
+        console.log(`[webhook] venda via externalReference owner=${ownerId} — bruto R$${grossAmount}, produtor R$${saleBase.producer_amount}`);
 
       } else {
         console.warn("[webhook] paymentLink sem produto nem externalReference:", payment.paymentLink);
@@ -613,7 +636,7 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
     if      (period === "hoje")      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     else if (period === "semana")    from = new Date(now.getTime() - 7  * 86400000).toISOString();
     else if (period === "mes")       from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 86400000).toISOString();
+    else if (period === "trimestre") from = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString();
     else                             from = new Date(now.getFullYear(), 0, 1).toISOString();
 
     const { data } = await supabase.from("sales")
@@ -712,7 +735,7 @@ app.get("/api/admin/chart", requireAuth, async (req, res) => {
     if      (period === "hoje")      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     else if (period === "semana")    from = new Date(now.getTime() - 7  * 86400000).toISOString();
     else if (period === "mes")       from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    else if (period === "trimestre") from = new Date(now.getTime() - 90 * 86400000).toISOString();
+    else if (period === "trimestre") from = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString();
     else                             from = new Date(now.getFullYear(), 0, 1).toISOString();
 
     let q = supabase.from("sales").select("gross_amount,amount,payment_date,created_at").eq("status", "pago")

@@ -132,8 +132,8 @@ function Btn({children,onClick,color,outline,sm}){
 function aggregateChartData(sales,period){
   const now=new Date();
   if(period==="hoje"){
-    const hrs=Array.from({length:8},(_,i)=>({label:`${8+i}h`,v:0}));
-    (sales||[]).forEach(s=>{const h=new Date(s.created_at).getHours()-8;if(h>=0&&h<8)hrs[h].v+=Number(s.amount);});
+    const hrs=Array.from({length:8},(_,i)=>({label:`${String(i*3).padStart(2,'0')}h`,v:0}));
+    (sales||[]).forEach(s=>{const h=Math.floor(new Date(s.created_at).getHours()/3);if(h>=0&&h<8)hrs[h].v+=Number(s.amount);});
     return hrs;
   }
   if(period==="semana"){
@@ -148,9 +148,10 @@ function aggregateChartData(sales,period){
     return days;
   }
   if(period==="trimestre"){
-    const weeks=Array.from({length:12},(_,i)=>({label:`S${i+1}`,v:0}));
-    const base=new Date(now.getTime()-90*86400000);
-    (sales||[]).forEach(s=>{const w=Math.floor((new Date(s.created_at)-base)/(7*86400000));if(w>=0&&w<12)weeks[w].v+=Number(s.amount);});
+    const qStart=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
+    const nWeeks=Math.max(1,Math.ceil((now-qStart)/(7*86400000)));
+    const weeks=Array.from({length:nWeeks},(_,i)=>({label:`S${i+1}`,v:0}));
+    (sales||[]).forEach(s=>{const w=Math.floor((new Date(s.created_at)-qStart)/(7*86400000));if(w>=0&&w<nWeeks)weeks[w].v+=Number(s.amount);});
     return weeks;
   }
   const months=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map(l=>({label:l,v:0}));
@@ -908,7 +909,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   const refreshData=()=>{
     apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     if(_sb){
-      _sb.from('sales').select('amount,status,created_at,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
+      _sb.from('sales').select('amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
       _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
     }
   };
@@ -932,7 +933,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
-          <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"3px 12px",color:"rgba(12,12,12,0.55)",cursor:"pointer",fontSize:11,fontFamily:F}}>{vis?"●":"○"}</button>
+          <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"4px 10px",color:"rgba(12,12,12,0.55)",cursor:"pointer",display:"flex",alignItems:"center"}}>{vis?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>}</button>
         </div>
         <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -940,6 +941,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           {kpis?.receitaBrutaMes&&kpis.receitaBrutaMes!==kpis.receitaLiquidaMes&&<span style={{background:"rgba(212,175,55,0.1)",color:"rgba(12,12,12,0.5)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Bruto: {vis?fmtBRL(kpis.receitaBrutaMes):"••••••"}</span>}
         </div>
       </div>
+      <button onClick={()=>onNav("saque")} style={{background:`linear-gradient(135deg,${GOLD},#B8941A)`,border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
           <KPICard label="Vendas hoje" value={kpis?String(kpis.vendasHoje):"—"} accent={GOLD} icon="↑" vis={vis}/>
@@ -976,7 +978,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           const nome=s.customers?.name||"Cliente";
           const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
           return(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(lastSales.length-1)?`1px solid ${BDR}`:"none"}}>
+          <div key={i} onClick={()=>s.customer_id&&onNav("clientes",s.customer_id)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(lastSales.length-1)?`1px solid ${BDR}`:"none",cursor:s.customer_id?"pointer":"default"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora}</div></div>
             <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
@@ -1222,6 +1224,8 @@ function AdminPanel({onLogout}){
 
 function ClientPanel({clientName,userEmail,onLogout}){
   const [tab,setTab]=useState("dashboard");
+  const [navCustomerId,setNavCustomerId]=useState(null);
+  const onNav=(t,cid=null)=>{setTab(t);setNavCustomerId(cid);};
   const [showPerfil,setShowPerfil]=useState(false);
   const [wapConnected,setWapConnected]=useState(null);
   useEffect(()=>{
@@ -1240,11 +1244,12 @@ function ClientPanel({clientName,userEmail,onLogout}){
   ];
   const TITLES={dashboard:clientName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
   const VIEWS={
-    dashboard:<InicioTab accent={accent} isDeise={isDeise} onNav={setTab}/>,
+    dashboard:<InicioTab accent={accent} isDeise={isDeise} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={isDeise}/>,
-    clientes:<ClientesTab/>,
+    clientes:<ClientesTab targetCustomerId={navCustomerId}/>,
     maquina:<MaquinaTab/>,
-    chat:<ChatIA productName={product} onBack={()=>setTab("dashboard")}/>,
+    chat:<ChatIA productName={product} onBack={()=>onNav("dashboard")}/>,
+    saque:<Sacar/>,
   };
   return(
     <>
@@ -1597,7 +1602,7 @@ function AutomacoesZap(){
 
 // ClientesCRM removido — substituído por PainelClientesTab com dados reais do Supabase
 
-function PainelClientesTab(){
+function PainelClientesTab({targetCustomerId}){
   const [clientes,setClientes]=useState(null);
   const [sel,setSel]=useState(null);
   useEffect(()=>{
@@ -1605,6 +1610,12 @@ function PainelClientesTab(){
     _sb.from('customers').select('*,sales(amount,status,created_at,products(name))').order('created_at',{ascending:false})
       .then(({data})=>{if(data)setClientes(data);});
   },[]);
+  useEffect(()=>{
+    if(targetCustomerId&&clientes){
+      const idx=clientes.findIndex(c=>c.id===targetCustomerId);
+      if(idx!==-1)setSel(idx);
+    }
+  },[targetCustomerId,clientes]);
 
   // Calcula aniversários próximos (30 dias)
   const today=new Date();
@@ -1718,7 +1729,7 @@ function PainelClientesTab(){
   );
 }
 
-function ClientesTab(){
+function ClientesTab({targetCustomerId}){
   const [sub,setSub]=useState("painel");
   const segTabs=[{id:"painel",label:"Painel"},{id:"automacoes",label:"Automações"}];
   return(
@@ -1728,7 +1739,7 @@ function ClientesTab(){
           <button key={s.id} onClick={()=>setSub(s.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:s.id===sub?CARD3:"transparent",border:"none",color:s.id===sub?TEXT:MUTED,fontSize:12,fontWeight:s.id===sub?700:500,cursor:"pointer",fontFamily:F,transition:"background 0.15s"}}>{s.label}</button>
         ))}
       </div>
-      {sub==="painel"&&<PainelClientesTab/>}
+      {sub==="painel"&&<PainelClientesTab targetCustomerId={targetCustomerId}/>}
       {sub==="automacoes"&&<AutomacoesZap/>}
     </div>
   );

@@ -205,14 +205,19 @@ FRONTEND_ORIGIN
 | Criação de produto com link real | ✅ Corrigido | Bloqueia se Asaas falhar; logs completos |
 | Delete de produto | ✅ Implementado | DELETE /api/products/:id + botão no frontend |
 | Webhook → venda com dono | ✅ Corrigido | 3 casos + anti-duplicata + externalReference |
+| Modelo financeiro (Opção B) | ✅ Corrigido | producer_amount = product.price (valor base exato); Case 3 usa gross/1.0099 |
 | Dados financeiros completos | ✅ Implementado | gross/net/asaas_fee/platform_fee/producer_amount |
 | Dashboard KPIs (bruto + líquido) | ✅ Corrigido | Usa payment_date; retorna 6 campos financeiros |
-| Gráfico de receita | ✅ Corrigido | Usa payment_date; normaliza producer_amount |
+| Gráfico "hoje" | ✅ Corrigido | 8 slots de 3h (00h-21h), dia todo |
+| Gráfico "trimestre" | ✅ Corrigido | Trimestre calendário (Q1=Jan, Q2=Abr, etc.) |
+| Assinaturas no webhook | ✅ Implementado | Upsert em subscriptions quando payment.subscription presente |
 | Sync histórico Asaas | ✅ Implementado | /api/sync/history com dados financeiros completos |
 | Saldo interno (ledger) | ✅ Implementado | /api/ledger/balance usa producer_amount |
 | Vendas / Assinaturas / Afiliados | ✅ Dados reais | Supabase direto |
 | Clientes (deduplicação) | ✅ Corrigido | upsert via asaas_customer_id |
-| Saque PIX | ✅ Funcional | Baseado em producer_amount (não gross) |
+| Clientes (aba UI) | ⚠️ Depende de migration_v3 | Sem migration_v3, asaas_customer_id não existe |
+| Clique venda → cliente específico | ✅ Implementado | onNav("clientes", customerId) abre cliente direto |
+| Saque PIX | ✅ Funcional | Componente Sacar + backend ledger; botão no dashboard |
 | Chat IA | ✅ Funcional | Anthropic Claude Haiku |
 | WhatsApp | ❌ Não configurado | EVOLUTION_API_URL é placeholder |
 | Analytics Visitantes | 🔜 Futuro | Sem infraestrutura ainda |
