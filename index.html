@@ -909,7 +909,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   const refreshData=()=>{
     apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     if(_sb){
-      _sb.from('sales').select('amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
+      _sb.from('sales').select('amount,producer_amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
       _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
     }
   };
@@ -968,7 +968,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={syncHistory} disabled={syncing} title="Sincronizar vendas do Asaas" style={{background:syncing?"rgba(212,175,55,0.1)":"rgba(212,175,55,0.08)",border:`1px solid ${GOLD}20`,borderRadius:20,padding:"4px 11px",color:syncing?MUTED:GOLD,fontSize:11,fontWeight:700,cursor:syncing?"not-allowed":"pointer",fontFamily:F,transition:"all 0.2s"}}>{syncing?"⟳ Sync…":"⟳ Sync"}</button>
-            <button onClick={()=>onNav("produtos")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+            <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
           </div>
         </div>
         {syncResult&&<div style={{padding:"10px 18px",background:syncResult.startsWith("✓")?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)",color:syncResult.startsWith("✓")?GREEN:RED,fontSize:12,fontWeight:600,borderBottom:`1px solid ${BDR}`}}>{syncResult}</div>}
@@ -981,7 +981,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <div key={i} onClick={()=>s.customer_id&&onNav("clientes",s.customer_id)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(lastSales.length-1)?`1px solid ${BDR}`:"none",cursor:s.customer_id?"pointer":"default"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
             <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{hora}</div></div>
-            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
+            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.producer_amount||s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
           </div>
           );
         })}
@@ -1250,6 +1250,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
     maquina:<MaquinaTab/>,
     chat:<ChatIA productName={product} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
+    vendas:<Vendas accent={accent} isDeise={isDeise}/>,
   };
   return(
     <>
@@ -1294,6 +1295,13 @@ function CoproducaoView(){
 function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   const [detTab,setDetTab]=useState(null);
   const [copiedLink,setCopiedLink]=useState(false);
+  const [deleting,setDeleting]=useState(false);
+  const handleDeleteProduto=async()=>{
+    if(!window.confirm(`Excluir o produto "${produto.name}"? Esta ação não pode ser desfeita.`))return;
+    setDeleting(true);
+    await apiCall(`/api/products/${produto.id}`,{method:"DELETE"});
+    onBack();
+  };
   const copiarLink=()=>{
     if(!produto.url)return;
     navigator.clipboard?.writeText(produto.url).then(()=>{setCopiedLink(true);setTimeout(()=>setCopiedLink(false),2500);});
@@ -1364,6 +1372,13 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
             </div>
           </div>
         ))}
+      </div>
+      {/* Zona crítica — excluir produto */}
+      <div style={{background:CARD,border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"20px 18px",marginTop:8}}>
+        <div style={{color:"rgba(239,68,68,0.6)",fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Zona crítica</div>
+        <button onClick={handleDeleteProduto} disabled={deleting} style={{background:"transparent",border:"1px solid rgba(239,68,68,0.35)",borderRadius:100,padding:"10px 22px",color:"rgba(239,68,68,0.8)",fontWeight:600,fontSize:13,cursor:deleting?"not-allowed":"pointer",fontFamily:F,opacity:deleting?0.5:1}}>
+          {deleting?"Excluindo…":"Excluir produto"}
+        </button>
       </div>
     </div>
   );

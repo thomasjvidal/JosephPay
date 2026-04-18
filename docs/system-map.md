@@ -217,6 +217,13 @@ FRONTEND_ORIGIN
 | Clientes (deduplicação) | ✅ Corrigido | upsert via asaas_customer_id |
 | Clientes (aba UI) | ⚠️ Depende de migration_v3 | Sem migration_v3, asaas_customer_id não existe |
 | Clique venda → cliente específico | ✅ Implementado | onNav("clientes", customerId) abre cliente direto |
+| "Ver todas" vendas | ✅ Implementado | navega para aba Vendas (extrato completo) |
+| Excluir produto | ✅ Implementado | botão na zona crítica dentro de ProdutoDetalhe |
+| customerPaysFees | ✅ Ativado | repassa taxas Asaas ao cliente final |
+| Parcelamento | ✅ Ativado | até 12x para produtos avulsos |
+| Gráfico hoje — timezone | ✅ Corrigido | usa created_at (não payment_date que pode ser só data) |
+| Assinaturas — upsert | ✅ Corrigido | check-then-insert (sem unique constraint) |
+| "Últimas vendas" valor | ✅ Corrigido | mostra producer_amount (não gross) |
 | Saque PIX | ✅ Funcional | Componente Sacar + backend ledger; botão no dashboard |
 | Chat IA | ✅ Funcional | Anthropic Claude Haiku |
 | WhatsApp | ❌ Não configurado | EVOLUTION_API_URL é placeholder |
@@ -226,7 +233,8 @@ FRONTEND_ORIGIN
 
 ## Checklist para produção
 
-1. **Aplicar migration_v3.sql no Supabase** ← CRÍTICO (sem isso, campos financeiros ficam NULL)
+1. **Migration v3: APLICADA** ✅ (campos financeiros + asaas_customer_id)
+2. **Aplicar migration_v4.sql no Supabase** ← necessário para upsert de assinaturas funcionar sem duplicatas
 2. **Configurar webhook no painel Asaas Sandbox:**
    - URL: `https://josephpay-production.up.railway.app/api/asaas/webhook`
 3. **Testar fluxo completo:**

@@ -105,8 +105,14 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       isActive:        true,
       dueDateLimitDays: 3,          // campo obrigatório: dias úteis para vencimento
       externalReference: `owner_${req.user.id}`,
+      customerPaysFees: true,       // repassa taxas Asaas ao cliente final
     };
-    if (isRecurrent) payload.subscriptionCycle = "MONTHLY";
+    if (isRecurrent) {
+      payload.subscriptionCycle = "MONTHLY";
+    } else {
+      payload.allowInstallment   = true;  // habilita parcelamento
+      payload.maxInstallmentCount = 12;   // até 12x
+    }
 
     console.log("[products/create] payload Asaas:", JSON.stringify(payload));
 
@@ -433,8 +439,14 @@ app.post("/api/asaas/webhook", async (req, res) => {
         console.log(`[webhook] produto "${product.name}" pago — bruto R$${grossAmount}, produtor R$${product.price}`);
 
         if (payment.subscription) {
-          await supabase.from("subscriptions").upsert(
-            {
+          const { data: existingSub } = await supabase.from("subscriptions")
+            .select("id").eq("asaas_id", payment.subscription).maybeSingle();
+          if (existingSub) {
+            await supabase.from("subscriptions")
+              .update({ status: "ativo", customer_id: customerId, amount: Number(product.price) })
+              .eq("asaas_id", payment.subscription);
+          } else {
+            await supabase.from("subscriptions").insert({
               asaas_id:    payment.subscription,
               product_id:  product.id,
               owner_id:    product.owner_id,
@@ -442,10 +454,9 @@ app.post("/api/asaas/webhook", async (req, res) => {
               amount:      Number(product.price),
               status:      "ativo",
               plan:        "mensal",
-            },
-            { onConflict: "asaas_id", ignoreDuplicates: false }
-          );
-          console.log(`[webhook] assinatura ${payment.subscription} upserted`);
+            });
+          }
+          console.log(`[webhook] assinatura ${payment.subscription} salva`);
         }
 
       } else if (payment.externalReference?.startsWith("owner_")) {
@@ -646,7 +657,7 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
 
     const normalized = (data || []).map(s => ({
       amount:     Number(s.producer_amount || s.amount || 0),
-      created_at: s.payment_date || s.created_at,
+      created_at: s.created_at, // usar processing time (payment_date pode ser só data sem hora)
     }));
 
     res.json({ sales: normalized });
