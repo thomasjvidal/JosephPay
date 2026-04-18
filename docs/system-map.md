@@ -100,8 +100,9 @@ const RAILWAY       = "https://josephpay-production.up.railway.app";
 | GET | `/api/admin/sales?limit=N&owner=UUID` | ✓ | Vendas de todos os produtores |
 | GET | `/api/admin/clients` | ✓ | Lista de produtores com volume e taxas |
 | GET | `/api/admin/chart?period=X&owner=UUID` | ✓ | Dados de gráfico (admin) |
-| GET | `/api/ledger/balance` | ✓ | Saldo interno do produtor (produtor_amount - saques) |
+| GET | `/api/ledger/balance` | ✓ | Saldo interno do produtor (apenas vendas recebidas - saques) |
 | POST | `/api/sync/history` | ✓ | Importa pagamentos históricos do Asaas com dados financeiros completos |
+| GET | `/api/products/:id/sync` | ✓ | Sincroniza produto com dados reais do Asaas (customerPaysFees, URL, status) |
 
 **Variáveis de ambiente no Railway:**
 ```
@@ -221,9 +222,17 @@ FRONTEND_ORIGIN
 | Excluir produto | ✅ Implementado | botão na zona crítica dentro de ProdutoDetalhe |
 | customerPaysFees | ✅ Ativado | repassa taxas Asaas ao cliente final |
 | Parcelamento | ✅ Ativado | até 12x para produtos avulsos |
-| Gráfico hoje — timezone | ✅ Corrigido | usa created_at (não payment_date que pode ser só data) |
+| Gráfico hoje — timezone | ✅ Corrigido | usa created_at; slots de 2h de 06h a 20h |
+| Gráfico hoje — slots | ✅ Corrigido | 8 slots 2h: 06h, 08h, 10h, 12h, 14h, 16h, 18h, 20h |
+| Gráfico trimestre | ✅ Corrigido | meses do trimestre (Abr/Mai/Jun para Q2) |
 | Assinaturas — upsert | ✅ Corrigido | check-then-insert (sem unique constraint) |
 | "Últimas vendas" valor | ✅ Corrigido | mostra producer_amount (não gross) |
+| Clientes — nome real | ✅ Implementado | busca via GET /customers/:id no Asaas se customerObject vazio |
+| Clientes — LTV | ✅ Implementado | total_spent, total_orders, last_purchase — requer migration_v5 |
+| customerPaysFees | ✅ Ativado | PUT após criação do link; log de diagnóstico |
+| Sync produto com Asaas | ✅ Implementado | GET /api/products/:id/sync |
+| Status financeiro | ✅ Implementado | recebido (PAYMENT_RECEIVED) / confirmado (PAYMENT_CONFIRMED) |
+| Saldo saque (ledger) | ✅ Seguro | apenas status recebido ou pago (legado) |
 | Saque PIX | ✅ Funcional | Componente Sacar + backend ledger; botão no dashboard |
 | Chat IA | ✅ Funcional | Anthropic Claude Haiku |
 | WhatsApp | ❌ Não configurado | EVOLUTION_API_URL é placeholder |
@@ -234,7 +243,8 @@ FRONTEND_ORIGIN
 ## Checklist para produção
 
 1. **Migration v3: APLICADA** ✅ (campos financeiros + asaas_customer_id)
-2. **Aplicar migration_v4.sql no Supabase** ← necessário para upsert de assinaturas funcionar sem duplicatas
+2. **Aplicar migration_v4.sql no Supabase** ← necessário para upsert de assinaturas sem duplicatas
+2b. **Aplicar migration_v5.sql no Supabase** ← necessário para LTV de clientes (total_spent, total_orders, last_purchase)
 2. **Configurar webhook no painel Asaas Sandbox:**
    - URL: `https://josephpay-production.up.railway.app/api/asaas/webhook`
 3. **Testar fluxo completo:**

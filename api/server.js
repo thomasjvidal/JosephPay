@@ -46,6 +46,26 @@ function calcFees(grossAmount, netAmount) {
   return { platformFee, asaasFee, producerAmount };
 }
 
+async function updateCustomerStats(customerId) {
+  if (!customerId) return;
+  try {
+    const { data: stats } = await supabase
+      .from("sales").select("producer_amount,created_at")
+      .eq("customer_id", customerId)
+      .in("status", ["pago","confirmado","recebido"]);
+    if (!stats?.length) return;
+    const totalSpent = stats.reduce((s, r) => s + Number(r.producer_amount || 0), 0);
+    const sorted = [...stats].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    await supabase.from("customers").update({
+      total_spent:   Math.round(totalSpent * 100) / 100,
+      total_orders:  stats.length,
+      last_purchase: sorted[0]?.created_at,
+    }).eq("id", customerId);
+  } catch(e) {
+    console.warn("[updateCustomerStats]", e.message);
+  }
+}
+
 // ── Middleware: verifica JWT do Supabase em rotas protegidas ─────────────────
 async function requireAuth(req, res, next) {
   const token = (req.headers.authorization || "").replace("Bearer ", "");
@@ -124,12 +144,27 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       console.log("[products/create] resposta Asaas:", JSON.stringify({
         id: resp.data.id, url: resp.data.url,
         paymentLinkUrl: resp.data.paymentLinkUrl, shortUrl: resp.data.shortUrl,
+        customerPaysFees: resp.data.customerPaysFees,
       }));
       asaasLinkId = resp.data.id || "";
       paymentUrl  = resp.data.url
         || resp.data.paymentLinkUrl
         || resp.data.shortUrl
         || (asaasLinkId ? `${asaasBase}/c/${asaasLinkId}` : "");
+
+      // Habilitar repasse de taxas ao cliente via PUT (configurado na 2ª etapa no Asaas)
+      if (asaasLinkId) {
+        try {
+          const putResp = await asaas.put(`/paymentLinks/${asaasLinkId}`, {
+            ...payload,
+            customerPaysFees: true,
+          });
+          const taxRepass = putResp.data?.customerPaysFees;
+          console.log("[products/create] customerPaysFees via PUT:", taxRepass ? "✓ ativo" : "✗ não ativado");
+        } catch(e) {
+          console.warn("[products/create] falha ao habilitar repasse de taxas:", e.message);
+        }
+      }
     } catch (asaasErr) {
       const errMsg = asaasErr.response?.data?.errors?.[0]?.description || asaasErr.message;
       console.error("[products/create] ERRO Asaas:", JSON.stringify(asaasErr.response?.data));
@@ -229,6 +264,36 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("[products/delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/products/:id/sync
+ * Sincroniza produto com dados reais do Asaas (customerPaysFees, URL, status).
+ */
+app.get("/api/products/:id/sync", requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { data: product } = await supabase.from("products")
+      .select("id,asaas_link_id").eq("id", req.params.id).eq("owner_id", uid).maybeSingle();
+    if (!product?.asaas_link_id) return res.status(404).json({ error: "Produto não encontrado" });
+
+    const { data: link } = await asaas.get(`/paymentLinks/${product.asaas_link_id}`);
+
+    if (link?.url) {
+      await supabase.from("products").update({ url: link.url }).eq("id", product.id);
+    }
+
+    res.json({
+      asaas_link_id:    product.asaas_link_id,
+      customerPaysFees: link?.customerPaysFees ?? false,
+      active:           link?.active ?? true,
+      url:              link?.url,
+      value:            link?.value,
+    });
+  } catch (err) {
+    console.error("[products/sync]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -358,7 +423,7 @@ app.post("/api/asaas/webhook", async (req, res) => {
       const net   = Number(payment.netValue || gross);
       const { platformFee, asaasFee, producerAmount } = calcFees(gross, net);
       await supabase.from("sales").update({
-        status:            "pago",
+        status:            event.event === "PAYMENT_RECEIVED" ? "recebido" : "confirmado",
         gross_amount:      gross,
         net_amount:        net,
         asaas_fee:         asaasFee,
@@ -382,10 +447,18 @@ app.post("/api/asaas/webhook", async (req, res) => {
     let customerId = null;
     const asaasCustomerId = payment.customer;
     if (asaasCustomerId) {
-      const custObj   = payment.customerObject || {};
+      let custObj = payment.customerObject || {};
+      if (!custObj.name) {
+        try {
+          const { data: asaasCust } = await asaas.get(`/customers/${asaasCustomerId}`);
+          if (asaasCust?.name) custObj = asaasCust;
+        } catch(e) {
+          console.warn("[webhook] falha ao buscar cliente Asaas:", e.message);
+        }
+      }
       const custName  = custObj.name  || "Cliente";
       const custEmail = custObj.email || null;
-      const custPhone = custObj.phone || null;
+      const custPhone = custObj.mobilePhone || custObj.phone || null;
 
       // Descobre owner via produto ou externalReference
       let ownerForCustomer = null;
@@ -418,7 +491,7 @@ app.post("/api/asaas/webhook", async (req, res) => {
       installment_count: payment.installmentCount || 1,
       billing_type:      payment.billingType || "UNKNOWN",
       payment_date:      paymentDate,
-      status:            "pago",
+      status:            event.event === "PAYMENT_RECEIVED" ? "recebido" : "confirmado",
       asaas_id:          payment.id,
       customer_id:       customerId,
     };
@@ -437,6 +510,7 @@ app.post("/api/asaas/webhook", async (req, res) => {
 
         await supabase.from("sales").insert({ ...saleBase, product_id: product.id, owner_id: product.owner_id });
         console.log(`[webhook] produto "${product.name}" pago — bruto R$${grossAmount}, produtor R$${product.price}`);
+        await updateCustomerStats(customerId);
 
         if (payment.subscription) {
           const { data: existingSub } = await supabase.from("subscriptions")
@@ -467,6 +541,7 @@ app.post("/api/asaas/webhook", async (req, res) => {
         saleBase.platform_fee    = Math.round((grossAmount - saleBase.producer_amount) * 100) / 100;
         await supabase.from("sales").insert({ ...saleBase, owner_id: ownerId });
         console.log(`[webhook] venda via externalReference owner=${ownerId} — bruto R$${grossAmount}, produtor R$${saleBase.producer_amount}`);
+        await updateCustomerStats(customerId);
 
       } else {
         console.warn("[webhook] paymentLink sem produto nem externalReference:", payment.paymentLink);
@@ -773,7 +848,7 @@ app.get("/api/ledger/balance", requireAuth, async (req, res) => {
   try {
     const uid = req.user.id;
     const [{ data: sales }, { data: withdrawals }] = await Promise.all([
-      supabase.from("sales").select("producer_amount,amount,platform_fee").eq("owner_id", uid).eq("status", "pago"),
+      supabase.from("sales").select("producer_amount,amount,platform_fee").eq("owner_id", uid).in("status", ["recebido","pago"]),
       supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
     ]);
     const totalProducer  = (sales || []).reduce((a, s) => a + Number(s.producer_amount ?? (Number(s.amount) * (1 - PLATFORM_FEE_RATE))), 0);

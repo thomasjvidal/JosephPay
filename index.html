@@ -132,8 +132,8 @@ function Btn({children,onClick,color,outline,sm}){
 function aggregateChartData(sales,period){
   const now=new Date();
   if(period==="hoje"){
-    const hrs=Array.from({length:8},(_,i)=>({label:`${String(i*3).padStart(2,'0')}h`,v:0}));
-    (sales||[]).forEach(s=>{const h=Math.floor(new Date(s.created_at).getHours()/3);if(h>=0&&h<8)hrs[h].v+=Number(s.amount);});
+    const hrs=Array.from({length:8},(_,i)=>({label:`${String(6+i*2).padStart(2,'0')}h`,v:0}));
+    (sales||[]).forEach(s=>{const h=new Date(s.created_at).getHours();const slot=Math.floor((h-6)/2);if(slot>=0&&slot<8)hrs[slot].v+=Number(s.amount);});
     return hrs;
   }
   if(period==="semana"){
@@ -148,11 +148,11 @@ function aggregateChartData(sales,period){
     return days;
   }
   if(period==="trimestre"){
-    const qStart=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
-    const nWeeks=Math.max(1,Math.ceil((now-qStart)/(7*86400000)));
-    const weeks=Array.from({length:nWeeks},(_,i)=>({label:`S${i+1}`,v:0}));
-    (sales||[]).forEach(s=>{const w=Math.floor((new Date(s.created_at)-qStart)/(7*86400000));if(w>=0&&w<nWeeks)weeks[w].v+=Number(s.amount);});
-    return weeks;
+    const mLabels=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    const qStartMonth=Math.floor(now.getMonth()/3)*3;
+    const qMonths=[0,1,2].map(i=>({label:mLabels[qStartMonth+i],v:0}));
+    (sales||[]).forEach(s=>{const m=new Date(s.created_at).getMonth()-qStartMonth;if(m>=0&&m<3)qMonths[m].v+=Number(s.amount);});
+    return qMonths;
   }
   const months=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"].map(l=>({label:l,v:0}));
   (sales||[]).forEach(s=>{const m=new Date(s.created_at).getMonth();months[m].v+=Number(s.amount);});
