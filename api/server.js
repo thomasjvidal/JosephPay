@@ -419,13 +419,27 @@ app.post("/api/asaas/webhook", async (req, res) => {
       .eq("asaas_id", payment.id)
       .maybeSingle();
 
-    if (alreadyExists) {
+    // Fallback: busca sale pelo saleId embutido no externalReference (installments, assinaturas)
+    let existsByRef = null;
+    if (!alreadyExists && payment.externalReference) {
+      try {
+        const ref = JSON.parse(payment.externalReference);
+        if (ref?.saleId) {
+          const { data } = await supabase.from("sales").select("id").eq("id", ref.saleId).maybeSingle();
+          existsByRef = data;
+        }
+      } catch { /* formato legado — ignora */ }
+    }
+
+    const existingSale = alreadyExists || existsByRef;
+    if (existingSale) {
       // Só atualiza status e dados financeiros, não cria nova linha
       const gross = Number(payment.value || 0);
       const net   = Number(payment.netValue || gross);
       const { platformFee, asaasFee, producerAmount } = calcFees(gross, net);
       await supabase.from("sales").update({
-        status:            event.event === "PAYMENT_RECEIVED" ? "recebido" : "confirmado",
+        status:            "pago",
+        asaas_id:          payment.id,
         gross_amount:      gross,
         net_amount:        net,
         asaas_fee:         asaasFee,
@@ -434,8 +448,8 @@ app.post("/api/asaas/webhook", async (req, res) => {
         installment_count: payment.installmentCount || 1,
         billing_type:      payment.billingType || "UNKNOWN",
         payment_date:      payment.confirmedDate || payment.paymentDate || new Date().toISOString(),
-      }).eq("asaas_id", payment.id);
-      console.log(`[webhook] duplicata ignorada — atualizando ${payment.id}`);
+      }).eq("id", existingSale.id);
+      console.log(`[webhook] sale atualizada via ${alreadyExists ? "asaas_id" : "externalRef"} — ${payment.id}`);
       return res.json({ received: true });
     }
 
@@ -514,7 +528,7 @@ app.post("/api/asaas/webhook", async (req, res) => {
       installment_count: payment.installmentCount || 1,
       billing_type:      payment.billingType || "UNKNOWN",
       payment_date:      paymentDate,
-      status:            event.event === "PAYMENT_RECEIVED" ? "recebido" : "confirmado",
+      status:            "pago",
       asaas_id:          payment.id,
       customer_id:       customerId,
     };
@@ -1065,9 +1079,10 @@ app.post("/api/public/checkout", async (req, res) => {
       customerId = existByEmail.id;
       await supabase.from("customers").update({ name, phone: phone || null }).eq("id", customerId);
     } else {
-      const { data: newCust } = await supabase.from("customers")
+      const { data: newCust, error: custErr } = await supabase.from("customers")
         .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
         .select("id").maybeSingle();
+      if (custErr) console.error("[public/checkout] ERRO ao criar customer:", custErr.message, custErr.code, custErr.details);
       customerId = newCust?.id || null;
     }
 
@@ -1092,11 +1107,14 @@ app.post("/api/public/checkout", async (req, res) => {
     const isRecurrent = product.billing_type === "RECURRENT";
     let chargeId = null, pixQrCode = null, pixCopyCola = null, boletoUrl = null, invoiceUrl = null;
 
+    const saleId = crypto.randomUUID();
+    const billingKind = isRecurrent ? "SUBSCRIPTION" : "ONE_TIME";
+
     const paymentBase = {
       customer:    asaasCustomerId,
       value:       clientTotal,
       description: product.name + (product.description ? ` — ${product.description}` : ""),
-      externalReference: `product_${product.id}_owner_${product.owner_id}`,
+      externalReference: JSON.stringify({ saleId, type: billingKind }),
     };
 
     if (isRecurrent) {
@@ -1139,7 +1157,8 @@ app.post("/api/public/checkout", async (req, res) => {
     }
 
     // 4. Salva sale pendente no Supabase (webhook vai atualizar status)
-    await supabase.from("sales").insert({
+    const { error: saleErr } = await supabase.from("sales").insert({
+      id:                saleId,
       product_id:        product.id,
       owner_id:          product.owner_id,
       customer_id:       customerId,
@@ -1154,6 +1173,7 @@ app.post("/api/public/checkout", async (req, res) => {
       asaas_id:          chargeId,
       payment_date:      null,
     });
+    if (saleErr) console.error("[public/checkout] ERRO ao criar sale:", saleErr.message, saleErr.code, saleErr.details);
 
     console.log("[public/checkout] chargeId:", chargeId, "| method:", method, "| customerId:", customerId);
     res.json({ chargeId, pixQrCode, pixCopyCola, boletoUrl, invoiceUrl, clientTotal });
@@ -1180,7 +1200,7 @@ app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
     // Persiste confirmação no banco (não depender só do webhook)
     if (["CONFIRMED", "RECEIVED"].includes(status)) {
       await supabase.from("sales")
-        .update({ status: status === "RECEIVED" ? "recebido" : "confirmado" })
+        .update({ status: "pago" })
         .eq("asaas_id", chargeId)
         .eq("status", "pendente");
     }

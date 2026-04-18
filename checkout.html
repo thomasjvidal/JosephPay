@@ -187,6 +187,10 @@ function App() {
       const d = await resp.json();
       if (!resp.ok) throw new Error(d.error || "Erro ao gerar pagamento");
       setResult(d);
+      if (method === "CREDIT_CARD" && d.invoiceUrl) {
+        window.location.href = d.invoiceUrl;
+        return;
+      }
       setStep(3);
     } catch(e) {
       setError(e.message);
