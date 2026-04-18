@@ -1624,61 +1624,146 @@ function AutomacoesZap(){
 function PainelClientesTab({targetCustomerId}){
   const [clientes,setClientes]=useState(null);
   const [sel,setSel]=useState(null);
-  useEffect(()=>{
+  const [filtro,setFiltro]=useState('todos');
+  const [showAdd,setShowAdd]=useState(false);
+  const [addForm,setAddForm]=useState({name:'',phone:'',email:''});
+  const [addLoading,setAddLoading]=useState(false);
+  const [prodMap,setProdMap]=useState({});
+
+  function reloadClientes(){
     if(!_sb)return;
     _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[clientes]",error.message);setClientes(data||[]);});
-  },[]);
+  }
+  useEffect(()=>{reloadClientes();},[]);
   useEffect(()=>{
     if(targetCustomerId&&clientes){
       const idx=clientes.findIndex(c=>c.id===targetCustomerId);
       if(idx!==-1)setSel(idx);
     }
   },[targetCustomerId,clientes]);
+  // Ao abrir detalhe, busca nomes dos produtos das compras
+  useEffect(()=>{
+    if(sel===null||!clientes||!_sb)return;
+    const c=clientes[sel];
+    const ids=[...new Set((c.sales||[]).map(s=>s.product_id).filter(Boolean))];
+    if(!ids.length){setProdMap({});return;}
+    _sb.from('products').select('id,name').in('id',ids)
+      .then(({data})=>setProdMap(Object.fromEntries((data||[]).map(p=>[p.id,p.name]))));
+  },[sel,clientes]);
 
-  // Calcula aniversários próximos (30 dias)
+  // Helpers de status
+  function statusInfo(s){
+    if(s==='lead')return{label:'Lead',color:'#F59E0B'};
+    if(s==='assinante')return{label:'Assinante',color:GREEN};
+    return{label:'Cliente',color:ACC};
+  }
+  function SourceBadge({source}){
+    const map={checkout:'Checkout',minichat:'Site/Chat',manual:'Manual'};
+    const label=map[source]||'Checkout';
+    return<span style={{background:'rgba(255,255,255,0.06)',color:MUTED,fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:20}}>{label}</span>;
+  }
+
+  // Métricas
+  const total=clientes?.length||0;
+  const leads=clientes?.filter(c=>c.status==='lead').length||0;
+  const clts=clientes?.filter(c=>c.status==='cliente').length||0;
+  const assinantes=clientes?.filter(c=>c.status==='assinante').length||0;
+
+  // Lista filtrada
+  const lista=(clientes||[]).filter(c=>filtro==='todos'||c.status===filtro);
+
+  // Aniversários próximos (60 dias)
   const today=new Date();
   const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
     const b=new Date(c.birthday);
     const next=new Date(today.getFullYear(),b.getMonth(),b.getDate());
     if(next<today)next.setFullYear(today.getFullYear()+1);
     const dias=Math.round((next-today)/(1000*60*60*24));
-    return{name:c.name,data:`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}`,dias};
+    return{name:c.name,idx:clientes.indexOf(c),data:`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}`,dias};
   }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias).slice(0,5);
 
+  // Export CSV
+  function exportCSV(){
+    const safe=v=>`"${(v||'').replace(/"/g,'""')}"`;
+    const h=["Nome","Email","WhatsApp","Status","Origem","Última compra","Total gasto (R$)"];
+    const rows=(clientes||[]).map(c=>{
+      const last=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+      return[safe(c.name),safe(c.email),safe(c.phone),
+        safe(c.status||'cliente'),safe(c.source||'checkout'),
+        safe(last?new Date(last.created_at).toLocaleDateString('pt-BR'):''),
+        safe(String(c.total_spent||0))].join(',');
+    });
+    const csv=[h.join(','),...rows].join('\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='clientes-josephpay.csv';a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Adicionar cliente manual
+  async function handleAdd(){
+    if(!addForm.name||!_sb){return;}
+    setAddLoading(true);
+    try{
+      const {data:{user}}=await _sb.auth.getUser();
+      if(!user){setAddLoading(false);return;}
+      const {data:exist}=await _sb.from('customers').select('id').eq('email',addForm.email||'__noemail__').eq('owner_id',user.id).maybeSingle();
+      if(exist){
+        await _sb.from('customers').update({name:addForm.name,phone:addForm.phone||null}).eq('id',exist.id);
+      } else {
+        await _sb.from('customers').insert({name:addForm.name,email:addForm.email||null,phone:addForm.phone||null,owner_id:user.id,source:'manual',status:'lead'});
+      }
+      reloadClientes();
+      setShowAdd(false);setAddForm({name:'',phone:'',email:''});
+    }finally{setAddLoading(false);}
+  }
+
+  // ── DETALHE DO CLIENTE ────────────────────────────────────────
   if(sel!==null&&clientes){
     const c=clientes[sel];
+    const si=statusInfo(c.status||'cliente');
     const compras=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     const lastSale=compras[0];
     const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
-    const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
+    const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):"—";
     return(
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
+        <button onClick={()=>{setSel(null);setProdMap({});}} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+            <div style={{width:52,height:52,borderRadius:16,background:`${si.color}20`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:si.color,flexShrink:0}}>{(c.name[0]||'?').toUpperCase()}</div>
             <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.phone||"—"}</div>
-              {c.email&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>✉ {c.email}</div>}
-              {c.birthday&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {anivFmt}</div>}
+              <div style={{color:TEXT,fontWeight:800,fontSize:18}}>{c.name}</div>
+              <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap"}}>
+                <span style={{background:`${si.color}18`,color:si.color,border:`1px solid ${si.color}30`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{si.label}</span>
+                <SourceBadge source={c.source}/>
+              </div>
             </div>
-            <Tag status={lastSale?"ativo":"inativo"}/>
           </div>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
+          <div style={{display:"flex",flexDirection:"column",gap:7,fontSize:13}}>
+            {c.phone&&<div style={{color:MUTED}}>📱 <span style={{color:TEXT,fontWeight:600}}>{c.phone}</span></div>}
+            {c.email&&<div style={{color:MUTED}}>✉️ <span style={{color:TEXT}}>{c.email}</span></div>}
+            {c.cpf_cnpj&&<div style={{color:MUTED}}>🪪 CPF/CNPJ: <span style={{color:TEXT}}>{c.cpf_cnpj}</span></div>}
+            {c.birthday&&<div style={{color:MUTED}}>🎂 Aniversário: <span style={{color:TEXT}}>{anivFmt}</span></div>}
+            {(c.postal_code||c.address_number)&&<div style={{color:MUTED}}>📍 CEP <span style={{color:TEXT}}>{c.postal_code||"—"}</span>{c.address_number&&<span style={{color:MUTED}}>, nº <span style={{color:TEXT}}>{c.address_number}</span></span>}</div>}
+          </div>
+          <div style={{marginTop:14,display:"flex",gap:10,flexWrap:"wrap"}}>
+            <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 14px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
+            {Number(c.total_spent)>0&&<span style={{background:`${GREEN}12`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:11,fontWeight:700,padding:"4px 14px",borderRadius:20}}>Total gasto: {fmtBRL(c.total_spent)}</span>}
+          </div>
         </div>
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
-          {compras.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
+          {compras.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
           {compras.map((cp,i)=>{
-            const prod=cp.products?.name||"Produto";
+            const prodNome=prodMap[cp.product_id]||"Produto";
             const dt=new Date(cp.created_at).toLocaleDateString('pt-BR');
             return(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<compras.length-1?`1px solid ${BDR}`:"none"}}>
-              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
-              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(cp.amount)}</div><div style={{marginTop:4}}><Tag status={cp.status}/></div></div>
-            </div>
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<compras.length-1?`1px solid ${BDR}`:"none"}}>
+                <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{prodNome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
+                <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(cp.amount)}</div><div style={{marginTop:4}}><Tag status={cp.status}/></div></div>
+              </div>
             );
           })}
         </div>
@@ -1686,61 +1771,89 @@ function PainelClientesTab({targetCustomerId}){
     );
   }
 
+  // ── LISTA PRINCIPAL ───────────────────────────────────────────
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div className="kpi-grid">
-        <KPICard label="Msgs hoje" value="—" icon="✉" accent={GOLD}/>
-        <KPICard label="Msgs este mês" value="—" icon="✉" accent={GOLD}/>
-        <KPICard label="Total clientes" value={clientes?String(clientes.length):"—"} icon="◻" accent={GOLD}/>
-        <KPICard label="Clientes ativos" value={clientes?String(clientes.length):"—"} icon="◉" accent={GOLD}/>
-      </div>
-      
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Próximos aniversários</span>
-        </div>
-        {anivs.map((a,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none"}}>
-            <span style={{fontSize:18,flexShrink:0}}>🎂</span>
-            <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{a.data}</div>
+      {/* Modal Adicionar */}
+      {showAdd&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:24,padding:28,width:"100%",maxWidth:400,display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18}}>Adicionar cliente</div>
+            {[["Nome *","text","name","Nome completo"],["WhatsApp","tel","phone","+55 11 99999-9999"],["E-mail","email","email","email@exemplo.com"]].map(([lbl,tp,key,ph])=>(
+              <div key={key}>
+                <div style={{color:MUTED,fontSize:12,marginBottom:5}}>{lbl}</div>
+                <input type={tp} value={addForm[key]} onChange={e=>setAddForm(p=>({...p,[key]:e.target.value}))} placeholder={ph} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button onClick={()=>{setShowAdd(false);setAddForm({name:'',phone:'',email:''}); }} style={{flex:1,padding:"12px",border:`1.5px solid ${BDR}`,borderRadius:12,background:"transparent",color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Cancelar</button>
+              <button onClick={handleAdd} disabled={!addForm.name||addLoading} style={{flex:1,padding:"12px",border:"none",borderRadius:12,background:ACC,color:"#fff",fontWeight:700,fontSize:14,cursor:!addForm.name||addLoading?"not-allowed":"pointer",opacity:!addForm.name||addLoading?.5:1,fontFamily:F}}>{addLoading?"Salvando…":"Salvar"}</button>
             </div>
-            {a.dias<=30&&<span style={{background:`${GOLD}18`,color:GOLD,border:`1px solid ${GOLD}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{a.dias} dias</span>}
           </div>
+        </div>
+      )}
+
+      {/* KPIs */}
+      <div className="kpi-grid">
+        <KPICard label="Total" value={clientes?String(total):"—"} icon="👥" accent={GOLD}/>
+        <KPICard label="Leads" value={clientes?String(leads):"—"} icon="🌱" accent="#F59E0B"/>
+        <KPICard label="Clientes" value={clientes?String(clts):"—"} icon="⭐" accent={ACC}/>
+        <KPICard label="Assinantes" value={clientes?String(assinantes):"—"} icon="♻" accent={GREEN}/>
+      </div>
+
+      {/* Próximos aniversários */}
+      {anivs.length>0&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>🎂 Próximos aniversários</span></div>
+          {anivs.map((a,i)=>(
+            <button key={i} onClick={()=>setSel(a.idx)} style={{width:"100%",background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none",textAlign:"left",fontFamily:F}}>
+              <div style={{flex:1}}>
+                <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
+                <div style={{color:MUTED,fontSize:11,marginTop:2}}>{a.data}</div>
+              </div>
+              <span style={{background:a.dias<=7?`${RED}18`:`${GOLD}18`,color:a.dias<=7?RED:GOLD,border:`1px solid ${a.dias<=7?RED:GOLD}30`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,flexShrink:0}}>{a.dias===0?"Hoje!":a.dias===1?"Amanhã":`${a.dias} dias`}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Ações */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={()=>setShowAdd(true)} style={{background:ACC,border:"none",borderRadius:100,padding:"9px 20px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>+ Adicionar</button>
+        <button onClick={exportCSV} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar CSV</button>
+      </div>
+
+      {/* Filtros por status */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {[['todos',`Todos (${total})`],['lead',`Leads (${leads})`],['cliente',`Clientes (${clts})`],['assinante',`Assinantes (${assinantes})`]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFiltro(v)} style={{padding:"6px 16px",borderRadius:100,border:`1.5px solid ${filtro===v?GOLD:BDR}`,background:filtro===v?`${GOLD}18`:"transparent",color:filtro===v?GOLD:MUTED,fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:F,transition:".15s"}}>{l}</button>
         ))}
       </div>
 
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4,marginBottom:12}}>
-        <Btn sm outline color={GOLD}>+ Adicionar</Btn>
-        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar</button>
-        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
-      </div>
-
-      {/* Lista de Clientes */}
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
+      {/* Lista */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {clientes===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
-        {clientes!==null&&clientes.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente cadastrado ainda.</div>}
-        {(clientes||[]).map((c,i)=>{
-          const lastSale=c.sales?.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+        {clientes!==null&&lista.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente{filtro!=='todos'?' nessa categoria':''} ainda.</div>}
+        {lista.map((c,i)=>{
+          const si=statusInfo(c.status||'cliente');
+          const lastSale=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
           const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
-          const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
           return(
-          <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
-            <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-                <Tag status={lastSale?"ativo":"inativo"}/>
+            <button key={c.id||i} onClick={()=>setSel(clientes.indexOf(c))} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"14px 16px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:12,width:"100%",transition:".15s"}}>
+              <div style={{width:42,height:42,borderRadius:13,background:`${si.color}20`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:si.color,flexShrink:0}}>{(c.name[0]||'?').toUpperCase()}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                  <div style={{color:TEXT,fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{c.name}</div>
+                  <span style={{background:`${si.color}18`,color:si.color,border:`1px solid ${si.color}30`,fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,flexShrink:0}}>{si.label}</span>
+                </div>
+                <div style={{color:MUTED,fontSize:12}}>📱 {c.phone||c.email||"—"}</div>
+                <div style={{display:"flex",gap:10,marginTop:2,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{ultimaCompra}</span></span>
+                  {c.source&&c.source!=='checkout'&&<SourceBadge source={c.source}/>}
+                  {c.birthday&&<span style={{color:MUTED,fontSize:11}}>🎂 {new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>}
+                </div>
               </div>
-              <div style={{color:MUTED,fontSize:12}}>📱 {c.phone||c.email||"—"}</div>
-              <div style={{display:"flex",gap:12,marginTop:2}}>
-                <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{ultimaCompra}</span></span>
-                {c.birthday&&<span style={{color:MUTED,fontSize:11}}>🎂 {anivFmt}</span>}
-              </div>
-            </div>
-          </button>
+            </button>
           );
         })}
       </div>

@@ -1064,15 +1064,36 @@ app.post("/api/public/checkout", async (req, res) => {
     const { clientTotal, platformFee: pfee, asaasFee, producerGets } = calcPublicPrice(basePrice, method, numInstallments);
 
     // 1. Garante customer no Supabase (independente do Asaas)
+    const isRecurrentProduct = product.billing_type === "RECURRENT";
     let customerId = null;
     const { data: existByEmail } = await supabase.from("customers")
-      .select("id").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
+      .select("id,status").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
     if (existByEmail) {
       customerId = existByEmail.id;
-      await supabase.from("customers").update({ name, phone: phone || null }).eq("id", customerId);
+      // Só sobe o status, nunca desce: lead→cliente→assinante
+      const curStatus = existByEmail.status || "lead";
+      const newStatus = isRecurrentProduct ? "assinante"
+        : curStatus === "lead" ? "cliente" : curStatus;
+      await supabase.from("customers").update({
+        name, phone: phone || null,
+        cpf_cnpj: cpfCnpj || null,
+        birthday: birthday || null,
+        postal_code: postalCode ? postalCode.replace(/\D/g, "") : null,
+        address_number: addressNumber || null,
+        status: newStatus,
+      }).eq("id", customerId);
     } else {
+      const newStatus = isRecurrentProduct ? "assinante" : "cliente";
       const { data: newCust, error: custErr } = await supabase.from("customers")
-        .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
+        .insert({
+          name, email, phone: phone || null, owner_id: product.owner_id,
+          cpf_cnpj: cpfCnpj || null,
+          birthday: birthday || null,
+          postal_code: postalCode ? postalCode.replace(/\D/g, "") : null,
+          address_number: addressNumber || null,
+          source: "checkout",
+          status: newStatus,
+        })
         .select("id").maybeSingle();
       if (custErr) console.error("[public/checkout] ERRO ao criar customer:", custErr.message, custErr.code, custErr.details);
       customerId = newCust?.id || null;
@@ -1172,6 +1193,35 @@ app.post("/api/public/checkout", async (req, res) => {
   } catch (err) {
     console.error("[public/checkout] erro:", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+  }
+});
+
+/** POST /api/public/lead — captura lead do minichat/site sem passar por pagamento */
+app.post("/api/public/lead", async (req, res) => {
+  try {
+    const { owner_id, name, phone, email } = req.body;
+    if (!owner_id || !name) return res.status(400).json({ error: "owner_id e name são obrigatórios" });
+
+    // Upsert: busca por email+owner (sem duplicar)
+    const { data: exist } = await supabase.from("customers")
+      .select("id,status").eq("owner_id", owner_id)
+      .eq("email", email || "").maybeSingle();
+
+    if (exist) {
+      await supabase.from("customers")
+        .update({ name, phone: phone || null, source: "minichat" })
+        .eq("id", exist.id);
+      return res.json({ id: exist.id, created: false });
+    }
+
+    const { data: newC, error } = await supabase.from("customers")
+      .insert({ name, email: email || null, phone: phone || null,
+                owner_id, source: "minichat", status: "lead" })
+      .select("id").maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ id: newC.id, created: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
