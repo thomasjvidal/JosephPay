@@ -1107,7 +1107,7 @@ app.post("/api/public/checkout", async (req, res) => {
     const isRecurrent = product.billing_type === "RECURRENT";
     let chargeId = null, pixQrCode = null, pixCopyCola = null, boletoUrl = null, invoiceUrl = null;
 
-    const saleId = crypto.randomUUID();
+    const saleId = require("crypto").randomUUID();
     const billingKind = isRecurrent ? "SUBSCRIPTION" : "ONE_TIME";
 
     const paymentBase = {
