@@ -112,7 +112,7 @@ function App() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name:"", email:"", phone:"", cpf:"", cep:"", birthday:"" });
+  const [form, setForm] = useState({ name:"", email:"", phone:"", cpf:"", cep:"", addressNumber:"", birthday:"" });
   const [method, setMethod] = useState(null);
   const [parcelas, setParcelas] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -132,9 +132,9 @@ function App() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Polling após PIX
+  // Polling após pagamento (todos os métodos)
   useEffect(() => {
-    if (result?.chargeId && method === "PIX" && payStatus === "PENDING") {
+    if (result?.chargeId && payStatus === "PENDING") {
       pollRef.current = setInterval(async () => {
         try {
           const r = await fetch(`${RAILWAY}/api/public/checkout/${result.chargeId}/status`);
@@ -147,7 +147,7 @@ function App() {
       }, 5000);
       return () => clearInterval(pollRef.current);
     }
-  }, [result, method, payStatus]);
+  }, [result, payStatus]);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -172,15 +172,16 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productId:   product.id,
-          name:        form.name,
-          email:       form.email,
-          phone:       form.phone.replace(/\D/g,""),
-          cpfCnpj:     form.cpf.replace(/\D/g,""),
-          postalCode:  form.cep.replace(/\D/g,""),
-          birthday:    form.birthday || undefined,
+          productId:     product.id,
+          name:          form.name,
+          email:         form.email,
+          phone:         form.phone.replace(/\D/g,""),
+          cpfCnpj:       form.cpf.replace(/\D/g,""),
+          postalCode:    form.cep.replace(/\D/g,""),
+          addressNumber: form.addressNumber || undefined,
+          birthday:      form.birthday || undefined,
           method,
-          installments: parcelas,
+          installments:  parcelas,
         }),
       });
       const d = await resp.json();
@@ -257,6 +258,12 @@ function App() {
               <label>CEP</label>
               <input value={form.cep} onChange={e=>setField("cep",maskCEP(e.target.value))} placeholder="00000-000"/>
             </div>
+            <div>
+              <label>Número</label>
+              <input value={form.addressNumber} onChange={e=>setField("addressNumber",e.target.value)} placeholder="Ex: 123"/>
+            </div>
+          </div>
+          <div className="row2">
             <div>
               <label>Nascimento</label>
               <input type="date" value={form.birthday} onChange={e=>setField("birthday",e.target.value)}/>
@@ -357,12 +364,17 @@ function App() {
           {method === "CREDIT_CARD" && (
             <>
               <span className="success-icon">💳</span>
-              <div className="badge-ok" style={{justifyContent:"center"}}>✓ Compra registrada!</div>
+              {payStatus === "PAID"
+                ? <div className="badge-ok" style={{justifyContent:"center"}}>✓ Pagamento confirmado!</div>
+                : <div className="badge-pending"><span className="dot-anim">●</span> Aguardando confirmação do pagamento...</div>
+              }
               <p style={{color:"#888",marginTop:12,fontSize:13}}>
-                Seu pedido foi recebido. O processamento do cartão pode levar alguns instantes.
+                {payStatus === "PAID"
+                  ? "Pagamento processado com sucesso."
+                  : "O processamento do cartão pode levar alguns instantes."}
               </p>
-              {result.invoiceUrl && (
-                <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:12}}>Ver fatura →</a>
+              {payStatus !== "PAID" && result.invoiceUrl && (
+                <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:12}}>Inserir dados do cartão →</a>
               )}
             </>
           )}

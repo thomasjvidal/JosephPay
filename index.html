@@ -1389,6 +1389,7 @@ function CriarProdutoModal({onClose,onCreated}){
   const [preco,setPreco]=useState("");
   const [desc,setDesc]=useState("");
   const [tipo,setTipo]=useState("UNDEFINED");
+  const [ciclo,setCiclo]=useState("MONTHLY");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [created,setCreated]=useState(false); // boolean — produto foi criado
@@ -1399,11 +1400,11 @@ function CriarProdutoModal({onClose,onCreated}){
     setError("");setLoading(true);
     const val=parseFloat(preco.replace(/\./g,"").replace(",","."));
     if(isNaN(val)||val<=0){setError("Preço inválido.");setLoading(false);return;}
-    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo})});
+    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
     if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}
-    setLink(d.paymentUrl);
+    setLink(`https://josephpay.vercel.app/checkout.html?p=${d.product.id}`);
     setCreated(true);
     if(onCreated) onCreated();
   };
@@ -1458,8 +1459,18 @@ function CriarProdutoModal({onClose,onCreated}){
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Tipo de cobrança</div>
                 <select value={tipo} onChange={e=>setTipo(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none"}}>
                   <option value="UNDEFINED">Pagamento único (PIX, Cartão, Boleto)</option>
-                  <option value="RECURRENT">Assinatura recorrente (mensal)</option>
+                  <option value="RECURRENT">Assinatura recorrente</option>
                 </select>
+                {tipo==="RECURRENT"&&(
+                  <select value={ciclo} onChange={e=>setCiclo(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none",marginTop:8}}>
+                    <option value="WEEKLY">Semanal</option>
+                    <option value="BIWEEKLY">Quinzenal</option>
+                    <option value="MONTHLY">Mensal</option>
+                    <option value="QUARTERLY">Trimestral</option>
+                    <option value="SEMIANNUALLY">Semestral</option>
+                    <option value="YEARLY">Anual</option>
+                  </select>
+                )}
               </div>
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
               <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar produto →"}</button>
@@ -1616,7 +1627,7 @@ function PainelClientesTab({targetCustomerId}){
   useEffect(()=>{
     if(!_sb)return;
     _sb.from('customers').select('*,sales(amount,status,created_at,products(name))').order('created_at',{ascending:false})
-      .then(({data})=>{if(data)setClientes(data);});
+      .then(({data,error})=>{if(error)console.error("[clientes]",error.message);setClientes(data||[]);});
   },[]);
   useEffect(()=>{
     if(targetCustomerId&&clientes){

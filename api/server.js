@@ -108,7 +108,7 @@ async function requireAuth(req, res, next) {
  */
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
-    const { name, description, price, billingType = "UNDEFINED" } = req.body;
+    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY" } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
@@ -128,7 +128,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       customerPaysFees: true,       // repassa taxas Asaas ao cliente final
     };
     if (isRecurrent) {
-      payload.subscriptionCycle = "MONTHLY";
+      payload.subscriptionCycle = subscriptionCycle;
     } else {
       payload.allowInstallment   = true;  // habilita parcelamento
       payload.maxInstallmentCount = 12;   // até 12x
@@ -190,7 +190,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       owner_id:         req.user.id,
       url:              paymentUrl,
       billing_type:     billingType || "UNDEFINED",
-      subscription_cycle: isRecurrent ? "MONTHLY" : null,
+      subscription_cycle: isRecurrent ? subscriptionCycle : null,
     }).select().single();
 
     if (dbErr) {
@@ -1042,7 +1042,7 @@ app.get("/api/public/products/:id", async (req, res) => {
 app.post("/api/public/checkout", async (req, res) => {
   try {
     const { productId, name, email, phone, cpfCnpj, postalCode,
-            method, installments = 1, birthday } = req.body;
+            addressNumber, method, installments = 1, birthday } = req.body;
     if (!productId || !name || !email || !cpfCnpj || !method) {
       return res.status(400).json({ error: "Campos obrigatórios: productId, name, email, cpfCnpj, method" });
     }
@@ -1057,33 +1057,35 @@ app.post("/api/public/checkout", async (req, res) => {
     const numInstallments = method === "CREDIT_CARD" ? Math.min(12, Math.max(1, Number(installments))) : 1;
     const { clientTotal, platformFee: pfee, asaasFee, producerGets } = calcPublicPrice(basePrice, method, numInstallments);
 
-    // 1. Cria customer no Asaas
+    // 1. Garante customer no Supabase (independente do Asaas)
+    let customerId = null;
+    const { data: existByEmail } = await supabase.from("customers")
+      .select("id").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
+    if (existByEmail) {
+      customerId = existByEmail.id;
+      await supabase.from("customers").update({ name, phone: phone || null }).eq("id", customerId);
+    } else {
+      const { data: newCust } = await supabase.from("customers")
+        .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
+        .select("id").maybeSingle();
+      customerId = newCust?.id || null;
+    }
+
+    // 2. Cria customer no Asaas e vincula (sem bloquear o fluxo)
     let asaasCustomerId = null;
     try {
       const custPayload = { name, email, cpfCnpj };
-      if (phone)     custPayload.mobilePhone = phone;
-      if (postalCode) custPayload.postalCode = postalCode.replace(/\D/g, "");
-      if (birthday)  custPayload.birthDate = birthday;
+      if (phone)         custPayload.mobilePhone = phone;
+      if (postalCode)    custPayload.postalCode = postalCode.replace(/\D/g, "");
+      if (birthday)      custPayload.birthDate = birthday;
+      if (addressNumber) custPayload.addressNumber = addressNumber;
       const custResp = await asaas.post("/customers", custPayload);
       asaasCustomerId = custResp.data?.id || null;
+      if (asaasCustomerId && customerId) {
+        await supabase.from("customers").update({ asaas_customer_id: asaasCustomerId }).eq("id", customerId);
+      }
     } catch(e) {
       console.warn("[public/checkout] falha ao criar customer no Asaas:", e.response?.data || e.message);
-    }
-
-    // 2. Salva customer no Supabase
-    let customerId = null;
-    if (asaasCustomerId) {
-      const { data: existCust } = await supabase.from("customers")
-        .select("id").eq("asaas_customer_id", asaasCustomerId).eq("owner_id", product.owner_id).maybeSingle();
-      if (existCust) {
-        customerId = existCust.id;
-        await supabase.from("customers").update({ name, email, phone: phone || null }).eq("id", customerId);
-      } else {
-        const { data: newCust } = await supabase.from("customers")
-          .insert({ name, email, phone: phone || null, owner_id: product.owner_id, asaas_customer_id: asaasCustomerId })
-          .select("id").maybeSingle();
-        customerId = newCust?.id || null;
-      }
     }
 
     // 3. Cria payment ou subscription no Asaas
@@ -1153,6 +1155,7 @@ app.post("/api/public/checkout", async (req, res) => {
       payment_date:      null,
     });
 
+    console.log("[public/checkout] chargeId:", chargeId, "| method:", method, "| customerId:", customerId);
     res.json({ chargeId, pixQrCode, pixCopyCola, boletoUrl, invoiceUrl, clientTotal });
   } catch (err) {
     console.error("[public/checkout] erro:", err.response?.data || err.message);
@@ -1164,7 +1167,6 @@ app.post("/api/public/checkout", async (req, res) => {
 app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
   try {
     const { chargeId } = req.params;
-    // Tenta em /payments primeiro, depois /subscriptions
     let status = "PENDING";
     try {
       const r = await asaas.get(`/payments/${chargeId}`);
@@ -1174,6 +1176,13 @@ app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
         const r = await asaas.get(`/subscriptions/${chargeId}`);
         status = r.data?.status || "PENDING";
       } catch(e2) { /* ignora */ }
+    }
+    // Persiste confirmação no banco (não depender só do webhook)
+    if (["CONFIRMED", "RECEIVED"].includes(status)) {
+      await supabase.from("sales")
+        .update({ status: status === "RECEIVED" ? "recebido" : "confirmado" })
+        .eq("asaas_id", chargeId)
+        .eq("status", "pendente");
     }
     res.json({ status });
   } catch (err) {
