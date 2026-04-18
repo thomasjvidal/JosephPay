@@ -1,7 +1,7 @@
 # JosephPay — Mapa do Sistema (SSOT)
 
 > **Fonte de verdade absoluta.** Qualquer IA ou dev que mexer neste sistema deve ler este arquivo primeiro.  
-> Última atualização: 2026-04-17
+> Última atualização: 2026-04-18
 
 ---
 
@@ -24,6 +24,7 @@ JosephPay é uma plataforma SaaS brasileira de pagamentos digitais para infoprod
 │  FRONTEND (Vercel)                                          │
 │  josephpay.vercel.app                                       │
 │  index.html — React 18 + Babel standalone (SPA única)       │
+│  checkout.html — página pública de checkout (sem auth)      │
 │  CDNs: React 18, Recharts, Supabase JS, Babel              │
 └────────────────────┬────────────────────────────────────────┘
                      │  Fetch (REST JSON)
@@ -103,6 +104,9 @@ const RAILWAY       = "https://josephpay-production.up.railway.app";
 | GET | `/api/ledger/balance` | ✓ | Saldo interno do produtor (apenas vendas recebidas - saques) |
 | POST | `/api/sync/history` | ✓ | Importa pagamentos históricos do Asaas com dados financeiros completos |
 | GET | `/api/products/:id/sync` | ✓ | Sincroniza produto com dados reais do Asaas (customerPaysFees, URL, status) |
+| GET | `/api/public/products/:id` | ✗ | Retorna config pública do produto (sem dados sensíveis) — usado pelo checkout.html |
+| POST | `/api/public/checkout` | ✗ | Cria customer + payment no Asaas; salva customer e sale (status: pendente) em Supabase |
+| GET | `/api/public/checkout/:chargeId/status` | ✗ | Polling de status do pagamento no Asaas |
 
 **Variáveis de ambiente no Railway:**
 ```
@@ -215,13 +219,14 @@ FRONTEND_ORIGIN
 | Sync histórico Asaas | ✅ Implementado | /api/sync/history com dados financeiros completos |
 | Saldo interno (ledger) | ✅ Implementado | /api/ledger/balance usa producer_amount |
 | Vendas / Assinaturas / Afiliados | ✅ Dados reais | Supabase direto |
-| Clientes (deduplicação) | ✅ Corrigido | upsert via asaas_customer_id |
-| Clientes (aba UI) | ⚠️ Depende de migration_v3 | Sem migration_v3, asaas_customer_id não existe |
+| Clientes (deduplicação) | ✅ Corrigido | check-then-insert (upsert com índice parcial falha silenciosamente no PostgREST) |
+| Clientes (aba UI) | ✅ Funcional | customers populada via webhook (check-then-insert) + via checkout próprio |
 | Clique venda → cliente específico | ✅ Implementado | onNav("clientes", customerId) abre cliente direto |
 | "Ver todas" vendas | ✅ Implementado | navega para aba Vendas (extrato completo) |
 | Excluir produto | ✅ Implementado | botão na zona crítica dentro de ProdutoDetalhe |
-| customerPaysFees | ✅ Ativado | repassa taxas Asaas ao cliente final |
-| Parcelamento | ✅ Ativado | até 12x para produtos avulsos |
+| Checkout próprio (checkout.html) | ✅ Implementado | josephpay.vercel.app/checkout.html?p=ID — 3 etapas, design JosephPay, sem CPF do Thomas |
+| Taxa Asaas repassada ao cliente | ✅ Implementado | calcPublicPrice() calcula manualmente PIX/Boleto/CC; customerPaysFees não é mais necessário |
+| Parcelamento | ✅ Ativado | até 12x para produtos avulsos (checkout próprio) |
 | Gráfico hoje — timezone | ✅ Corrigido | usa created_at; slots de 2h de 06h a 20h |
 | Gráfico hoje — slots | ✅ Corrigido | 8 slots 2h: 06h, 08h, 10h, 12h, 14h, 16h, 18h, 20h |
 | Gráfico trimestre | ✅ Corrigido | meses do trimestre (Abr/Mai/Jun para Q2) |

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>JosephPay — Checkout</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0a0a0f;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+    .card{background:#111118;border:1px solid rgba(255,255,255,0.08);border-radius:20px;width:100%;max-width:480px;padding:32px;box-shadow:0 24px 80px rgba(0,0,0,0.5)}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+    .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,#6C63FF,#4facfe);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff}
+    .logo-text{font-size:18px;font-weight:700;color:#fff}
+    h2{font-size:20px;font-weight:700;margin-bottom:4px}
+    .product-desc{color:#888;font-size:13px;margin-bottom:24px}
+    .price-badge{display:inline-block;background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);border-radius:8px;padding:6px 12px;font-size:15px;font-weight:700;color:#a89cff;margin-bottom:24px}
+    .steps{display:flex;gap:8px;margin-bottom:28px}
+    .step{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,0.1);transition:background .3s}
+    .step.active{background:linear-gradient(90deg,#6C63FF,#4facfe)}
+    .step.done{background:#6C63FF}
+    .step-label{font-size:11px;color:#555;text-align:center;margin-top:6px}
+    label{display:block;font-size:13px;color:#aaa;margin-bottom:6px;margin-top:14px}
+    label:first-of-type{margin-top:0}
+    input,select{width:100%;background:#1a1a25;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px 14px;color:#f0f0f0;font-size:14px;outline:none;transition:border .2s}
+    input:focus,select:focus{border-color:#6C63FF}
+    input::placeholder{color:#444}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;margin-top:20px}
+    .btn-primary{background:linear-gradient(135deg,#6C63FF,#4facfe);color:#fff}
+    .btn-primary:hover{opacity:.9}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+    .btn-back{background:rgba(255,255,255,0.05);color:#aaa;border:1px solid rgba(255,255,255,0.1)}
+    .btn-back:hover{background:rgba(255,255,255,0.08)}
+    .method-grid{display:grid;gap:10px;margin-top:4px}
+    .method-card{background:#1a1a25;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:.2s}
+    .method-card:hover{border-color:#6C63FF}
+    .method-card.selected{border-color:#6C63FF;background:rgba(108,99,255,0.1)}
+    .method-icon{font-size:22px;width:32px;text-align:center}
+    .method-info{flex:1}
+    .method-name{font-size:14px;font-weight:600}
+    .method-sub{font-size:12px;color:#666;margin-top:2px}
+    .price-breakdown{background:#1a1a25;border-radius:12px;padding:14px 16px;margin-top:14px;font-size:13px}
+    .price-row{display:flex;justify-content:space-between;padding:4px 0;color:#888}
+    .price-row.total{color:#f0f0f0;font-weight:700;font-size:15px;border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:10px}
+    .installments-row{margin-top:10px}
+    select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+    .qr-box{text-align:center;padding:8px 0}
+    .qr-img{width:200px;height:200px;border-radius:12px;margin:0 auto 12px;display:block;border:2px solid rgba(108,99,255,0.3)}
+    .pix-copy{background:#1a1a25;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;font-size:12px;color:#aaa;word-break:break-all;margin:8px 0}
+    .btn-copy{background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:#a89cff;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;margin-top:6px}
+    .badge-pending{display:inline-flex;align-items:center;gap:8px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.25);border-radius:8px;padding:8px 14px;font-size:13px;color:#f0c040;margin-top:10px}
+    .badge-ok{display:inline-flex;align-items:center;gap:8px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:8px 14px;font-size:13px;color:#4ade80;margin-top:10px}
+    .dot-anim{display:inline-block;animation:pulse 1.4s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .err{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:10px 14px;font-size:13px;color:#f87171;margin-top:12px}
+    .loading{text-align:center;padding:40px 0;color:#555}
+    .boleto-link{display:block;text-align:center;background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);border-radius:10px;padding:12px;color:#a89cff;text-decoration:none;font-weight:600;margin-top:10px}
+    .success-icon{font-size:48px;text-align:center;display:block;margin:8px auto}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const RAILWAY = "https://josephpay-production.up.railway.app";
+
+const PLATFORM_RATE = 0.0099;
+const ASAAS_RATES = {
+  PIX:     { fixed: 0.99, pct: 0 },
+  BOLETO:  { fixed: 0.99, pct: 0 },
+  CC_1:    { fixed: 0.49, pct: 0.0199 },
+  CC_2_6:  { fixed: 0.49, pct: 0.0249 },
+  CC_7_12: { fixed: 0.49, pct: 0.0299 },
+};
+
+function calcTotal(basePrice, method, parcelas = 1) {
+  const plat = Math.round(basePrice * PLATFORM_RATE * 100) / 100;
+  let asaasFee = 0;
+  if (method === "PIX")    asaasFee = ASAAS_RATES.PIX.fixed;
+  if (method === "BOLETO") asaasFee = ASAAS_RATES.BOLETO.fixed;
+  if (method === "CREDIT_CARD") {
+    const r = parcelas <= 1 ? ASAAS_RATES.CC_1 :
+              parcelas <= 6 ? ASAAS_RATES.CC_2_6 : ASAAS_RATES.CC_7_12;
+    asaasFee = Math.round((basePrice * r.pct + r.fixed) * 100) / 100;
+  }
+  return {
+    total:  Math.round((basePrice + plat + asaasFee) * 100) / 100,
+    plat,
+    asaasFee,
+  };
+}
+
+function fmtBRL(v) {
+  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function maskPhone(v) {
+  return v.replace(/\D/g,"").slice(0,11).replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{4,5})(\d{4})$/, "$1-$2");
+}
+function maskCPF(v) {
+  return v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1-$2");
+}
+function maskCEP(v) {
+  return v.replace(/\D/g,"").slice(0,8).replace(/(\d{5})(\d)/,"$1-$2");
+}
+
+function App() {
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({ name:"", email:"", phone:"", cpf:"", cep:"", birthday:"" });
+  const [method, setMethod] = useState(null);
+  const [parcelas, setParcelas] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [payStatus, setPayStatus] = useState("PENDING");
+  const pollRef = useRef(null);
+
+  // Carrega produto via query param ?p=ID
+  useEffect(() => {
+    const pid = new URLSearchParams(window.location.search).get("p");
+    if (!pid) { setLoading(false); return; }
+    fetch(`${RAILWAY}/api/public/products/${pid}`)
+      .then(r => r.json())
+      .then(d => { setProduct(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Polling após PIX
+  useEffect(() => {
+    if (result?.chargeId && method === "PIX" && payStatus === "PENDING") {
+      pollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`${RAILWAY}/api/public/checkout/${result.chargeId}/status`);
+          const d = await r.json();
+          if (d.status === "CONFIRMED" || d.status === "RECEIVED") {
+            setPayStatus("PAID");
+            clearInterval(pollRef.current);
+          }
+        } catch(e){}
+      }, 5000);
+      return () => clearInterval(pollRef.current);
+    }
+  }, [result, method, payStatus]);
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const validateStep1 = () => {
+    if (!form.name.trim()) return "Nome obrigatório";
+    if (!form.email.includes("@")) return "Email inválido";
+    if (form.cpf.replace(/\D/g,"").length < 11) return "CPF inválido";
+    return null;
+  };
+
+  const handleStep1 = () => {
+    const err = validateStep1();
+    if (err) { setError(err); return; }
+    setError(""); setStep(2);
+  };
+
+  const handleSubmit = async () => {
+    if (!method) { setError("Selecione a forma de pagamento"); return; }
+    setError(""); setSubmitting(true);
+    try {
+      const resp = await fetch(`${RAILWAY}/api/public/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId:   product.id,
+          name:        form.name,
+          email:       form.email,
+          phone:       form.phone.replace(/\D/g,""),
+          cpfCnpj:     form.cpf.replace(/\D/g,""),
+          postalCode:  form.cep.replace(/\D/g,""),
+          birthday:    form.birthday || undefined,
+          method,
+          installments: parcelas,
+        }),
+      });
+      const d = await resp.json();
+      if (!resp.ok) throw new Error(d.error || "Erro ao gerar pagamento");
+      setResult(d);
+      setStep(3);
+    } catch(e) {
+      setError(e.message);
+    }
+    setSubmitting(false);
+  };
+
+  const copyPix = () => {
+    navigator.clipboard.writeText(result.pixCopyCola || "");
+    setCopied(true); setTimeout(() => setCopied(false), 2500);
+  };
+
+  if (loading) return <div className="card"><div className="loading">Carregando...</div></div>;
+  if (!product) return <div className="card"><div className="loading" style={{color:"#f87171"}}>Produto não encontrado.</div></div>;
+
+  const isRecurrent = product.billingType === "RECURRENT";
+  const { total, plat, asaasFee } = method ? calcTotal(product.price, method, parcelas) : { total: product.price * (1+PLATFORM_RATE), plat: 0, asaasFee: 0 };
+
+  return (
+    <div className="card">
+      {/* Logo */}
+      <div className="logo">
+        <div className="logo-icon">J</div>
+        <span className="logo-text">JosephPay</span>
+      </div>
+
+      {/* Produto */}
+      <h2>{product.name}</h2>
+      {product.description && <p className="product-desc">{product.description}</p>}
+      <div className="price-badge">
+        {isRecurrent
+          ? `${fmtBRL(product.price)}/mês`
+          : fmtBRL(product.price)}
+      </div>
+
+      {/* Barra de progresso */}
+      <div>
+        <div className="steps">
+          {[1,2,3].map(s => (
+            <div key={s} className={`step ${step>s?"done":step===s?"active":""}`}/>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:"8px"}}>
+          {["Seus dados","Pagamento","Confirmação"].map((l,i) => (
+            <div key={i} style={{flex:1,textAlign:"center",fontSize:11,color:step===i+1?"#a89cff":"#555"}}>{l}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* ETAPA 1 — Dados */}
+      {step === 1 && (
+        <div style={{marginTop:24}}>
+          <label>Nome completo *</label>
+          <input value={form.name} onChange={e=>setField("name",e.target.value)} placeholder="João da Silva"/>
+          <label>E-mail *</label>
+          <input type="email" value={form.email} onChange={e=>setField("email",e.target.value)} placeholder="joao@email.com"/>
+          <div className="row2">
+            <div>
+              <label>Telefone</label>
+              <input value={form.phone} onChange={e=>setField("phone",maskPhone(e.target.value))} placeholder="(11) 99999-9999"/>
+            </div>
+            <div>
+              <label>CPF *</label>
+              <input value={form.cpf} onChange={e=>setField("cpf",maskCPF(e.target.value))} placeholder="000.000.000-00"/>
+            </div>
+          </div>
+          <div className="row2">
+            <div>
+              <label>CEP</label>
+              <input value={form.cep} onChange={e=>setField("cep",maskCEP(e.target.value))} placeholder="00000-000"/>
+            </div>
+            <div>
+              <label>Nascimento</label>
+              <input type="date" value={form.birthday} onChange={e=>setField("birthday",e.target.value)}/>
+            </div>
+          </div>
+          {error && <div className="err">{error}</div>}
+          <button className="btn btn-primary" onClick={handleStep1}>Continuar →</button>
+        </div>
+      )}
+
+      {/* ETAPA 2 — Pagamento */}
+      {step === 2 && (
+        <div style={{marginTop:24}}>
+          <div className="method-grid">
+            {[
+              { id:"PIX", icon:"⚡", name:"PIX", sub:"Pagamento instantâneo" },
+              { id:"CREDIT_CARD", icon:"💳", name:"Cartão de crédito", sub:isRecurrent?"Cobrança mensal":"À vista ou parcelado em até 12x" },
+              { id:"BOLETO", icon:"📄", name:"Boleto bancário", sub:"Vence em 3 dias úteis" },
+            ].map(m => (
+              <div key={m.id} className={`method-card ${method===m.id?"selected":""}`} onClick={()=>{setMethod(m.id);if(m.id!=="CREDIT_CARD")setParcelas(1)}}>
+                <span className="method-icon">{m.icon}</span>
+                <div className="method-info">
+                  <div className="method-name">{m.name}</div>
+                  <div className="method-sub">{m.sub}</div>
+                </div>
+                {method===m.id && <span style={{color:"#6C63FF",fontSize:18}}>✓</span>}
+              </div>
+            ))}
+          </div>
+
+          {method === "CREDIT_CARD" && !isRecurrent && (
+            <div className="installments-row">
+              <label>Parcelas</label>
+              <select value={parcelas} onChange={e=>setParcelas(Number(e.target.value))}>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => {
+                  const {total:t} = calcTotal(product.price,"CREDIT_CARD",n);
+                  return <option key={n} value={n}>{n}x de {fmtBRL(t/n)} — Total: {fmtBRL(t)}</option>;
+                })}
+              </select>
+            </div>
+          )}
+
+          {method && (
+            <div className="price-breakdown">
+              <div className="price-row"><span>Produto</span><span>{fmtBRL(product.price)}</span></div>
+              <div className="price-row"><span>Taxa JosephPay (0,99%)</span><span>+ {fmtBRL(plat || product.price*PLATFORM_RATE)}</span></div>
+              <div className="price-row"><span>Taxa {method==="PIX"?"PIX":method==="BOLETO"?"Boleto":"Cartão"} (Asaas)</span><span>+ {fmtBRL(asaasFee || ASAAS_RATES.PIX.fixed)}</span></div>
+              <div className="price-row total">
+                <span>Total{method==="CREDIT_CARD"&&parcelas>1?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}</span>
+                <span>{fmtBRL(total)}</span>
+              </div>
+            </div>
+          )}
+
+          {error && <div className="err">{error}</div>}
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={!method||submitting}>
+            {submitting ? "Processando..." : `Pagar ${fmtBRL(total)}`}
+          </button>
+          <button className="btn btn-back" onClick={()=>{setStep(1);setError("")}}>← Voltar</button>
+        </div>
+      )}
+
+      {/* ETAPA 3 — Confirmação */}
+      {step === 3 && result && (
+        <div style={{marginTop:24,textAlign:"center"}}>
+          {method === "PIX" && (
+            <>
+              <p style={{color:"#aaa",marginBottom:16,fontSize:14}}>Escaneie o QR Code ou copie o código PIX</p>
+              {result.pixQrCode
+                ? <img className="qr-img" src={`data:image/png;base64,${result.pixQrCode}`} alt="QR PIX"/>
+                : <div style={{height:200,display:"flex",alignItems:"center",justifyContent:"center",color:"#555"}}>QR Code indisponível no sandbox</div>
+              }
+              {result.pixCopyCola && (
+                <>
+                  <div className="pix-copy">{result.pixCopyCola}</div>
+                  <button className="btn-copy" onClick={copyPix}>{copied ? "✓ Copiado!" : "📋 Copiar código PIX"}</button>
+                </>
+              )}
+              <div style={{marginTop:16}}>
+                {payStatus === "PAID"
+                  ? <div className="badge-ok">✓ Pagamento confirmado!</div>
+                  : <div className="badge-pending"><span className="dot-anim">●</span> Aguardando pagamento...</div>
+                }
+              </div>
+            </>
+          )}
+          {method === "BOLETO" && (
+            <>
+              <span className="success-icon">📄</span>
+              <p style={{color:"#aaa",marginBottom:12,fontSize:14}}>Boleto gerado! Vence em 3 dias úteis.</p>
+              {result.boletoUrl && (
+                <a className="boleto-link" href={result.boletoUrl} target="_blank" rel="noopener">Visualizar e pagar boleto →</a>
+              )}
+              {result.invoiceUrl && (
+                <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
+              )}
+            </>
+          )}
+          {method === "CREDIT_CARD" && (
+            <>
+              <span className="success-icon">💳</span>
+              <div className="badge-ok" style={{justifyContent:"center"}}>✓ Compra registrada!</div>
+              <p style={{color:"#888",marginTop:12,fontSize:13}}>
+                Seu pedido foi recebido. O processamento do cartão pode levar alguns instantes.
+              </p>
+              {result.invoiceUrl && (
+                <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:12}}>Ver fatura →</a>
+              )}
+            </>
+          )}
+          <div style={{marginTop:20,padding:"12px 16px",background:"rgba(255,255,255,0.03)",borderRadius:12,fontSize:12,color:"#555"}}>
+            Dúvidas? Entre em contato com quem te enviou este link.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

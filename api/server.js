@@ -472,11 +472,32 @@ app.post("/api/asaas/webhook", async (req, res) => {
       }
 
       if (ownerForCustomer) {
-        const { data: cust } = await supabase.from("customers").upsert(
-          { name: custName, email: custEmail, phone: custPhone, owner_id: ownerForCustomer, asaas_customer_id: asaasCustomerId },
-          { onConflict: "asaas_customer_id", ignoreDuplicates: false }
-        ).select("id").maybeSingle();
-        customerId = cust?.id || null;
+        // check-then-insert: índice parcial (WHERE asaas_customer_id IS NOT NULL)
+        // não funciona com onConflict no PostgREST — fazemos lookup manual
+        const { data: existingCust } = await supabase.from("customers")
+          .select("id")
+          .eq("asaas_customer_id", asaasCustomerId)
+          .eq("owner_id", ownerForCustomer)
+          .maybeSingle();
+
+        if (existingCust) {
+          await supabase.from("customers")
+            .update({ name: custName, email: custEmail, phone: custPhone })
+            .eq("id", existingCust.id);
+          customerId = existingCust.id;
+          console.log("[webhook] customer atualizado:", customerId, custName);
+        } else {
+          const { data: newCust, error: custErr } = await supabase.from("customers")
+            .insert({ name: custName, email: custEmail, phone: custPhone,
+                      owner_id: ownerForCustomer, asaas_customer_id: asaasCustomerId })
+            .select("id").maybeSingle();
+          if (custErr) {
+            console.error("[webhook] ERRO ao criar customer:", custErr.message, custErr.code, custErr.details);
+          } else {
+            customerId = newCust?.id || null;
+            console.log("[webhook] customer criado:", customerId, custName);
+          }
+        }
       }
     }
 
@@ -959,6 +980,201 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
     res.json({ inserted, skipped, errors, total: asaasPayments.length });
   } catch (err) {
     console.error("[sync/history]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS PÚBLICAS — checkout próprio (sem autenticação)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Taxas Asaas (promo até 07/2026) — atualizar se mudarem
+const ASAAS_RATES = {
+  PIX:     { fixed: 0.99, pct: 0 },
+  BOLETO:  { fixed: 0.99, pct: 0 },
+  CC_1:    { fixed: 0.49, pct: 0.0199 }, // à vista
+  CC_2_6:  { fixed: 0.49, pct: 0.0249 }, // 2-6x
+  CC_7_12: { fixed: 0.49, pct: 0.0299 }, // 7-12x
+};
+
+function calcPublicPrice(basePrice, method, installments = 1) {
+  const plat = Math.round(basePrice * PLATFORM_FEE_RATE * 100) / 100;
+  let asaasFee = 0;
+  if (method === "PIX")    asaasFee = ASAAS_RATES.PIX.fixed;
+  if (method === "BOLETO") asaasFee = ASAAS_RATES.BOLETO.fixed;
+  if (method === "CREDIT_CARD") {
+    const r = installments <= 1 ? ASAAS_RATES.CC_1 :
+              installments <= 6 ? ASAAS_RATES.CC_2_6 : ASAAS_RATES.CC_7_12;
+    asaasFee = Math.round((basePrice * r.pct + r.fixed) * 100) / 100;
+  }
+  return {
+    clientTotal:  Math.round((basePrice + plat + asaasFee) * 100) / 100,
+    platformFee:  plat,
+    asaasFee:     asaasFee,
+    producerGets: basePrice,
+  };
+}
+
+/** GET /api/public/products/:id — retorna config do produto (sem dados sensíveis) */
+app.get("/api/public/products/:id", async (req, res) => {
+  try {
+    const { data: product, error } = await supabase.from("products")
+      .select("id,name,description,price,billing_type,subscription_cycle")
+      .eq("id", req.params.id)
+      .maybeSingle();
+    if (error || !product) return res.status(404).json({ error: "Produto não encontrado" });
+    res.json({
+      id:               product.id,
+      name:             product.name,
+      description:      product.description,
+      price:            Number(product.price),
+      billingType:      product.billing_type,
+      subscriptionCycle: product.subscription_cycle,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** POST /api/public/checkout — cria customer + payment/subscription no Asaas */
+app.post("/api/public/checkout", async (req, res) => {
+  try {
+    const { productId, name, email, phone, cpfCnpj, postalCode,
+            method, installments = 1, birthday } = req.body;
+    if (!productId || !name || !email || !cpfCnpj || !method) {
+      return res.status(400).json({ error: "Campos obrigatórios: productId, name, email, cpfCnpj, method" });
+    }
+
+    // Busca produto
+    const { data: product } = await supabase.from("products")
+      .select("id,name,description,price,billing_type,subscription_cycle,owner_id")
+      .eq("id", productId).maybeSingle();
+    if (!product) return res.status(404).json({ error: "Produto não encontrado" });
+
+    const basePrice = Number(product.price);
+    const numInstallments = method === "CREDIT_CARD" ? Math.min(12, Math.max(1, Number(installments))) : 1;
+    const { clientTotal, platformFee: pfee, asaasFee, producerGets } = calcPublicPrice(basePrice, method, numInstallments);
+
+    // 1. Cria customer no Asaas
+    let asaasCustomerId = null;
+    try {
+      const custPayload = { name, email, cpfCnpj };
+      if (phone)     custPayload.mobilePhone = phone;
+      if (postalCode) custPayload.postalCode = postalCode.replace(/\D/g, "");
+      if (birthday)  custPayload.birthDate = birthday;
+      const custResp = await asaas.post("/customers", custPayload);
+      asaasCustomerId = custResp.data?.id || null;
+    } catch(e) {
+      console.warn("[public/checkout] falha ao criar customer no Asaas:", e.response?.data || e.message);
+    }
+
+    // 2. Salva customer no Supabase
+    let customerId = null;
+    if (asaasCustomerId) {
+      const { data: existCust } = await supabase.from("customers")
+        .select("id").eq("asaas_customer_id", asaasCustomerId).eq("owner_id", product.owner_id).maybeSingle();
+      if (existCust) {
+        customerId = existCust.id;
+        await supabase.from("customers").update({ name, email, phone: phone || null }).eq("id", customerId);
+      } else {
+        const { data: newCust } = await supabase.from("customers")
+          .insert({ name, email, phone: phone || null, owner_id: product.owner_id, asaas_customer_id: asaasCustomerId })
+          .select("id").maybeSingle();
+        customerId = newCust?.id || null;
+      }
+    }
+
+    // 3. Cria payment ou subscription no Asaas
+    const isRecurrent = product.billing_type === "RECURRENT";
+    let chargeId = null, pixQrCode = null, pixCopyCola = null, boletoUrl = null, invoiceUrl = null;
+
+    const paymentBase = {
+      customer:    asaasCustomerId,
+      value:       clientTotal,
+      description: product.name + (product.description ? ` — ${product.description}` : ""),
+      externalReference: `product_${product.id}_owner_${product.owner_id}`,
+    };
+
+    if (isRecurrent) {
+      // Assinatura
+      const cycle = product.subscription_cycle || "MONTHLY";
+      const subResp = await asaas.post("/subscriptions", {
+        ...paymentBase,
+        billingType: method === "PIX" ? "PIX" : method === "BOLETO" ? "BOLETO" : "CREDIT_CARD",
+        cycle,
+        nextDueDate: new Date(Date.now() + 86400000).toISOString().split("T")[0],
+      });
+      chargeId = subResp.data?.id;
+      boletoUrl = subResp.data?.bankSlipUrl;
+    } else {
+      // Pagamento único
+      const payPayload = {
+        ...paymentBase,
+        billingType: method === "PIX" ? "PIX" : method === "BOLETO" ? "BOLETO" : "CREDIT_CARD",
+        dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0],
+      };
+      if (method === "CREDIT_CARD" && numInstallments > 1) {
+        payPayload.installmentCount = numInstallments;
+        payPayload.totalValue = clientTotal;
+      }
+      const payResp = await asaas.post("/payments", payPayload);
+      chargeId = payResp.data?.id;
+      boletoUrl = payResp.data?.bankSlipUrl;
+      invoiceUrl = payResp.data?.invoiceUrl;
+
+      // Busca QR PIX se necessário
+      if (method === "PIX" && chargeId) {
+        try {
+          const pixResp = await asaas.get(`/payments/${chargeId}/pixQrCode`);
+          pixQrCode   = pixResp.data?.encodedImage || null;
+          pixCopyCola = pixResp.data?.payload || null;
+        } catch(e) {
+          console.warn("[public/checkout] falha ao buscar PIX QR:", e.message);
+        }
+      }
+    }
+
+    // 4. Salva sale pendente no Supabase (webhook vai atualizar status)
+    await supabase.from("sales").insert({
+      product_id:        product.id,
+      owner_id:          product.owner_id,
+      customer_id:       customerId,
+      amount:            clientTotal,
+      gross_amount:      clientTotal,
+      platform_fee:      pfee,
+      asaas_fee:         asaasFee,
+      producer_amount:   producerGets,
+      billing_type:      method,
+      installment_count: numInstallments,
+      status:            "pendente",
+      asaas_id:          chargeId,
+      payment_date:      null,
+    });
+
+    res.json({ chargeId, pixQrCode, pixCopyCola, boletoUrl, invoiceUrl, clientTotal });
+  } catch (err) {
+    console.error("[public/checkout] erro:", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+  }
+});
+
+/** GET /api/public/checkout/:chargeId/status — polling do status de pagamento */
+app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
+  try {
+    const { chargeId } = req.params;
+    // Tenta em /payments primeiro, depois /subscriptions
+    let status = "PENDING";
+    try {
+      const r = await asaas.get(`/payments/${chargeId}`);
+      status = r.data?.status || "PENDING";
+    } catch(e) {
+      try {
+        const r = await asaas.get(`/subscriptions/${chargeId}`);
+        status = r.data?.status || "PENDING";
+      } catch(e2) { /* ignora */ }
+    }
+    res.json({ status });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
