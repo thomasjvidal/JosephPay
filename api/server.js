@@ -182,13 +182,15 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
     // Salva no Supabase — schema completo (migration_v2 já aplicada)
     const { data: product, error: dbErr } = await supabase.from("products").insert({
       name,
-      description:   description || "",
-      price:         basePrice,
-      asaas_price:   clientPrice,
-      asaas_link_id: asaasLinkId,
-      status:        "ativo",
-      owner_id:      req.user.id,
-      url:           paymentUrl,
+      description:      description || "",
+      price:            basePrice,
+      asaas_price:      clientPrice,
+      asaas_link_id:    asaasLinkId,
+      status:           "ativo",
+      owner_id:         req.user.id,
+      url:              paymentUrl,
+      billing_type:     billingType || "UNDEFINED",
+      subscription_cycle: isRecurrent ? "MONTHLY" : null,
     }).select().single();
 
     if (dbErr) {

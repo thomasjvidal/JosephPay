@@ -127,7 +127,7 @@ function App() {
     const pid = new URLSearchParams(window.location.search).get("p");
     if (!pid) { setLoading(false); return; }
     fetch(`${RAILWAY}/api/public/products/${pid}`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : null)
       .then(d => { setProduct(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
@@ -302,8 +302,7 @@ function App() {
           {method && (
             <div className="price-breakdown">
               <div className="price-row"><span>Produto</span><span>{fmtBRL(product.price)}</span></div>
-              <div className="price-row"><span>Taxa JosephPay (0,99%)</span><span>+ {fmtBRL(plat || product.price*PLATFORM_RATE)}</span></div>
-              <div className="price-row"><span>Taxa {method==="PIX"?"PIX":method==="BOLETO"?"Boleto":"Cartão"} (Asaas)</span><span>+ {fmtBRL(asaasFee || ASAAS_RATES.PIX.fixed)}</span></div>
+<div className="price-row"><span>Taxa {method==="PIX"?"PIX":method==="BOLETO"?"Boleto":"Cartão"} (Asaas)</span><span>+ {fmtBRL(asaasFee || ASAAS_RATES.PIX.fixed)}</span></div>
               <div className="price-row total">
                 <span>Total{method==="CREDIT_CARD"&&parcelas>1?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}</span>
                 <span>{fmtBRL(total)}</span>
