@@ -147,7 +147,9 @@ textarea{resize:none}
 .crm-v9 .vrs{display:flex;gap:6px;flex-wrap:wrap}
 .crm-v9 .vb{padding:5px 11px;border-radius:7px;background:var(--c2);border:1px solid var(--ln);font-size:12px;font-weight:500;color:var(--t2);cursor:pointer}
 .crm-v9 .vb:active{background:var(--c3)}
-.crm-v9 .chat-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 0 8px;position:sticky;bottom:80px;background:var(--bg);z-index:10}
+.crm-v9 .chat-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 16px 16px;position:fixed;bottom:0;left:68px;right:0;background:var(--bg);z-index:20;border-top:1px solid var(--ln)}
+@media(min-width:900px){.crm-v9 .chat-bar{left:230px}}
+@media(max-width:639px){.crm-v9 .chat-bar{left:0;bottom:80px}}
 .crm-v9 .chat-ta{flex:1;background:var(--c2);border:1px solid var(--ln);border-radius:18px;padding:9px 13px;color:var(--tx);font-family:inherit;font-size:15px;resize:none;outline:none;min-height:38px;max-height:90px;line-height:1.4}
 .crm-v9 .chat-ta::placeholder{color:var(--t3)}
 .crm-v9 .chat-ta:focus{border-color:rgba(212,175,55,.3)}
@@ -1939,7 +1941,7 @@ function ClientesTab({targetCustomerId}){
       )}
 
       {tab===1&&(
-        <div className="scr">
+        <div className="scr" style={{paddingBottom:160}}>
           <div className="chat-top">
             <div className="chat-to-lbl">Enviar para</div>
             <div className="chat-pills">{(()=>{const gc={'Todos':totalClientes,'Interessados':cnts.lead,'Clientes':cnts.cliente,'Assinantes':cnts.assinante};return['Todos','Interessados','Clientes','Assinantes'].map(g=><div key={g} className={`cp${group===g?' on':''}`} onClick={()=>setGroup(g)}>{g}{clientes!==null?` (${gc[g]??0})`:''}</div>);})()}</div>
