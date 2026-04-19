@@ -1221,6 +1221,71 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// ── CRM: adicionar cliente manual ─────────────────────────────────────────────
+app.post("/api/customers/add", requireAuth, async (req, res) => {
+  const { name, phone, email, birthday } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
+  const { data, error } = await supabase
+    .from("customers")
+    .insert({
+      owner_id: req.user.id,
+      name: name.trim(),
+      phone: phone?.trim() || null,
+      email: email?.trim() || null,
+      birthday: birthday || null,
+      source: "manual",
+      status: "lead",
+    })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ── CRM: entrada de lead via MiniChat (protegido por X-Owner-Key) ─────────────
+const leadsRateMap = new Map();
+app.post("/api/leads/create", async (req, res) => {
+  const ownerKey = req.headers["x-owner-key"];
+  if (!ownerKey) return res.status(401).json({ error: "X-Owner-Key ausente" });
+
+  // Rate limit: 10 req/min por chave
+  const now = Date.now();
+  const entry = leadsRateMap.get(ownerKey) || { count: 0, reset: now + 60000 };
+  if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
+  entry.count++;
+  leadsRateMap.set(ownerKey, entry);
+  if (entry.count > 10) return res.status(429).json({ error: "Limite de requisições atingido" });
+
+  // Valida que o owner_key é um UUID existente em profiles
+  const { data: profile, error: pErr } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", ownerKey)
+    .single();
+  if (pErr || !profile) return res.status(401).json({ error: "X-Owner-Key inválido" });
+
+  const { name, phone, email } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
+
+  const { data, error } = await supabase
+    .from("customers")
+    .upsert(
+      {
+        owner_id: profile.id,
+        name: name.trim(),
+        phone: phone?.trim() || null,
+        email: email?.trim() || null,
+        source: "minichat",
+        status: "lead",
+      },
+      { onConflict: "owner_id,phone", ignoreDuplicates: false }
+    )
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);

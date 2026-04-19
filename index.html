@@ -1624,9 +1624,14 @@ function AutomacoesZap(){
 function PainelClientesTab({targetCustomerId}){
   const [clientes,setClientes]=useState(null);
   const [sel,setSel]=useState(null);
+  const [filtro,setFiltro]=useState("todos");
+  const [showModal,setShowModal]=useState(false);
+  const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
+  const [saving,setSaving]=useState(false);
+
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[clientes]",error.message);setClientes(data||[]);});
   },[]);
   useEffect(()=>{
@@ -1636,7 +1641,11 @@ function PainelClientesTab({targetCustomerId}){
     }
   },[targetCustomerId,clientes]);
 
-  // Calcula aniversários próximos (30 dias)
+  const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
+  const stColor=s=>s==='lead'?GOLD:s==='assinante'?'#4A90E2':GREEN;
+  const srcLabel=s=>s==='minichat'?'Site':s==='manual'?'Manual':'Compra';
+
+  // Calcula aniversários próximos (60 dias)
   const today=new Date();
   const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
     const b=new Date(c.birthday);
@@ -1646,12 +1655,47 @@ function PainelClientesTab({targetCustomerId}){
     return{name:c.name,data:`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}`,dias};
   }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias).slice(0,5);
 
+  // Export CSV
+  function exportCSV(){
+    if(!clientes||clientes.length===0)return;
+    const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+    const hdr='Nome,Telefone,E-mail,Status,Origem,Aniversário,Total gasto,Data cadastro';
+    const rows=clientes.map(c=>[
+      esc(c.name),esc(c.phone),esc(c.email),
+      esc(stLabel(c.status)),esc(srcLabel(c.source)),
+      esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),
+      esc(c.total_spent||0),
+      esc(new Date(c.created_at).toLocaleDateString('pt-BR'))
+    ].join(','));
+    const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='clientes.csv';a.click();URL.revokeObjectURL(url);
+  }
+
+  // Adicionar cliente manual
+  async function salvarCliente(){
+    if(!form.name.trim())return;
+    setSaving(true);
+    try{
+      const token=(await _sb.auth.getSession()).data.session?.access_token;
+      const res=await apiCall('/api/customers/add',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({name:form.name.trim(),phone:form.phone.trim(),email:form.email.trim(),birthday:form.birthday||null})});
+      if(res&&res.id){
+        setClientes(prev=>[{...res,sales:[]},...(prev||[])]);
+        setShowModal(false);
+        setForm({name:'',phone:'',email:'',birthday:''});
+      }
+    }catch(e){console.error('[add cliente]',e);}
+    setSaving(false);
+  }
+
+  // Vista de detalhe do cliente
   if(sel!==null&&clientes){
     const c=clientes[sel];
     const compras=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     const lastSale=compras[0];
     const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
     const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
+    const cor=stColor(c.status||'cliente');
     return(
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
@@ -1660,13 +1704,26 @@ function PainelClientesTab({targetCustomerId}){
             <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
             <div style={{flex:1}}>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.phone||"—"}</div>
+              {c.phone&&<div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.phone}</div>}
               {c.email&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>✉ {c.email}</div>}
               {c.birthday&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {anivFmt}</div>}
             </div>
-            <Tag status={lastSale?"ativo":"inativo"}/>
+            <span style={{background:`${cor}18`,color:cor,border:`1px solid ${cor}30`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{stLabel(c.status||'cliente')}</span>
           </div>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10,marginTop:4}}>
+            <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
+            <span style={{background:`${MUTED}10`,color:MUTED,border:`1px solid ${BDR}`,fontSize:11,fontWeight:600,padding:"4px 12px",borderRadius:20}}>Origem: {srcLabel(c.source||'checkout')}</span>
+          </div>
+          {(c.postal_code||c.address_number||c.cpf_cnpj)&&(
+            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${BDR}`}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Endereço</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {c.postal_code&&<span style={{color:MUTED,fontSize:12}}>📍 CEP: <span style={{color:TEXT}}>{c.postal_code}</span></span>}
+                {c.address_number&&<span style={{color:MUTED,fontSize:12}}>Nº <span style={{color:TEXT}}>{c.address_number}</span></span>}
+                {c.cpf_cnpj&&<span style={{color:MUTED,fontSize:12}}>CPF/CNPJ: <span style={{color:TEXT}}>{c.cpf_cnpj}</span></span>}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
@@ -1686,19 +1743,56 @@ function PainelClientesTab({targetCustomerId}){
     );
   }
 
+  // Lista com filtros
+  const filtros=[
+    {id:"todos",label:"Todos"},
+    {id:"lead",label:"Interessados"},
+    {id:"cliente",label:"Clientes"},
+    {id:"assinante",label:"Assinantes"},
+  ];
+  const listaFiltrada=(clientes||[]).filter(c=>filtro==="todos"||(c.status||'cliente')===filtro);
+  const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* Modal adicionar cliente */}
+      {showModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px"}} onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
+          <div style={{background:CARD,borderRadius:20,padding:"24px",width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{color:TEXT,fontWeight:800,fontSize:16}}>Adicionar contato</div>
+            {[
+              {key:'name',label:'Nome *',placeholder:'Nome completo'},
+              {key:'phone',label:'Telefone',placeholder:'(11) 99999-9999'},
+              {key:'email',label:'E-mail',placeholder:'email@exemplo.com'},
+              {key:'birthday',label:'Aniversário',placeholder:'',type:'date'},
+            ].map(f=>(
+              <div key={f.key}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5}}>{f.label}</div>
+                <input type={f.type||'text'} value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.placeholder} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button onClick={()=>setShowModal(false)} style={{flex:1,background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"10px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>
+              <button onClick={salvarCliente} disabled={saving||!form.name.trim()} style={{flex:2,background:GOLD,border:"none",borderRadius:100,padding:"10px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:saving?0.6:1}}>
+                {saving?"Salvando…":"Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="kpi-grid">
         <KPICard label="Msgs hoje" value="—" icon="✉" accent={GOLD}/>
         <KPICard label="Msgs este mês" value="—" icon="✉" accent={GOLD}/>
         <KPICard label="Total clientes" value={clientes?String(clientes.length):"—"} icon="◻" accent={GOLD}/>
-        <KPICard label="Clientes ativos" value={clientes?String(clientes.length):"—"} icon="◉" accent={GOLD}/>
+        <KPICard label="Clientes ativos" value={clientes?String(totalAtivos):"—"} icon="◉" accent={GOLD}/>
       </div>
-      
+
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Próximos aniversários</span>
         </div>
+        {anivs.length===0&&<div style={{padding:"14px 18px",color:MUTED,fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>}
         {anivs.map((a,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none"}}>
             <span style={{fontSize:18,flexShrink:0}}>🎂</span>
@@ -1711,28 +1805,43 @@ function PainelClientesTab({targetCustomerId}){
         ))}
       </div>
 
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4,marginBottom:12}}>
-        <Btn sm outline color={GOLD}>+ Adicionar</Btn>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4,marginBottom:4}}>
+        <Btn sm outline color={GOLD} onClick={()=>setShowModal(true)}>+ Adicionar</Btn>
         <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar</button>
-        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
+        <button onClick={exportCSV} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
+      </div>
+
+      {/* Filtros por tipo */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {filtros.map(f=>{
+          const ativo=filtro===f.id;
+          const cnt=f.id==="todos"?(clientes||[]).length:(clientes||[]).filter(c=>(c.status||'cliente')===f.id).length;
+          return(
+            <button key={f.id} onClick={()=>setFiltro(f.id)} style={{background:ativo?GOLD:"transparent",border:`1.5px solid ${ativo?GOLD:BDR}`,borderRadius:100,padding:"6px 16px",color:ativo?"#0C0C0C":MUTED,fontWeight:ativo?700:600,fontSize:12,cursor:"pointer",fontFamily:F,transition:"all 0.15s"}}>
+              {f.label}<span style={{marginLeft:5,opacity:0.7}}>{cnt}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Lista de Clientes */}
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
         {clientes===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
-        {clientes!==null&&clientes.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente cadastrado ainda.</div>}
-        {(clientes||[]).map((c,i)=>{
+        {clientes!==null&&listaFiltrada.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente neste grupo.</div>}
+        {listaFiltrada.map((c,i)=>{
           const lastSale=c.sales?.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
           const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
           const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
+          const cor=stColor(c.status||'cliente');
+          const idx=clientes.findIndex(x=>x.id===c.id);
           return(
-          <button key={i} onClick={()=>setSel(i)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
+          <button key={c.id||i} onClick={()=>setSel(idx)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
             <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
                 <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-                <Tag status={lastSale?"ativo":"inativo"}/>
+                <span style={{background:`${cor}18`,color:cor,border:`1px solid ${cor}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,flexShrink:0}}>{stLabel(c.status||'cliente')}</span>
               </div>
               <div style={{color:MUTED,fontSize:12}}>📱 {c.phone||c.email||"—"}</div>
               <div style={{display:"flex",gap:12,marginTop:2}}>
