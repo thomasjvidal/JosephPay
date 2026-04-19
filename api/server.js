@@ -1286,6 +1286,74 @@ app.post("/api/leads/create", async (req, res) => {
   res.json(data);
 });
 
+// ── PATCH /api/customers/:id/status ──────────────────────────────────────────
+app.patch("/api/customers/:id/status", requireAuth, async (req, res) => {
+  const { status } = req.body;
+  const allowed = ["lead", "cliente", "assinante"];
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Status inválido" });
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ status })
+    .eq("id", req.params.id)
+    .eq("owner_id", req.user.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ── POST /api/whatsapp/send-group ─────────────────────────────────────────────
+app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
+  if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
+  const { message, group } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia" });
+
+  // Busca clientes do produtor filtrados por grupo
+  let query = supabase.from("customers").select("id,phone,name").eq("owner_id", req.user.id);
+  if (group && group !== "todos") query = query.eq("status", group);
+  const { data: customers, error: custErr } = await query;
+  if (custErr) return res.status(500).json({ error: custErr.message });
+
+  const withPhone = (customers || []).filter(c => c.phone);
+  let sent = 0, failed = 0;
+
+  // Envio em lote com concorrência máxima de 5
+  const CHUNK = 5;
+  for (let i = 0; i < withPhone.length; i += CHUNK) {
+    await Promise.all(withPhone.slice(i, i + CHUNK).map(async c => {
+      try {
+        const r = await evo.post(`/message/sendText/${EVOLUTION_INST}`, {
+          number: c.phone.replace(/\D/g, ""),
+          text: message.replace(/\{nome\}/g, c.name || ""),
+        });
+        const providerId = r.data?.key?.id || null;
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id,
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "sent", provider_id: providerId,
+        }).catch(() => {}); // tabela pode não ter colunas v8 ainda
+        sent++;
+      } catch (e) {
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id,
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "failed",
+          error_message: e.response?.data?.message || e.message,
+        }).catch(() => {});
+        failed++;
+      }
+    }));
+  }
+
+  // Registra o disparo agregado (group_count)
+  await supabase.from("messages").insert({
+    owner_id: req.user.id, direction: "outbound", content: message, type: "text",
+    group_target: group || "todos", group_count: sent, status: sent > 0 ? "sent" : "failed",
+  }).catch(() => {});
+
+  res.json({ sent, failed, total: withPhone.length });
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);

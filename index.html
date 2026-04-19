@@ -49,6 +49,171 @@ textarea{resize:none}
 .jp-gold-text{background:linear-gradient(135deg,#F2CA50 0%,#D4AF37 60%,#F2CA50 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .jp-promo-card{background:#1C1C1A;border-radius:24px;overflow:hidden;position:relative;min-height:140px}
 @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+/* ── CRM v9 ─────────────────────────────────────────────────────────────── */
+.crm-v9{--bg:#131312;--c1:#1a1a19;--c2:#222220;--c3:#2a2a28;--ln:rgba(255,255,255,0.055);--ln2:rgba(255,255,255,0.1);--gd:#D4AF37;--gd2:rgba(212,175,55,0.12);--tx:#E5E2E0;--t2:rgba(229,226,224,0.55);--t3:rgba(229,226,224,0.25);--gr:#34c759;--rd:#ff3b30;--wa:#142219;--wa2:#1c2f22}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.crm-v9 .tabs{display:flex;background:var(--c2);border-radius:9px;padding:2px;flex-shrink:0;margin-bottom:12px}
+.crm-v9 .tab{flex:1;text-align:center;padding:7px 2px;border-radius:7px;font-size:11px;font-weight:500;color:var(--t3);cursor:pointer;transition:all .18s;user-select:none;white-space:nowrap}
+.crm-v9 .tab.on{background:var(--c3);color:var(--tx);font-weight:600}
+.crm-v9 .scr{padding:4px 0 28px}
+.crm-v9 .kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--ln);border-radius:14px;overflow:hidden;margin-bottom:12px}
+.crm-v9 .kpi{background:var(--c1);padding:13px 16px}
+.crm-v9 .kl{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:7px}
+.crm-v9 .kv{font-size:24px;font-weight:700;letter-spacing:-1px;line-height:1}
+.crm-v9 .kv.gd{color:var(--gd)}
+.crm-v9 .bday-msgs-card{background:var(--c1);border-radius:14px;overflow:hidden;margin-bottom:12px}
+.crm-v9 .bm-header{padding:11px 16px;border-bottom:1px solid var(--ln);display:flex;align-items:center;justify-content:space-between}
+.crm-v9 .bm-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3)}
+.crm-v9 .msgs-badge{background:var(--gd2);border:1px solid rgba(212,175,55,.2);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--gd)}
+.crm-v9 .bday-circles{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--ln);overflow-x:auto}
+.crm-v9 .bday-circle-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex-shrink:0}
+.crm-v9 .bday-circle{width:46px;height:46px;border-radius:50%;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--t2);border:2px solid var(--ln);position:relative;transition:border-color .15s}
+.crm-v9 .bday-circle:active{border-color:var(--gd)}
+.crm-v9 .bday-circle-name{font-size:10px;color:var(--t2);text-align:center;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crm-v9 .bday-circle-date{font-size:9px;color:var(--gd);font-weight:600;text-align:center}
+.crm-v9 .bday-circle-badge{position:absolute;top:-3px;right:-3px;width:16px;height:16px;border-radius:50%;background:var(--gd);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#0e0d09;border:2px solid var(--c1)}
+.crm-v9 .bm-today{display:flex;align-items:center;justify-content:space-between;padding:11px 16px}
+.crm-v9 .bm-today-left{font-size:13px;color:var(--t2)}
+.crm-v9 .bm-today-val{font-size:22px;font-weight:700;color:var(--tx)}
+.crm-v9 .conv-section-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin:14px 0 8px}
+.crm-v9 .conv-section-lbl:first-child{margin-top:0}
+.crm-v9 .conv-item{background:var(--c1);border-radius:13px;overflow:hidden;margin-bottom:8px;cursor:pointer;border:1px solid var(--ln);transition:background .1s}
+.crm-v9 .conv-item:active{background:var(--c2)}
+.crm-v9 .conv-item-top{display:flex;align-items:flex-start;justify-content:space-between;padding:13px 16px 10px}
+.crm-v9 .ci-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:3px}
+.crm-v9 .ci-type.grupo{color:var(--gd)}.crm-v9 .ci-type.auto{color:var(--gr)}
+.crm-v9 .ci-name2{font-size:14px;font-weight:600;margin-bottom:2px}
+.crm-v9 .ci-preview{font-size:12px;color:var(--t2);line-height:1.4}
+.crm-v9 .ci-time{font-size:11px;color:var(--t3);flex-shrink:0;margin-left:12px;margin-top:2px}
+.crm-v9 .conv-stats{display:flex;gap:0;border-top:1px solid var(--ln)}
+.crm-v9 .cs-item{flex:1;padding:8px 0;text-align:center;border-right:1px solid var(--ln)}
+.crm-v9 .cs-item:last-child{border-right:none}
+.crm-v9 .cs-val{font-size:15px;font-weight:700;margin-bottom:1px}
+.crm-v9 .cs-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--t3)}
+.crm-v9 .cs-val.responded{color:var(--gr)}.crm-v9 .cs-val.viewed{color:var(--gd)}.crm-v9 .cs-val.sent{color:var(--tx)}
+.crm-v9 .nova{width:100%;border:none;border-radius:13px;padding:13px 18px;font-size:14px;font-weight:700;color:#0e0d09;cursor:pointer;margin-bottom:10px;text-align:left;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#d4a93a 0%,#c8a84b 40%,#b8962e 100%);box-shadow:0 2px 12px rgba(200,168,75,.22);transition:opacity .15s}
+.crm-v9 .nova:active{opacity:.85}
+.crm-v9 .nova-ic{width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.crm-v9 .sacts{display:flex;gap:7px;margin-bottom:12px}
+.crm-v9 .sa{flex:1;padding:8px 4px;border-radius:8px;border:1px solid var(--ln);background:transparent;color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;text-align:center}
+.crm-v9 .sa:active{background:var(--c2)}
+.crm-v9 .segs{display:flex;overflow-x:auto;border-bottom:1px solid var(--ln);margin-bottom:12px;-ms-overflow-style:none;scrollbar-width:none}
+.crm-v9 .segs::-webkit-scrollbar{display:none}
+.crm-v9 .seg{flex-shrink:0;padding:8px 14px;font-size:13px;font-weight:500;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s}
+.crm-v9 .seg.on{color:var(--tx);border-bottom-color:var(--gd);font-weight:600}
+.crm-v9 .sn{font-size:10px;color:var(--t3);margin-left:3px}
+.crm-v9 .clist{background:var(--c1);border-radius:13px;overflow:hidden}
+.crm-v9 .ci{display:flex;align-items:center;gap:11px;padding:11px 16px;border-bottom:1px solid var(--ln);cursor:pointer;transition:background .1s}
+.crm-v9 .ci:last-child{border-bottom:none}.crm-v9 .ci:active{background:var(--c2)}
+.crm-v9 .cav{width:36px;height:36px;border-radius:50%;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--t2);flex-shrink:0;border:1px solid var(--ln)}
+.crm-v9 .ci-i{flex:1;min-width:0}.crm-v9 .cn{font-size:13px;font-weight:600;margin-bottom:2px}
+.crm-v9 .cs{font-size:11px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crm-v9 .cr{flex-shrink:0;text-align:right}.crm-v9 .cv{font-size:13px;font-weight:600;margin-bottom:2px}.crm-v9 .ct{font-size:10px;color:var(--t3)}
+.crm-v9 .det{padding:4px 0 24px}
+.crm-v9 .back{display:flex;align-items:center;gap:4px;padding:10px 0 14px;color:var(--gd);font-size:14px;cursor:pointer}
+.crm-v9 .pc{background:var(--c1);border-radius:13px;padding:16px;margin-bottom:8px}
+.crm-v9 .ptop{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.crm-v9 .pav{width:44px;height:44px;border-radius:50%;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--t2);flex-shrink:0;border:1px solid var(--ln)}
+.crm-v9 .pn{font-size:17px;font-weight:700;margin-bottom:2px}
+.crm-v9 .pct{font-size:12px;color:var(--t2);line-height:1.8}
+.crm-v9 .ptags{display:flex;gap:6px;flex-wrap:wrap}
+.crm-v9 .ptag{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;background:var(--c2);color:var(--t3);border:1px solid var(--ln)}
+.crm-v9 .ptag.hi{color:var(--gd);border-color:rgba(212,175,55,.2);background:var(--gd2)}
+.crm-v9 .qr{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:8px}
+.crm-v9 .qb{background:var(--c1);border-radius:10px;padding:11px 4px 9px;text-align:center;cursor:pointer;border:1px solid var(--ln)}
+.crm-v9 .qb:active{background:var(--c2)}
+.crm-v9 .qi{display:flex;justify-content:center;margin-bottom:4px;color:var(--t2)}.crm-v9 .ql{font-size:10px;color:var(--t2)}
+.crm-v9 .ib{background:var(--c1);border-radius:13px;overflow:hidden;margin-bottom:8px}
+.crm-v9 .ibh{padding:10px 16px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);border-bottom:1px solid var(--ln)}
+.crm-v9 .ir{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--ln)}
+.crm-v9 .ir:last-child{border-bottom:none}
+.crm-v9 .il{font-size:13px;color:var(--t2)}.crm-v9 .iv{font-size:13px;font-weight:500}
+.crm-v9 .iv.gd{color:var(--gd)}.crm-v9 .iv.ok{color:var(--gr)}
+.crm-v9 .hitem{padding:10px 16px;border-bottom:1px solid var(--ln)}
+.crm-v9 .hitem:last-child{border-bottom:none}
+.crm-v9 .hp{font-size:13px;font-weight:600;margin-bottom:5px}
+.crm-v9 .hcs{display:flex;gap:5px;flex-wrap:wrap}
+.crm-v9 .hc{background:var(--c2);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--t2)}
+.crm-v9 .hc.ok{color:var(--gr)}
+.crm-v9 .chat-top{padding:10px 0;border-bottom:1px solid var(--ln);margin-bottom:10px}
+.crm-v9 .chat-to-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:7px}
+.crm-v9 .chat-pills{display:flex;gap:6px;flex-wrap:wrap}
+.crm-v9 .cp{padding:5px 13px;border-radius:14px;border:1px solid var(--ln);font-size:12px;font-weight:500;color:var(--t2);cursor:pointer;background:transparent;transition:all .15s}
+.crm-v9 .cp.on{background:rgba(52,199,89,.12);border-color:rgba(52,199,89,.3);color:var(--gr)}
+.crm-v9 .chat-rec{font-size:12px;color:var(--t2);margin-bottom:10px}
+.crm-v9 .chat-rec strong{color:var(--tx)}
+.crm-v9 .vars-wrap{padding:10px 0;border-top:1px solid var(--ln);margin-top:10px}
+.crm-v9 .vrl{font-size:10px;color:var(--t3);margin-bottom:6px}
+.crm-v9 .vrs{display:flex;gap:6px;flex-wrap:wrap}
+.crm-v9 .vb{padding:5px 11px;border-radius:7px;background:var(--c2);border:1px solid var(--ln);font-size:12px;font-weight:500;color:var(--t2);cursor:pointer}
+.crm-v9 .vb:active{background:var(--c3)}
+.crm-v9 .chat-bar{display:flex;align-items:flex-end;gap:8px;padding:10px 0 0}
+.crm-v9 .chat-ta{flex:1;background:var(--c2);border:1px solid var(--ln);border-radius:18px;padding:9px 13px;color:var(--tx);font-family:inherit;font-size:15px;resize:none;outline:none;min-height:38px;max-height:90px;line-height:1.4}
+.crm-v9 .chat-ta::placeholder{color:var(--t3)}
+.crm-v9 .chat-ta:focus{border-color:rgba(212,175,55,.3)}
+.crm-v9 .attach-btn{width:38px;height:38px;border-radius:50%;background:var(--c2);border:1px solid var(--ln);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--t2);font-size:20px;font-weight:300}
+.crm-v9 .mic-send{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
+.crm-v9 .mic-send.mic{background:var(--c2);border:1px solid var(--ln);color:var(--t2)}
+.crm-v9 .mic-send.send{background:var(--gd);border:none}
+.crm-v9 .bubble-out{max-width:86%;margin-left:auto;background:var(--wa2);border-radius:14px 14px 3px 14px;padding:11px 14px 7px;margin-bottom:8px}
+.crm-v9 .btxt{font-size:14px;line-height:1.5;color:var(--tx);white-space:pre-wrap;word-break:break-word}
+.crm-v9 .btm{font-size:10px;color:#4a7a5a;text-align:right;margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:3px}
+.crm-v9 .ck{width:9px;height:7px}
+.crm-v9 .sys-msg{background:var(--c1);border-radius:9px;padding:9px 14px;text-align:center;font-size:12px;color:var(--t2);border:1px solid var(--ln);margin-bottom:8px}
+.crm-v9 .sent-ok{background:rgba(52,199,89,.08);border:1px solid rgba(52,199,89,.18);border-radius:10px;padding:10px 14px;text-align:center;font-size:13px;color:var(--gr);font-weight:500;margin-bottom:8px}
+.crm-v9 .wab{border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.crm-v9 .wab.off{background:rgba(255,59,48,.06);border:1px solid rgba(255,59,48,.15)}
+.crm-v9 .wab.on{background:rgba(52,199,89,.06);border:1px solid rgba(52,199,89,.15)}
+.crm-v9 .wdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;animation:pulse 2s infinite}
+.crm-v9 .wdot.r{background:var(--rd)}.crm-v9 .wdot.g{background:var(--gr)}
+.crm-v9 .wlbl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--t3)}
+.crm-v9 .wval{font-size:14px;font-weight:600}
+.crm-v9 .wcb{margin-left:auto;padding:6px 16px;border-radius:20px;background:var(--gd);border:none;color:#0b0b0c;font-size:12px;font-weight:700;cursor:pointer}
+.crm-v9 .dc{background:var(--c1);border-radius:13px;overflow:hidden;margin-bottom:8px}
+.crm-v9 .dtop{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer}
+.crm-v9 .dleft{flex:1}.crm-v9 .dname{font-size:14px;font-weight:600;margin-bottom:1px}.crm-v9 .dst{font-size:12px}
+.crm-v9 .dst.on{color:var(--gr)}.crm-v9 .dst.off{color:var(--t3)}
+.crm-v9 .dlive{display:flex;align-items:center;gap:6px;margin-right:10px}
+.crm-v9 .dlive-dot{width:6px;height:6px;border-radius:50%;animation:pulse 1.5s infinite}
+.crm-v9 .dlive-dot.live{background:var(--gr)}.crm-v9 .dlive-dot.paused{background:var(--t3);animation:none}
+.crm-v9 .dlive-txt{font-size:10px;font-weight:600}
+.crm-v9 .dlive-txt.live{color:var(--gr)}.crm-v9 .dlive-txt.paused{color:var(--t3)}
+.crm-v9 .dbody{border-top:1px solid var(--ln);padding:0 16px}
+.crm-v9 .df{padding-top:12px;padding-bottom:4px}
+.crm-v9 .dfl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:6px}
+.crm-v9 .dfi{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:8px;padding:9px 12px;color:var(--tx);font-family:inherit;font-size:15px;outline:none}
+.crm-v9 .dfa{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:8px;padding:9px 12px;color:var(--tx);font-family:inherit;font-size:15px;resize:none;outline:none;height:64px;line-height:1.5}
+.crm-v9 .d-bar{display:flex;gap:8px;margin:10px 0 12px}
+.crm-v9 .dsave{flex:1;padding:10px;background:transparent;border:1px solid var(--ln);border-radius:8px;color:var(--gd);font-size:13px;font-weight:600;cursor:pointer;text-align:center}
+.crm-v9 .dpause{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s}
+.crm-v9 .dpause.live{background:rgba(255,59,48,.08);border:1px solid rgba(255,59,48,.2);color:var(--rd)}
+.crm-v9 .dpause.paused{background:rgba(52,199,89,.08);border:1px solid rgba(52,199,89,.2);color:var(--gr)}
+.crm-v9 .tgl{width:44px;height:26px;border-radius:13px;cursor:pointer;position:relative;transition:background .22s;background:var(--c3);border:1px solid var(--ln);flex-shrink:0}
+.crm-v9 .tgl.on{background:var(--gd);border-color:var(--gd)}
+.crm-v9 .tgl::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.5);transition:left .22s}
+.crm-v9 .tgl.on::after{left:20px}
+.crm-v9 .add-disp{width:100%;background:transparent;border:1px dashed var(--ln2);border-radius:13px;padding:13px;color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;margin-top:4px}
+.crm-v9 .ov{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.78);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center}
+.crm-v9 .sh{background:var(--c1);border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:6px 20px 48px;animation:sup .23s ease;max-height:80vh;overflow-y:auto}
+@keyframes sup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.crm-v9 .sh-h{width:36px;height:4px;border-radius:2px;background:var(--c3);margin:10px auto 20px}
+.crm-v9 .sh-t{font-size:20px;font-weight:700;margin-bottom:4px}
+.crm-v9 .sh-s{font-size:13px;color:var(--t2);margin-bottom:20px}
+.crm-v9 .shf{margin-bottom:10px}
+.crm-v9 .shl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:5px}
+.crm-v9 .shin{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:10px;padding:12px 13px;color:var(--tx);font-family:inherit;font-size:15px;outline:none}
+.crm-v9 .shin:focus{border-color:rgba(212,175,55,.3)}
+.crm-v9 .shbtn{width:100%;background:linear-gradient(135deg,#d4a93a,#c8a84b,#b8962e);border:none;border-radius:11px;padding:14px;font-size:15px;font-weight:700;color:#0b0b0c;cursor:pointer;margin-top:8px}
+.crm-v9 .shop{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:13px;padding:15px 16px;color:var(--tx);font-size:14px;font-weight:600;cursor:pointer;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:13px}
+.crm-v9 .shop.gd{background:linear-gradient(135deg,#d4a93a,#c8a84b,#b8962e);border-color:transparent;color:#0b0b0c}
+.crm-v9 .shop:active{opacity:.7}
+.crm-v9 .sh-ico{width:38px;height:38px;border-radius:10px;background:var(--c3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.crm-v9 .shop.gd .sh-ico{background:rgba(0,0,0,.18)}
+.crm-v9 .attach-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
+.crm-v9 .attach-opt{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer}
+.crm-v9 .attach-circle{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+.crm-v9 .attach-lbl{font-size:11px;color:var(--t2);text-align:center}
+.crm-v9 .wap-warn{padding:10px 16px;background:rgba(255,59,48,.08);border:1px solid rgba(255,59,48,.15);border-radius:10px;font-size:13px;color:#ff3b30;text-align:center;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -1555,341 +1720,321 @@ function ProdutosTab({accent,isDeise}){
   );
 }
 
-function AutomacoesZap(){
-  const [wapStatus,setWapStatus]=useState("verificando");
-  useEffect(()=>{
-    apiCall('/api/whatsapp/status').then(d=>{setWapStatus(d?.connected?"conectado":"desconectado");}).catch(()=>setWapStatus("desconectado"));
-  },[]);
-  const [anivOn,setAnivOn]=useState(true);
-  const [anivMsg,setAnivMsg]=useState("Feliz aniversário, {nome}! 🎂 Aqui vai um presentinho especial para você.");
-  const [cashOn,setCashOn]=useState(false);
-  const [cashDias,setCashDias]=useState("7");
-  const [cashMsg,setCashMsg]=useState("Oi {nome}, você tem cashback esperando! Use hoje.");
-  const [posOn,setPosOn]=useState(true);
-  const [posDias,setPosDias]=useState("3");
-  const [posMsg,setPosMsg]=useState("Olá {nome}! Como foi sua experiência? Posso te oferecer algo mais?");
-  function Toggle({on,setOn}){
-    return(
-      <button onClick={()=>setOn(!on)} style={{width:44,height:24,borderRadius:100,background:on?GOLD:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-        <div style={{width:18,height:18,borderRadius:"50%",background:on?"#0C0C0C":"rgba(255,255,255,0.4)",position:"absolute",top:3,left:on?23:3,transition:"left 0.2s"}}/>
-      </button>
-    );
-  }
-  function AutoBlock({title,on,setOn,dias,setDias,msg,setMsg,showDias}){
-    return(
-      <div style={{background:CARD,border:`1px solid ${on?GOLD+"30":BDR}`,borderRadius:18,padding:"18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:on?14:0}}>
-          <div>
-            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{title}</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{on?"Ativo":"Inativo"}</div>
-          </div>
-          <Toggle on={on} setOn={setOn}/>
-        </div>
-        {on&&(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {showDias&&(
-              <div>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Dias após a compra</div>
-                <input value={dias} onChange={e=>setDias(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
-              </div>
-            )}
-            <div>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Mensagem</div>
-              <textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,lineHeight:1.5}}/>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:`${wapStatus==="conectado"?GREEN:RED}0D`,border:`1px solid ${wapStatus==="conectado"?GREEN:RED}25`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:7,height:7,borderRadius:"50%",background:wapStatus==="conectado"?GREEN:RED,flexShrink:0}}/>
-        <div style={{flex:1}}>
-          <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>WhatsApp</div>
-          <div style={{color:TEXT,fontSize:13,fontWeight:600}}>{wapStatus==="conectado"?"Conectado e pronto":"Desconectado"}</div>
-        </div>
-        {wapStatus==="conectado"&&<span style={{background:`${GREEN}15`,color:GREEN,border:`1px solid ${GREEN}28`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Online</span>}
-      </div>
-      <AutoBlock title="Mensagem de Aniversário" on={anivOn} setOn={setAnivOn} msg={anivMsg} setMsg={setAnivMsg} showDias={false}/>
-      <AutoBlock title="Cashback" on={cashOn} setOn={setCashOn} dias={cashDias} setDias={setCashDias} msg={cashMsg} setMsg={setCashMsg} showDias={true}/>
-      <AutoBlock title="Pós-compra" on={posOn} setOn={setPosOn} dias={posDias} setDias={setPosDias} msg={posMsg} setMsg={setPosMsg} showDias={true}/>
-    </div>
-  );
-}
-
-// ClientesCRM removido — substituído por PainelClientesTab com dados reais do Supabase
-
-function PainelClientesTab({targetCustomerId}){
+function ClientesTab({targetCustomerId}){
+  const [tab,setTab]=useState(0);
   const [clientes,setClientes]=useState(null);
+  const [msgs,setMsgs]=useState([]);
+  const [wapStatus,setWapStatus]=useState("verificando");
   const [sel,setSel]=useState(null);
+  const [selSales,setSelSales]=useState(null);
   const [filtro,setFiltro]=useState("todos");
-  const [showModal,setShowModal]=useState(false);
+  const [group,setGroup]=useState("Clientes");
+  const [msgText,setMsgText]=useState("");
+  const [sending,setSending]=useState(false);
+  const [sentBubbles,setSentBubbles]=useState([]);
+  const [showNova,setShowNova]=useState(false);
+  const [showAdd,setShowAdd]=useState(false);
+  const [showAttach,setShowAttach]=useState(false);
+  const [showDisp,setShowDisp]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
-  const [selSales,setSelSales]=useState(null); // vendas do cliente selecionado (com nome do produto)
+  const [disparos,setDisparos]=useState([
+    {name:"Aniversário",on:true,live:true,open:true,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:""},
+    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7"},
+    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3"},
+  ]);
 
   useEffect(()=>{
     if(!_sb)return;
-    // Query simples sem join profundo — evita falha silenciosa do Supabase
     _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
-      .then(({data,error})=>{
-        if(error){console.error("[clientes]",error.message);return;} // não zeramos a lista em caso de erro
-        setClientes(data||[]);
-      });
+      .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
+    _sb.auth.getSession().then(({data})=>{
+      if(!data.session)return;
+      _sb.from('messages').select('*').eq('owner_id',data.session.user.id).order('created_at',{ascending:false}).limit(20)
+        .then(({data:d})=>{if(d)setMsgs(d);});
+    });
+  },[]);
+  useEffect(()=>{
+    apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'));
   },[]);
   useEffect(()=>{
     if(targetCustomerId&&clientes){
       const idx=clientes.findIndex(c=>c.id===targetCustomerId);
-      if(idx!==-1)setSel(idx);
+      if(idx!==-1){setSel(idx);setTab(2);}
     }
   },[targetCustomerId,clientes]);
-
-  // Carrega vendas com nome do produto quando um cliente é selecionado
   useEffect(()=>{
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
-    const c=clientes[sel];
-    if(!c)return;
+    const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,status,created_at,product_id,products(name)')
-      .eq('customer_id',c.id)
-      .order('created_at',{ascending:false})
-      .then(({data,error})=>{
-        if(error)console.error("[sales]",error.message);
-        setSelSales(data||[]);
-      });
+    _sb.from('sales').select('amount,status,created_at,product_id,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
+      .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
+  const inits=n=>n?n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2):'?';
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
-  const stColor=s=>s==='lead'?GOLD:s==='assinante'?'#4A90E2':GREEN;
   const srcLabel=s=>s==='minichat'?'Site':s==='manual'?'Manual':'Compra';
-
-  // Calcula aniversários próximos (60 dias)
-  const today=new Date();
+  const today=new Date();const todayIso=today.toISOString().slice(0,10);
+  const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
-    const b=new Date(c.birthday);
-    const next=new Date(today.getFullYear(),b.getMonth(),b.getDate());
-    if(next<today)next.setFullYear(today.getFullYear()+1);
-    const dias=Math.round((next-today)/(1000*60*60*24));
-    return{name:c.name,data:`${String(b.getDate()).padStart(2,'0')}/${String(b.getMonth()+1).padStart(2,'0')}`,dias};
+    const b=new Date(c.birthday+'T00:00:00');
+    const nx=new Date(today.getFullYear(),b.getMonth(),b.getDate());
+    if(nx<today)nx.setFullYear(today.getFullYear()+1);
+    const dias=Math.round((nx-today)/864e5);
+    return{name:c.name,label:dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`,dias,inits:inits(c.name),id:c.id};
   }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias).slice(0,5);
+  const totalClientes=(clientes||[]).length;
+  const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
+  const msgsHoje=msgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
+  const groupMsgs=msgs.filter(m=>m.group_target);
+  const cnts={todos:totalClientes,lead:(clientes||[]).filter(c=>c.status==='lead').length,cliente:(clientes||[]).filter(c=>!c.status||c.status==='cliente').length,assinante:(clientes||[]).filter(c=>c.status==='assinante').length};
+  const groupMap={'Todos':'todos','Interessados':'lead','Clientes':'cliente','Assinantes':'assinante'};
+  const recCount=group==='Todos'?totalClientes:cnts[groupMap[group]]||0;
+  const listaFiltrada=(clientes||[]).filter(c=>filtro==='todos'||(c.status||'cliente')===filtro);
 
-  // Export CSV
-  function exportCSV(){
-    if(!clientes||clientes.length===0)return;
-    const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
-    const hdr='Nome,Telefone,E-mail,Status,Origem,Aniversário,Total gasto,Data cadastro';
-    const rows=clientes.map(c=>[
-      esc(c.name),esc(c.phone),esc(c.email),
-      esc(stLabel(c.status)),esc(srcLabel(c.source)),
-      esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),
-      esc(c.total_spent||0),
-      esc(new Date(c.created_at).toLocaleDateString('pt-BR'))
-    ].join(','));
-    const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='clientes.csv';a.click();URL.revokeObjectURL(url);
-  }
-
-  // Adicionar cliente manual
-  async function salvarCliente(){
-    if(!form.name.trim())return;
-    setSaving(true);
+  async function sendMsg(){
+    if(!msgText.trim()||wapStatus!=='conectado'||sending)return;
+    setSending(true);
     try{
-      const token=(await _sb.auth.getSession()).data.session?.access_token;
-      const res=await apiCall('/api/customers/add',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({name:form.name.trim(),phone:form.phone.trim(),email:form.email.trim(),birthday:form.birthday||null})});
-      if(res&&res.id){
-        setClientes(prev=>[{...res,sales:[]},...(prev||[])]);
-        setShowModal(false);
-        setForm({name:'',phone:'',email:'',birthday:''});
+      const res=await apiCall('/api/whatsapp/send-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msgText.trim(),group:groupMap[group]||'todos'})});
+      if(res){
+        const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        setSentBubbles(p=>[...p,{text:msgText.trim(),time:now,sent:res.sent||0,failed:res.failed||0}]);
+        setMsgText('');
+        const {data:s}=await _sb.auth.getSession();
+        if(s.session){const {data:d}=await _sb.from('messages').select('*').eq('owner_id',s.session.user.id).order('created_at',{ascending:false}).limit(20);if(d)setMsgs(d);}
       }
-    }catch(e){console.error('[add cliente]',e);}
+    }catch(e){console.error('[send]',e);}
+    setSending(false);
+  }
+  async function salvarCliente(){
+    if(!form.name.trim())return;setSaving(true);
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      const res=await apiCall('/api/customers/add',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify({name:form.name.trim(),phone:form.phone.trim(),email:form.email.trim(),birthday:form.birthday||null})});
+      if(res&&res.id){setClientes(p=>[{...res,sales:[]},...(p||[])]);setShowAdd(false);setForm({name:'',phone:'',email:'',birthday:''});}
+    }catch(e){console.error('[add]',e);}
     setSaving(false);
   }
+  function exportCSV(){
+    if(!clientes||!clientes.length)return;
+    const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+    const hdr='Nome,Telefone,E-mail,Status,Origem,Aniversário,Data cadastro';
+    const rows=clientes.map(c=>[esc(c.name),esc(c.phone),esc(c.email),esc(stLabel(c.status)),esc(srcLabel(c.source)),esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),esc(new Date(c.created_at).toLocaleDateString('pt-BR'))].join(','));
+    const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();
+  }
+  async function updateStatus(id,status){
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      await apiCall(`/api/customers/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify({status})});
+      setClientes(p=>p.map(c=>c.id===id?{...c,status}:c));
+    }catch(e){console.error('[status]',e);}
+  }
+  const togDisp=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,open:!d.open}:d));
+  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on,live:!d.on,open:!d.on}:d));
+  const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
+  const tabNames=['Conversas','Mensagens','Painel','Disparos'];
 
-  // Vista de detalhe do cliente
-  if(sel!==null&&clientes){
-    const c=clientes[sel];
-    const compras=selSales||[]; // carregado separadamente com products(name)
-    const lastSale=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
-    const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
-    const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
-    const cor=stColor(c.status||'cliente');
+  if(tab===2&&sel!==null&&clientes){
+    const c=clientes[sel];const compras=selSales||[];
+    const ls=(c.sales||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    const uc=ls?new Date(ls.created_at).toLocaleDateString('pt-BR'):'—';
+    const af=c.birthday?new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
     return(
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-            <div style={{width:48,height:48,borderRadius:16,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{c.name}</div>
-              {c.phone&&<div style={{color:MUTED,fontSize:12,marginTop:2}}>📱 {c.phone}</div>}
-              {c.email&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>✉ {c.email}</div>}
-              {c.birthday&&<div style={{color:MUTED,fontSize:12,marginTop:1}}>🎂 Aniversário: {anivFmt}</div>}
-            </div>
-            <span style={{background:`${cor}18`,color:cor,border:`1px solid ${cor}30`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{stLabel(c.status||'cliente')}</span>
+      <div className="crm-v9">
+        <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>{setSel(null);setTab(i);}}>{n}</div>)}</div>
+        <div className="det">
+          <div className="back" onClick={()=>setSel(null)}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
+          <div className="pc">
+            <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<>🎂 {af}</>}</div></div></div>
+            <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:10,marginTop:4}}>
-            <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Última compra: {ultimaCompra}</span>
-            <span style={{background:`${MUTED}10`,color:MUTED,border:`1px solid ${BDR}`,fontSize:11,fontWeight:600,padding:"4px 12px",borderRadius:20}}>Origem: {srcLabel(c.source||'checkout')}</span>
+          <div className="qr">
+            <div className="qb" onClick={()=>{setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
+            <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></div><div className="ql">E-mail</div></div>
+            <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></div><div className="ql">Etiquetar</div></div>
+            <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Nota</div></div>
           </div>
-          {(c.postal_code||c.address_number||c.cpf_cnpj)&&(
-            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${BDR}`}}>
-              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Endereço</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                {c.postal_code&&<span style={{color:MUTED,fontSize:12}}>📍 CEP: <span style={{color:TEXT}}>{c.postal_code}</span></span>}
-                {c.address_number&&<span style={{color:MUTED,fontSize:12}}>Nº <span style={{color:TEXT}}>{c.address_number}</span></span>}
-                {c.cpf_cnpj&&<span style={{color:MUTED,fontSize:12}}>CPF/CNPJ: <span style={{color:TEXT}}>{c.cpf_cnpj}</span></span>}
-              </div>
+          <div className="ib"><div className="ibh">Dados pessoais</div>
+            {c.cpf_cnpj&&<div className="ir"><span className="il">CPF/CNPJ</span><span className="iv">{c.cpf_cnpj}</span></div>}
+            {c.birthday&&<div className="ir"><span className="il">Nascimento</span><span className="iv">{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>}
+            {c.phone&&<div className="ir"><span className="il">Telefone</span><span className="iv">{c.phone}</span></div>}
+            {c.postal_code&&<div className="ir"><span className="il">CEP</span><span className="iv">{c.postal_code}</span></div>}
+            {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
+          </div>
+          <div className="ib"><div className="ibh">Financeiro</div>
+            <div className="ir"><span className="il">Total pago</span><span className="iv gd">{fmtBRL(c.total_spent||0)}</span></div>
+            <div className="ir"><span className="il">Última compra</span><span className="iv">{uc}</span></div>
+            <div className="ir"><span className="il">Status</span><span className="iv ok">{stLabel(c.status||'cliente')}</span></div>
+          </div>
+          <div className="ib"><div className="ibh">Histórico de compras</div>
+            {selSales===null&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Carregando…</div>}
+            {selSales!==null&&compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
+            {compras.map((cp,i)=>(
+              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Produto'}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.amount)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
+            ))}
+          </div>
+          <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
+            <div className="ir"><span className="il">Status atual</span>
+              <select onChange={e=>updateStatus(c.id,e.target.value)} value={c.status||'cliente'} style={{background:'transparent',border:'none',color:'var(--gd)',fontSize:13,fontWeight:600,outline:'none',WebkitAppearance:'none',cursor:'pointer'}}>
+                <option value="cliente">Cliente</option><option value="lead">Interessado</option><option value="assinante">Assinante</option>
+              </select>
             </div>
-          )}
-        </div>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
-          {selSales===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Carregando…</div>}
-          {selSales!==null&&compras.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
-          {compras.map((cp,i)=>{
-            const prod=cp.products?.name||"Produto";
-            const dt=new Date(cp.created_at).toLocaleDateString('pt-BR');
-            return(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<compras.length-1?`1px solid ${BDR}`:"none"}}>
-              <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{prod}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt}</div></div>
-              <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(cp.amount)}</div><div style={{marginTop:4}}><Tag status={cp.status}/></div></div>
-            </div>
-            );
-          })}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Lista com filtros
-  const filtros=[
-    {id:"todos",label:"Todos"},
-    {id:"lead",label:"Interessados"},
-    {id:"cliente",label:"Clientes"},
-    {id:"assinante",label:"Assinantes"},
-  ];
-  const listaFiltrada=(clientes||[]).filter(c=>filtro==="todos"||(c.status||'cliente')===filtro);
-  const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
-
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {/* Modal adicionar cliente */}
-      {showModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px"}} onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
-          <div style={{background:CARD,borderRadius:20,padding:"24px",width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{color:TEXT,fontWeight:800,fontSize:16}}>Adicionar contato</div>
-            {[
-              {key:'name',label:'Nome *',placeholder:'Nome completo'},
-              {key:'phone',label:'Telefone',placeholder:'(11) 99999-9999'},
-              {key:'email',label:'E-mail',placeholder:'email@exemplo.com'},
-              {key:'birthday',label:'Aniversário',placeholder:'',type:'date'},
-            ].map(f=>(
-              <div key={f.key}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5}}>{f.label}</div>
-                <input type={f.type||'text'} value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.placeholder} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+    <div className="crm-v9">
+      <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>setTab(i)}>{n}</div>)}</div>
+
+      {tab===0&&(
+        <div className="scr">
+          <div className="kpi-row">
+            <div className="kpi"><div className="kl">Total de clientes</div><div className="kv">{clientes?totalClientes:'—'}</div></div>
+            <div className="kpi"><div className="kl">Clientes ativos</div><div className="kv gd">{clientes?totalAtivos:'—'}</div></div>
+          </div>
+          <div className="bday-msgs-card">
+            <div className="bm-header"><div className="bm-title">Próximos aniversários</div><div className="msgs-badge">Hoje: {msgsHoje} msgs</div></div>
+            {anivs.length>0
+              ?<div className="bday-circles">{anivs.map((a,i)=><div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(2);}}}><div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div><div className="bday-circle-name">{a.name.split(' ')[0]}</div><div className="bday-circle-date">{a.label}</div></div>)}</div>
+              :<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>
+            }
+            <div className="bm-today"><div className="bm-today-left">Mensagens enviadas hoje</div><div className="bm-today-val">{msgsHoje}</div></div>
+          </div>
+          <div className="conv-section-lbl">Disparos em grupo</div>
+          {groupMsgs.length===0&&<div className="conv-item"><div className="conv-item-top"><div style={{flex:1,textAlign:'center',color:'var(--t2)',fontSize:13,padding:'4px 0'}}>Nenhum disparo enviado ainda.</div></div></div>}
+          {groupMsgs.slice(0,5).map((m,i)=>(
+            <div key={i} className="conv-item">
+              <div className="conv-item-top">
+                <div style={{flex:1}}><div className="ci-type grupo">Grupo · {m.group_target}</div><div className="ci-name2">{m.content.slice(0,40)}{m.content.length>40?'…':''}</div><div className="ci-preview">"{m.content.slice(0,60)}"</div></div>
+                <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
               </div>
-            ))}
-            <div style={{display:"flex",gap:10,marginTop:4}}>
-              <button onClick={()=>setShowModal(false)} style={{flex:1,background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"10px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>
-              <button onClick={salvarCliente} disabled={saving||!form.name.trim()} style={{flex:2,background:GOLD,border:"none",borderRadius:100,padding:"10px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:saving?0.6:1}}>
-                {saving?"Salvando…":"Salvar"}
-              </button>
+              <div className="conv-stats">
+                <div className="cs-item"><div className="cs-val sent">{m.group_count||1}</div><div className="cs-lbl">Enviadas</div></div>
+                <div className="cs-item"><div className="cs-val viewed">—</div><div className="cs-lbl">Lidas</div></div>
+                <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Responderam</div></div>
+              </div>
+            </div>
+          ))}
+          <div className="conv-section-lbl">Automáticas</div>
+          {msgs.filter(m=>!m.group_target).slice(0,3).map((m,i)=>(
+            <div key={i} className="conv-item">
+              <div className="conv-item-top">
+                <div style={{flex:1}}><div className="ci-type auto">Automático</div><div className="ci-name2">{m.content.slice(0,45)}{m.content.length>45?'…':''}</div></div>
+                <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+              </div>
+              <div className="conv-stats">
+                <div className="cs-item"><div className="cs-val sent">1</div><div className="cs-lbl">Enviada</div></div>
+                <div className="cs-item"><div className={`cs-val${m.status==='read'?' viewed':''}`}>{m.status==='read'?'1':'—'}</div><div className="cs-lbl">Lida</div></div>
+                <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Resposta</div></div>
+              </div>
+            </div>
+          ))}
+          {msgs.filter(m=>!m.group_target).length===0&&<div style={{color:'var(--t2)',fontSize:13,textAlign:'center',padding:'14px 0'}}>Nenhuma mensagem automática ainda.</div>}
+        </div>
+      )}
+
+      {tab===1&&(
+        <div className="scr">
+          <div className="chat-top">
+            <div className="chat-to-lbl">Enviar para</div>
+            <div className="chat-pills">{['Todos','Interessados','Clientes','Assinantes'].map(g=><div key={g} className={`cp${group===g?' on':''}`} onClick={()=>setGroup(g)}>{g}</div>)}</div>
+          </div>
+          <div className="chat-rec"><strong>{recCount} {recCount===1?'pessoa':'pessoas'}</strong> selecionadas</div>
+          {wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
+          {sentBubbles.length===0&&<div className="sys-msg">Escreva sua mensagem. Use as variáveis para personalizar.</div>}
+          {sentBubbles.map((b,i)=>(
+            <div key={i}>
+              <div className="bubble-out"><div className="btxt">{b.text}</div><div className="btm"><span style={{fontSize:10}}>{b.time}</span><svg className="ck" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#c8a84b" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg></div></div>
+              <div className="sent-ok">Enviado para {b.sent} pessoas{b.failed>0?` · ${b.failed} falha(s)`:''}</div>
+            </div>
+          ))}
+          <div className="vars-wrap">
+            <div className="vrl">Inserir para cada cliente:</div>
+            <div className="vrs">{['{nome}','{produto}','{link}','{cupom}'].map(v=><div key={v} className="vb" onClick={()=>setMsgText(t=>t+v)}>{v.replace(/\{|\}/g,'')}</div>)}</div>
+          </div>
+          <div className="chat-bar">
+            <div className="attach-btn" onClick={()=>setShowAttach(true)}>+</div>
+            <textarea className="chat-ta" value={msgText} onChange={e=>setMsgText(e.target.value)} placeholder="Mensagem..." rows={1}/>
+            <div className={`mic-send${msgText.trim()?' send':' mic'}`} onClick={msgText.trim()?sendMsg:undefined}>
+              {msgText.trim()
+                ?<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="white" strokeWidth="2.1" strokeLinecap="round"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                :<svg width="12" height="16" viewBox="0 0 12 16" fill="none"><rect x="3" y=".75" width="6" height="8.5" rx="3" stroke="currentColor" strokeWidth="1.4"/><path d="M1 8a5 5 0 0010 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><line x1="6" y1="13" x2="6" y2="15.25" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
             </div>
           </div>
         </div>
       )}
 
-      <div className="kpi-grid">
-        <KPICard label="Msgs hoje" value="—" icon="✉" accent={GOLD}/>
-        <KPICard label="Msgs este mês" value="—" icon="✉" accent={GOLD}/>
-        <KPICard label="Total clientes" value={clientes?String(clientes.length):"—"} icon="◻" accent={GOLD}/>
-        <KPICard label="Clientes ativos" value={clientes?String(totalAtivos):"—"} icon="◉" accent={GOLD}/>
-      </div>
-
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Próximos aniversários</span>
-        </div>
-        {anivs.length===0&&<div style={{padding:"14px 18px",color:MUTED,fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>}
-        {anivs.map((a,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderBottom:i<anivs.length-1?`1px solid ${BDR}`:"none"}}>
-            <span style={{fontSize:18,flexShrink:0}}>🎂</span>
-            <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{a.name}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{a.data}</div>
-            </div>
-            {a.dias<=30&&<span style={{background:`${GOLD}18`,color:GOLD,border:`1px solid ${GOLD}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{a.dias} dias</span>}
+      {tab===2&&(
+        <div className="scr">
+          <button className="nova" onClick={()=>setShowNova(true)}>Nova ação<div className="nova-ic"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="rgba(0,0,0,.6)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div></button>
+          <div className="sacts">
+            <button className="sa" onClick={()=>setShowAdd(true)}>+ Adicionar</button>
+            <button className="sa">Importar</button>
+            <button className="sa" onClick={exportCSV}>Exportar</button>
           </div>
-        ))}
-      </div>
+          <div className="segs">
+            {[{id:'todos',label:'Todos',count:totalClientes},{id:'lead',label:'Interessados',count:cnts.lead},{id:'cliente',label:'Clientes',count:cnts.cliente},{id:'assinante',label:'Assinantes',count:cnts.assinante}].map(f=>(
+              <div key={f.id} className={`seg${filtro===f.id?' on':''}`} onClick={()=>setFiltro(f.id)}>{f.label}<span className="sn">{f.count}</span></div>
+            ))}
+          </div>
+          <div className="clist">
+            {clientes===null&&<div style={{padding:'20px',textAlign:'center',color:'var(--t2)',fontSize:13}}>Carregando…</div>}
+            {clientes!==null&&listaFiltrada.length===0&&<div style={{padding:'20px',textAlign:'center',color:'var(--t2)',fontSize:13}}>Nenhum cliente neste grupo.</div>}
+            {listaFiltrada.map((c,i)=>{
+              const ls2=c.sales?.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+              const uc2=ls2?new Date(ls2.created_at).toLocaleDateString('pt-BR'):'—';
+              const idx2=(clientes||[]).findIndex(x=>x.id===c.id);
+              return(
+                <div key={c.id||i} className="ci" onClick={()=>setSel(idx2)}>
+                  <div className="cav">{inits(c.name)}</div>
+                  <div className="ci-i"><div className="cn">{c.name}</div><div className="cs">{c.phone||c.email||'—'} · {new Date(c.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div></div>
+                  <div className="cr"><div className="cv">{fmtBRL(c.total_spent||0)}</div><div className="ct">{stLabel(c.status||'cliente')}</div></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4,marginBottom:4}}>
-        <Btn sm outline color={GOLD} onClick={()=>setShowModal(true)}>+ Adicionar</Btn>
-        <button style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar</button>
-        <button onClick={exportCSV} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar</button>
-      </div>
-
-      {/* Filtros por tipo */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {filtros.map(f=>{
-          const ativo=filtro===f.id;
-          const cnt=f.id==="todos"?(clientes||[]).length:(clientes||[]).filter(c=>(c.status||'cliente')===f.id).length;
-          return(
-            <button key={f.id} onClick={()=>setFiltro(f.id)} style={{background:ativo?GOLD:"transparent",border:`1.5px solid ${ativo?GOLD:BDR}`,borderRadius:100,padding:"6px 16px",color:ativo?"#0C0C0C":MUTED,fontWeight:ativo?700:600,fontSize:12,cursor:"pointer",fontFamily:F,transition:"all 0.15s"}}>
-              {f.label}<span style={{marginLeft:5,opacity:0.7}}>{cnt}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Lista de Clientes */}
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Lista de Clientes</div>
-        {clientes===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
-        {clientes!==null&&listaFiltrada.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"24px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum cliente neste grupo.</div>}
-        {listaFiltrada.map((c,i)=>{
-          const lastSale=c.sales?.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
-          const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
-          const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
-          const cor=stColor(c.status||'cliente');
-          const idx=clientes.findIndex(x=>x.id===c.id);
-          return(
-          <button key={c.id||i} onClick={()=>setSel(idx)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"16px 18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14,width:"100%"}}>
-            <div style={{width:42,height:42,borderRadius:13,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,color:TEXT,flexShrink:0}}>{c.name[0]}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name}</div>
-                <span style={{background:`${cor}18`,color:cor,border:`1px solid ${cor}30`,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,flexShrink:0}}>{stLabel(c.status||'cliente')}</span>
+      {tab===3&&(
+        <div className="scr">
+          <div className={`wab${wapStatus==='conectado'?' on':' off'}`}>
+            <div className={`wdot${wapStatus==='conectado'?' g':' r'}`}/>
+            <div><div className="wlbl">WhatsApp</div><div className="wval">{wapStatus==='conectado'?'Conectado':'Desconectado'}</div></div>
+            <button className="wcb" onClick={()=>apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'))}>{wapStatus==='conectado'?'Desconectar':'Conectar'}</button>
+          </div>
+          <div style={{display:'flex',gap:16,marginBottom:12,padding:'0 2px'}}>
+            {[{c:'var(--gr)',l:'Disparando agora'},{c:'var(--t3)',l:'Pausado'},{c:'var(--rd)',l:'Desativado'}].map(({c,l})=>(
+              <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--t2)'}}><div style={{width:7,height:7,borderRadius:'50%',background:c}}/>{l}</div>
+            ))}
+          </div>
+          {disparos.map((d,i)=>(
+            <div key={i} className="dc">
+              <div className="dtop" onClick={()=>togDisp(i)}>
+                <div className="dleft"><div className="dname">{d.name}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
+                <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
+                <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
               </div>
-              <div style={{color:MUTED,fontSize:12}}>📱 {c.phone||c.email||"—"}</div>
-              <div style={{display:"flex",gap:12,marginTop:2}}>
-                <span style={{color:MUTED,fontSize:11}}>Última compra: <span style={{color:TEXT}}>{ultimaCompra}</span></span>
-                {c.birthday&&<span style={{color:MUTED,fontSize:11}}>🎂 {anivFmt}</span>}
-              </div>
+              {d.open&&<div className="dbody">
+                {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
+                <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
+                <div className="d-bar"><button className="dsave">Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
+              </div>}
             </div>
-          </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+          ))}
+          <button className="add-disp" onClick={()=>setShowDisp(true)}>+ Novo disparo</button>
+        </div>
+      )}
 
-function ClientesTab({targetCustomerId}){
-  const [sub,setSub]=useState("painel");
-  const segTabs=[{id:"painel",label:"Painel"},{id:"automacoes",label:"Automações"}];
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{display:"flex",background:CARD,borderRadius:14,padding:3,gap:2}}>
-        {segTabs.map(s=>(
-          <button key={s.id} onClick={()=>setSub(s.id)} style={{flex:1,padding:"9px 0",borderRadius:11,background:s.id===sub?CARD3:"transparent",border:"none",color:s.id===sub?TEXT:MUTED,fontSize:12,fontWeight:s.id===sub?700:500,cursor:"pointer",fontFamily:F,transition:"background 0.15s"}}>{s.label}</button>
-        ))}
-      </div>
-      {sub==="painel"&&<PainelClientesTab targetCustomerId={targetCustomerId}/>}
-      {sub==="automacoes"&&<AutomacoesZap/>}
+      {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(1);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
+      {showAdd&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Adicionar contato</div><div className="sh-s">Preencha os dados</div>{[{k:'name',l:'Nome completo',p:'Nome',t:'text'},{k:'phone',l:'Telefone (WhatsApp)',p:'(XX) XXXXX-XXXX',t:'tel'},{k:'email',l:'E-mail',p:'email@email.com',t:'email'},{k:'birthday',l:'Data de nascimento',p:'',t:'date'}].map(f=><div key={f.k} className="shf"><div className="shl">{f.l}</div><input className="shin" type={f.t} placeholder={f.p} value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}/></div>)}<button className="shbtn" onClick={salvarCliente} disabled={saving||!form.name.trim()}>{saving?'Salvando…':'Salvar'}</button></div></div>}
+      {showAttach&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAttach(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t" style={{marginBottom:20}}>Anexar</div><div className="attach-grid">{[{bg:'#7B2FBE',e:'🖼️',l:'Imagem'},{bg:'#2F7BBE',e:'📹',l:'Vídeo'},{bg:'#BE2F2F',e:'📄',l:'Documento'},{bg:'#2FBE7B',e:'🎵',l:'Áudio'},{bg:'#BE7B2F',e:'📍',l:'Localização'},{bg:'#2F4FBE',e:'👤',l:'Contato'},{bg:'#8FBE2F',e:'📊',l:'Enquete'},{bg:'rgba(212,175,55,0.12)',e:'🎤',l:'Gravar áudio'}].map(({bg,e,l})=><div key={l} className="attach-opt" onClick={()=>setShowAttach(false)}><div className="attach-circle" style={{background:bg}}>{e}</div><div className="attach-lbl">{l}</div></div>)}</div></div></div>}
+      {showDisp&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowDisp(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Novo disparo</div><div className="sh-s">Configure sua automação</div><div className="shf"><div className="shl">Nome do disparo</div><input className="shin" placeholder="Ex: Boas-vindas"/></div><div className="shf"><div className="shl">Quando enviar</div><select className="shin" style={{WebkitAppearance:'none'}}><option>Após a compra</option><option>Antes do aniversário</option><option>Após inatividade</option><option>Manual</option></select></div><div className="shf"><div className="shl">Dias</div><input className="shin" type="number" defaultValue={3}/></div><div className="shf"><div className="shl">Mensagem</div><textarea className="shin" style={{height:80,fontSize:15,lineHeight:1.5}} placeholder="Olá {nome}!..."/></div><button className="shbtn" onClick={()=>setShowDisp(false)}>Criar disparo</button></div></div>}
     </div>
   );
 }
