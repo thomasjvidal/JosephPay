@@ -697,8 +697,11 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
   try {
     const uid = req.user.id;
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    // Fuso Brasil UTC-3: Railway roda em UTC, produtor está no Brasil
+    const BRT = 3 * 60 * 60 * 1000;
+    const nowBrt = new Date(now.getTime() - BRT);
+    const todayStart = new Date(Date.UTC(nowBrt.getUTCFullYear(), nowBrt.getUTCMonth(), nowBrt.getUTCDate()) + BRT).toISOString();
+    const monthStart = new Date(Date.UTC(nowBrt.getUTCFullYear(), nowBrt.getUTCMonth(), 1) + BRT).toISOString();
 
     const [salesMonth, salesToday, activeSubs, totalCustomers] = await Promise.all([
       supabase.from("sales")
@@ -747,8 +750,10 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
     const uid    = req.user.id;
     const period = req.query.period || "mes";
     const now    = new Date();
+    const BRT    = 3 * 60 * 60 * 1000;
+    const nowBrt = new Date(now.getTime() - BRT);
     let from;
-    if      (period === "hoje")      from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    if      (period === "hoje")      from = new Date(Date.UTC(nowBrt.getUTCFullYear(), nowBrt.getUTCMonth(), nowBrt.getUTCDate()) + BRT).toISOString();
     else if (period === "semana")    from = new Date(now.getTime() - 7  * 86400000).toISOString();
     else if (period === "mes")       from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     else if (period === "trimestre") from = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1).toISOString();
