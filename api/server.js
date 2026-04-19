@@ -708,7 +708,7 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
       supabase.from("sales")
         .select("id", { count: "exact", head: true })
         .eq("owner_id", uid).eq("status", "pago")
-        .or(`payment_date.gte.${todayStart},and(payment_date.is.null,created_at.gte.${todayStart})`),
+        .gte("created_at", todayStart),
       supabase.from("subscriptions")
         .select("id", { count: "exact", head: true })
         .eq("owner_id", uid).eq("status", "ativo"),
