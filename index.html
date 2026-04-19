@@ -1656,7 +1656,7 @@ function PainelClientesTab({targetCustomerId}){
   function statusInfo(s){
     if(s==='lead')return{label:'Lead',color:'#F59E0B'};
     if(s==='assinante')return{label:'Assinante',color:GREEN};
-    return{label:'Cliente',color:ACC};
+    return{label:'Cliente',color:BLUE};
   }
   function SourceBadge({source}){
     const map={checkout:'Checkout',minichat:'Site/Chat',manual:'Manual'};
@@ -1787,7 +1787,7 @@ function PainelClientesTab({targetCustomerId}){
             ))}
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <button onClick={()=>{setShowAdd(false);setAddForm({name:'',phone:'',email:''}); }} style={{flex:1,padding:"12px",border:`1.5px solid ${BDR}`,borderRadius:12,background:"transparent",color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Cancelar</button>
-              <button onClick={handleAdd} disabled={!addForm.name||addLoading} style={{flex:1,padding:"12px",border:"none",borderRadius:12,background:ACC,color:"#fff",fontWeight:700,fontSize:14,cursor:!addForm.name||addLoading?"not-allowed":"pointer",opacity:!addForm.name||addLoading?.5:1,fontFamily:F}}>{addLoading?"Salvando…":"Salvar"}</button>
+              <button onClick={handleAdd} disabled={!addForm.name||addLoading} style={{flex:1,padding:"12px",border:"none",borderRadius:12,background:BLUE,color:"#fff",fontWeight:700,fontSize:14,cursor:!addForm.name||addLoading?"not-allowed":"pointer",opacity:!addForm.name||addLoading?.5:1,fontFamily:F}}>{addLoading?"Salvando…":"Salvar"}</button>
             </div>
           </div>
         </div>
@@ -1797,7 +1797,7 @@ function PainelClientesTab({targetCustomerId}){
       <div className="kpi-grid">
         <KPICard label="Total" value={clientes?String(total):"—"} icon="👥" accent={GOLD}/>
         <KPICard label="Leads" value={clientes?String(leads):"—"} icon="🌱" accent="#F59E0B"/>
-        <KPICard label="Clientes" value={clientes?String(clts):"—"} icon="⭐" accent={ACC}/>
+        <KPICard label="Clientes" value={clientes?String(clts):"—"} icon="⭐" accent={BLUE}/>
         <KPICard label="Assinantes" value={clientes?String(assinantes):"—"} icon="♻" accent={GREEN}/>
       </div>
 
@@ -1819,7 +1819,7 @@ function PainelClientesTab({targetCustomerId}){
 
       {/* Ações */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <button onClick={()=>setShowAdd(true)} style={{background:ACC,border:"none",borderRadius:100,padding:"9px 20px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>+ Adicionar</button>
+        <button onClick={()=>setShowAdd(true)} style={{background:BLUE,border:"none",borderRadius:100,padding:"9px 20px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>+ Adicionar</button>
         <button onClick={exportCSV} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Exportar CSV</button>
       </div>
 
