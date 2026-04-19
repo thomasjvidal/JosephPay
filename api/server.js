@@ -723,12 +723,12 @@ app.get("/api/dashboard/kpis", requireAuth, async (req, res) => {
     const taxasAsaasMes     = sales.reduce((a, s) => a + Number(s.asaas_fee || 0), 0);
     const taxaPlataformaMes = sales.reduce((a, s) => a + Number(s.platform_fee || 0), 0);
 
-    res.json({
+    res.set("Cache-Control", "no-store").json({
       receitaBrutaMes:   Math.round(receitaBrutaMes   * 100) / 100,
       receitaLiquidaMes: Math.round(receitaLiquidaMes * 100) / 100,
       taxasAsaasMes:     Math.round(taxasAsaasMes     * 100) / 100,
       taxaPlataformaMes: Math.round(taxaPlataformaMes * 100) / 100,
-      receitaMes:        Math.round(receitaLiquidaMes * 100) / 100, // alias compatível
+      receitaMes:        Math.round(receitaLiquidaMes * 100) / 100,
       vendasHoje:        salesToday.count || 0,
       assinaturasAtivas: activeSubs.count || 0,
       totalClientes:     totalCustomers.count || 0,
@@ -761,10 +761,10 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
 
     const normalized = (data || []).map(s => ({
       amount:     Number(s.producer_amount || s.amount || 0),
-      created_at: s.created_at, // usar processing time (payment_date pode ser só data sem hora)
+      created_at: s.created_at,
     }));
 
-    res.json({ sales: normalized });
+    res.set("Cache-Control", "no-store").json({ sales: normalized });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
