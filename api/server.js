@@ -757,7 +757,7 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
     const { data } = await supabase.from("sales")
       .select("producer_amount,amount,payment_date,created_at")
       .eq("owner_id", uid).eq("status", "pago")
-      .or(`payment_date.gte.${from},and(payment_date.is.null,created_at.gte.${from})`);
+      .gte("created_at", from);
 
     const normalized = (data || []).map(s => ({
       amount:     Number(s.producer_amount || s.amount || 0),
