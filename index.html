@@ -1628,11 +1628,16 @@ function PainelClientesTab({targetCustomerId}){
   const [showModal,setShowModal]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
+  const [selSales,setSelSales]=useState(null); // vendas do cliente selecionado (com nome do produto)
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
-      .then(({data,error})=>{if(error)console.error("[clientes]",error.message);setClientes(data||[]);});
+    // Query simples sem join profundo — evita falha silenciosa do Supabase
+    _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
+      .then(({data,error})=>{
+        if(error){console.error("[clientes]",error.message);return;} // não zeramos a lista em caso de erro
+        setClientes(data||[]);
+      });
   },[]);
   useEffect(()=>{
     if(targetCustomerId&&clientes){
@@ -1640,6 +1645,21 @@ function PainelClientesTab({targetCustomerId}){
       if(idx!==-1)setSel(idx);
     }
   },[targetCustomerId,clientes]);
+
+  // Carrega vendas com nome do produto quando um cliente é selecionado
+  useEffect(()=>{
+    if(sel===null||!clientes||!_sb){setSelSales(null);return;}
+    const c=clientes[sel];
+    if(!c)return;
+    setSelSales(null);
+    _sb.from('sales').select('amount,status,created_at,product_id,products(name)')
+      .eq('customer_id',c.id)
+      .order('created_at',{ascending:false})
+      .then(({data,error})=>{
+        if(error)console.error("[sales]",error.message);
+        setSelSales(data||[]);
+      });
+  },[sel,clientes]);
 
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
   const stColor=s=>s==='lead'?GOLD:s==='assinante'?'#4A90E2':GREEN;
@@ -1691,8 +1711,8 @@ function PainelClientesTab({targetCustomerId}){
   // Vista de detalhe do cliente
   if(sel!==null&&clientes){
     const c=clientes[sel];
-    const compras=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-    const lastSale=compras[0];
+    const compras=selSales||[]; // carregado separadamente com products(name)
+    const lastSale=(c.sales||[]).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
     const ultimaCompra=lastSale?new Date(lastSale.created_at).toLocaleDateString('pt-BR'):"—";
     const anivFmt=c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):"—";
     const cor=stColor(c.status||'cliente');
@@ -1727,7 +1747,8 @@ function PainelClientesTab({targetCustomerId}){
         </div>
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Histórico de compras</span></div>
-          {compras.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
+          {selSales===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Carregando…</div>}
+          {selSales!==null&&compras.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13}}>Nenhuma compra registrada.</div>}
           {compras.map((cp,i)=>{
             const prod=cp.products?.name||"Produto";
             const dt=new Date(cp.created_at).toLocaleDateString('pt-BR');
