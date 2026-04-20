@@ -1326,11 +1326,15 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
 
   // Busca clientes do produtor filtrados por grupo
   let query = supabase.from("customers").select("id,phone,name").eq("owner_id", req.user.id);
-  if (group && group !== "todos") query = query.eq("status", group);
+  if (group && group !== "todos") {
+    if (group === "cliente") query = query.or("status.eq.cliente,status.is.null");
+    else query = query.eq("status", group);
+  }
   const { data: customers, error: custErr } = await query;
   if (custErr) return res.status(500).json({ error: custErr.message });
 
-  const withPhone = (customers || []).filter(c => c.phone);
+  const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
+  const withPhone = (customers || []).filter(c => c.phone && !excludedIds.has(c.id));
   let sent = 0, failed = 0;
 
   // Envio em lote com concorrência máxima de 5
@@ -1368,6 +1372,17 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   }).catch(() => {});
 
   res.json({ sent, failed, total: withPhone.length });
+});
+
+app.get("/api/user/disparos", requireAuth, async (req, res) => {
+  const { data } = await supabase.from("profiles").select("disparos").eq("id", req.user.id).single();
+  res.json(data?.disparos || null);
+});
+
+app.patch("/api/user/disparos", requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from("profiles").update({ disparos: req.body }).eq("id", req.user.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 app.listen(PORT, () => {

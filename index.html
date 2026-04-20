@@ -1737,31 +1737,35 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [sentBubbles,setSentBubbles]=useState([]);
   const [showNova,setShowNova]=useState(false);
   const [showAdd,setShowAdd]=useState(false);
+  const [excluded,setExcluded]=useState(new Set());
   const [qrCode,setQrCode]=useState(null);
   const [qrLoading,setQrLoading]=useState(false);
   const [showDisp,setShowDisp]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
   const [disparos,setDisparos]=useState([
-    {name:"Aniversário",on:true,live:true,open:true,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:""},
-    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7"},
-    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3"},
+    {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00"},
+    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00"},
+    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00"},
   ]);
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,status,created_at,product_id)').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
       _sb.from('messages').select('*').eq('owner_id',data.session.user.id).order('created_at',{ascending:false}).limit(20)
         .then(({data:d})=>{if(d)setMsgs(d);});
+      apiCall('/api/user/disparos',{headers:{'Authorization':`Bearer ${data.session.access_token}`}})
+        .then(d=>{if(Array.isArray(d))setDisparos(d);}).catch(()=>{});
     });
   },[]);
   useEffect(()=>{
     apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'));
   },[]);
   useEffect(()=>{ if(onWapChange)onWapChange(wapStatus==='conectado'); },[wapStatus]);
+  useEffect(()=>setExcluded(new Set()),[group]);
   const connectWhatsApp=async()=>{
     setQrLoading(true);
     try{
@@ -1808,16 +1812,18 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
   const msgsHoje=msgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
   const groupMsgs=msgs.filter(m=>m.group_target);
+  const calcSpent=c=>(c.sales||[]).filter(s=>s.status==='paid').reduce((a,s)=>a+(s.producer_amount||s.amount||0),0);
   const cnts={todos:totalClientes,lead:(clientes||[]).filter(c=>c.status==='lead').length,cliente:(clientes||[]).filter(c=>!c.status||c.status==='cliente').length,assinante:(clientes||[]).filter(c=>c.status==='assinante').length};
   const groupMap={'Todos':'todos','Interessados':'lead','Clientes':'cliente','Assinantes':'assinante'};
-  const recCount=group==='Todos'?totalClientes:cnts[groupMap[group]]||0;
+  const listaGrupo=(clientes||[]).filter(c=>{if(group==='Todos')return true;const st=c.status||'cliente';if(group==='Clientes')return st==='cliente';if(group==='Interessados')return st==='lead';if(group==='Assinantes')return st==='assinante';return true;});
+  const recCount=listaGrupo.length-excluded.size;
   const listaFiltrada=(clientes||[]).filter(c=>filtro==='todos'||(c.status||'cliente')===filtro);
 
   async function sendMsg(){
     if(!msgText.trim()||wapStatus!=='conectado'||sending)return;
     setSending(true);
     try{
-      const res=await apiCall('/api/whatsapp/send-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msgText.trim(),group:groupMap[group]||'todos'})});
+      const res=await apiCall('/api/whatsapp/send-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msgText.trim(),group:groupMap[group]||'todos',excludedIds:[...excluded]})});
       if(res){
         const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
         setSentBubbles(p=>[...p,{text:msgText.trim(),time:now,sent:res.sent||0,failed:res.failed||0}]);
@@ -1827,6 +1833,13 @@ function ClientesTab({targetCustomerId,onWapChange}){
       }
     }catch(e){console.error('[send]',e);}
     setSending(false);
+  }
+  async function salvarDisparos(idx){
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      await apiCall('/api/user/disparos',{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(disparos)});
+      setDisparos(p=>p.map((d,j)=>j===idx?{...d,open:false}:d));
+    }catch(e){console.error('[salvar-disparos]',e);}
   }
   async function salvarCliente(){
     if(!form.name.trim())return;setSaving(true);
@@ -1853,7 +1866,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     }catch(e){console.error('[status]',e);}
   }
   const togDisp=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,open:!d.open}:d));
-  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on,live:!d.on,open:!d.on}:d));
+  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on,open:!d.on}:d));
   const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
   const tabNames=['Painel','Mensagens','Conversas','Disparos'];
 
@@ -1885,7 +1898,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
             {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
           </div>
           <div className="ib"><div className="ibh">Financeiro</div>
-            <div className="ir"><span className="il">Total pago</span><span className="iv gd">{fmtBRL(c.total_spent||0)}</span></div>
+            <div className="ir"><span className="il">Total pago</span><span className="iv gd">{fmtBRL(c.total_spent||calcSpent(c))}</span></div>
             <div className="ir"><span className="il">Última compra</span><span className="iv">{uc}</span></div>
             <div className="ir"><span className="il">Status</span><span className="iv ok">{stLabel(c.status||'cliente')}</span></div>
           </div>
@@ -1916,10 +1929,10 @@ function ClientesTab({targetCustomerId,onWapChange}){
         <div className="scr">
           <div className="kpi-row">
             <div className="kpi"><div className="kl">Total de clientes</div><div className="kv">{clientes?totalClientes:'—'}</div></div>
-            <div className="kpi"><div className="kl">Clientes ativos</div><div className="kv gd">{clientes?totalAtivos:'—'}</div></div>
+            <div className="kpi"><div className="kl">Clientes ativos</div><div className="kv">{clientes?totalAtivos:'—'}</div></div>
           </div>
           <div className="bday-msgs-card">
-            <div className="bm-header"><div className="bm-title">Próximos aniversários</div><div className="msgs-badge">Hoje: {msgsHoje} msgs</div></div>
+            <div className="bm-header"><div className="bm-title">Próximos aniversários</div></div>
             {anivs.length>0
               ?<div className="bday-circles">{anivs.map((a,i)=><div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}><div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div><div className="bday-circle-name">{a.name.split(' ')[0]}</div><div className="bday-circle-date">{a.label}</div></div>)}</div>
               :<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>
@@ -1966,6 +1979,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="chat-pills">{(()=>{const gc={'Todos':totalClientes,'Interessados':cnts.lead,'Clientes':cnts.cliente,'Assinantes':cnts.assinante};return['Todos','Interessados','Clientes','Assinantes'].map(g=><div key={g} className={`cp${group===g?' on':''}`} onClick={()=>setGroup(g)}>{g}{clientes!==null?` (${gc[g]??0})`:''}</div>);})()}</div>
           </div>
           <div className="chat-rec"><strong>{recCount} {recCount===1?'pessoa':'pessoas'}</strong> selecionadas</div>
+          {listaGrupo.length>0&&<div style={{display:'flex',gap:6,padding:'6px 0 2px',flexWrap:'wrap',maxHeight:96,overflowY:'auto'}}>{listaGrupo.map(c=>{const isEx=excluded.has(c.id);return(<div key={c.id} onClick={()=>setExcluded(p=>{const n=new Set(p);isEx?n.delete(c.id):n.add(c.id);return n;})} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px 4px 6px',borderRadius:20,background:isEx?'var(--c2)':'var(--gd2)',border:`1px solid ${isEx?'var(--ln)':'rgba(212,175,55,.3)'}`,opacity:isEx?0.45:1,cursor:'pointer',flexShrink:0,transition:'all .15s'}}><div style={{width:22,height:22,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'var(--t2)'}}>{inits(c.name)}</div><span style={{fontSize:11,color:'var(--tx)',fontWeight:500,userSelect:'none'}}>{c.name.split(' ')[0]}</span>{isEx&&<span style={{fontSize:9,color:'var(--t3)'}}>✕</span>}</div>);})}</div>}
           {wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
           {sentBubbles.length===0&&<div className="sys-msg">Escreva sua mensagem. Use as variáveis para personalizar.</div>}
           {msgText.trim()&&(
@@ -2019,7 +2033,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
                 <div key={c.id||i} className="ci" onClick={()=>setSel(idx2)}>
                   <div className="cav">{inits(c.name)}</div>
                   <div className="ci-i"><div className="cn">{c.name}</div><div className="cs">{c.phone||c.email||'—'} · {new Date(c.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div></div>
-                  <div className="cr"><div className="cv">{fmtBRL(c.total_spent||0)}</div><div className="ct">{stLabel(c.status||'cliente')}</div></div>
+                  <div className="cr"><div className="cv">{fmtBRL(c.total_spent||calcSpent(c))}</div><div className="ct">{stLabel(c.status||'cliente')}</div></div>
                 </div>
               );
             })}
@@ -2048,8 +2062,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
               </div>
               {d.open&&<div className="dbody">
                 {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
+                <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
                 <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
-                <div className="d-bar"><button className="dsave">Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
+                <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
               </div>}
             </div>
           ))}
