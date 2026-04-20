@@ -656,6 +656,22 @@ app.get("/api/whatsapp/status", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/whatsapp/qr", requireAuth, async (req, res) => {
+  if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
+  const ensureInstance = async () => {
+    try { await evo.get(`/instance/connectionState/${EVOLUTION_INST}`); }
+    catch { await evo.post(`/instance/create`, { instanceName: EVOLUTION_INST, qrcode: true, integration: "WHATSAPP-BAILEYS" }); }
+  };
+  try {
+    await ensureInstance();
+    const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
+    res.json({ code: data.code, pairingCode: data.pairingCode });
+  } catch (err) {
+    console.error("[whatsapp/qr]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
 app.post("/api/whatsapp/send", requireAuth, async (req, res) => {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
   try {
