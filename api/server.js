@@ -14,7 +14,17 @@ const { createClient } = require("@supabase/supabase-js");
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "*" }));
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    const ok =
+      origin === process.env.FRONTEND_ORIGIN ||
+      origin.endsWith(".vercel.app") ||
+      origin.startsWith("http://localhost");
+    cb(null, ok);
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // ── Supabase Admin Client (service role — NUNCA exponha ao browser) ──────────
