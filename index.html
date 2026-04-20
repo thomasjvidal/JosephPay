@@ -1740,6 +1740,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [excluded,setExcluded]=useState(new Set());
   const [qrCode,setQrCode]=useState(null);
   const [qrLoading,setQrLoading]=useState(false);
+  const [pairingPhone,setPairingPhone]=useState('');
+  const [pairingCode,setPairingCode]=useState(null);
+  const [pairingMode,setPairingMode]=useState(false);
   const [showDisp,setShowDisp]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
@@ -1785,7 +1788,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   useEffect(()=>{
     if(targetCustomerId&&clientes){
       const idx=clientes.findIndex(c=>c.id===targetCustomerId);
-      if(idx!==-1){setSel(idx);setTab(2);}
+      if(idx!==-1){setSel(idx);setTab(0);}
     }
   },[targetCustomerId,clientes]);
   useEffect(()=>{
@@ -1871,7 +1874,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const tabNames=['Painel','Mensagens','Conversas','Disparos'];
 
   if(tab===0&&sel!==null&&clientes){
-    const c=clientes[sel];const compras=selSales||[];
+    const c=clientes[sel];const compras=selSales!==null?selSales:(c.sales||[]);
     const ls=(c.sales||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
     const uc=ls?new Date(ls.created_at).toLocaleDateString('pt-BR'):'—';
     const af=c.birthday?new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
@@ -1903,10 +1906,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="ir"><span className="il">Status</span><span className="iv ok">{stLabel(c.status||'cliente')}</span></div>
           </div>
           <div className="ib"><div className="ibh">Histórico de compras</div>
-            {selSales===null&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Carregando…</div>}
-            {selSales!==null&&compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
+            {compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
             {compras.map((cp,i)=>(
-              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Produto'}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.amount)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
+              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
             ))}
           </div>
           <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
@@ -1979,7 +1981,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="chat-pills">{(()=>{const gc={'Todos':totalClientes,'Interessados':cnts.lead,'Clientes':cnts.cliente,'Assinantes':cnts.assinante};return['Todos','Interessados','Clientes','Assinantes'].map(g=><div key={g} className={`cp${group===g?' on':''}`} onClick={()=>setGroup(g)}>{g}{clientes!==null?` (${gc[g]??0})`:''}</div>);})()}</div>
           </div>
           <div className="chat-rec"><strong>{recCount} {recCount===1?'pessoa':'pessoas'}</strong> selecionadas</div>
-          {listaGrupo.length>0&&<div style={{display:'flex',gap:6,padding:'6px 0 2px',flexWrap:'wrap',maxHeight:96,overflowY:'auto'}}>{listaGrupo.map(c=>{const isEx=excluded.has(c.id);return(<div key={c.id} onClick={()=>setExcluded(p=>{const n=new Set(p);isEx?n.delete(c.id):n.add(c.id);return n;})} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px 4px 6px',borderRadius:20,background:isEx?'var(--c2)':'var(--gd2)',border:`1px solid ${isEx?'var(--ln)':'rgba(212,175,55,.3)'}`,opacity:isEx?0.45:1,cursor:'pointer',flexShrink:0,transition:'all .15s'}}><div style={{width:22,height:22,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'var(--t2)'}}>{inits(c.name)}</div><span style={{fontSize:11,color:'var(--tx)',fontWeight:500,userSelect:'none'}}>{c.name.split(' ')[0]}</span>{isEx&&<span style={{fontSize:9,color:'var(--t3)'}}>✕</span>}</div>);})}</div>}
+          {listaGrupo.length>0&&<div style={{display:'flex',gap:6,padding:'6px 0 4px',overflowX:'auto',scrollbarWidth:'none',WebkitOverflowScrolling:'touch',msOverflowStyle:'none'}}>{listaGrupo.map(c=>{const isEx=excluded.has(c.id);return(<div key={c.id} onClick={()=>setExcluded(p=>{const n=new Set(p);isEx?n.delete(c.id):n.add(c.id);return n;})} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px 4px 5px',borderRadius:20,background:isEx?'var(--c2)':'var(--gd2)',border:`1px solid ${isEx?'var(--ln)':'rgba(212,175,55,.3)'}`,opacity:isEx?0.4:1,cursor:'pointer',flexShrink:0,transition:'opacity .15s'}}><div style={{width:20,height:20,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'var(--t2)'}}>{inits(c.name)}</div><span style={{fontSize:11,color:isEx?'var(--t2)':'var(--tx)',fontWeight:500,userSelect:'none',whiteSpace:'nowrap'}}>{c.name.split(' ')[0]}</span>{isEx&&<span style={{fontSize:9,color:'var(--t3)',marginLeft:1}}>✕</span>}</div>);})}</div>}
           {wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
           {sentBubbles.length===0&&<div className="sys-msg">Escreva sua mensagem. Use as variáveis para personalizar.</div>}
           {msgText.trim()&&(
@@ -2056,13 +2058,16 @@ function ClientesTab({targetCustomerId,onWapChange}){
           {disparos.map((d,i)=>(
             <div key={i} className="dc">
               <div className="dtop" onClick={()=>togDisp(i)}>
-                <div className="dleft"><div className="dname">{d.name}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
-                <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
-                <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
+                <div className="dleft"><div className="dname">{d.name}{d.on&&<span style={{marginLeft:6,color:'var(--gd)',fontSize:12}}>✓</span>}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
+                  <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{transform:d.open?'rotate(180deg)':'none',transition:'transform .2s',flexShrink:0,opacity:.4}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
               </div>
               {d.open&&<div className="dbody">
                 {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
-                <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
+                <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
                 <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
                 <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
               </div>}
@@ -2075,7 +2080,24 @@ function ClientesTab({targetCustomerId,onWapChange}){
       {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(1);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
       {showAdd&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Adicionar contato</div><div className="sh-s">Preencha os dados</div>{[{k:'name',l:'Nome completo',p:'Nome',t:'text'},{k:'phone',l:'Telefone (WhatsApp)',p:'(XX) XXXXX-XXXX',t:'tel'},{k:'email',l:'E-mail',p:'email@email.com',t:'email'},{k:'birthday',l:'Data de nascimento',p:'',t:'date'}].map(f=><div key={f.k} className="shf"><div className="shl">{f.l}</div><input className="shin" type={f.t} placeholder={f.p} value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}/></div>)}<button className="shbtn" onClick={salvarCliente} disabled={saving||!form.name.trim()}>{saving?'Salvando…':'Salvar'}</button></div></div>}
 
-      {qrCode&&<div className="ov" onClick={()=>setQrCode(null)}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div><div className="sh-s">Escaneie com o celular</div><div style={{display:'flex',justifyContent:'center',margin:'16px 0'}}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrCode)}`} style={{width:220,height:220,borderRadius:12,background:'#fff',padding:8}} alt="QR Code"/></div><div style={{fontSize:12,color:'var(--t2)',textAlign:'center',lineHeight:1.6}}>WhatsApp → <strong>Aparelhos vinculados</strong> → Vincular um aparelho<br/>Aguardando conexão…</div></div></div>}
+      {(qrCode||pairingMode)&&<div className="ov" onClick={()=>{setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');}}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div>
+        {!pairingMode?(
+          <>
+            <div className="sh-s">Escaneie com o celular</div>
+            <div style={{display:'flex',justifyContent:'center',margin:'16px 0'}}><img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrCode||'')}`} style={{width:220,height:220,borderRadius:12,background:'#fff',padding:8}} alt="QR Code"/></div>
+            <div style={{fontSize:12,color:'var(--t2)',textAlign:'center',lineHeight:1.6,marginBottom:14}}>WhatsApp → <strong>Aparelhos vinculados</strong> → Vincular um aparelho<br/>Aguardando conexão…</div>
+            <button onClick={()=>setPairingMode(true)} style={{width:'100%',background:'var(--c2)',border:'1px solid var(--ln)',borderRadius:12,padding:'10px',color:'var(--t2)',fontSize:13,cursor:'pointer'}}>Entrar com código em vez disso</button>
+          </>
+        ):(
+          <>
+            <div className="sh-s">Digite seu número para receber o código</div>
+            <div className="shf" style={{marginTop:12}}><div className="shl">Número (com DDD)</div><input className="shin" type="tel" placeholder="(11) 99999-9999" value={pairingPhone} onChange={e=>setPairingPhone(e.target.value)}/></div>
+            {pairingCode&&<div style={{textAlign:'center',margin:'16px 0',padding:'16px',background:'var(--c2)',borderRadius:12,border:'1px solid var(--ln)'}}><div style={{fontSize:12,color:'var(--t2)',marginBottom:6}}>Código — digite no WhatsApp</div><div style={{fontSize:32,fontWeight:800,letterSpacing:8,color:'var(--gd)'}}>{pairingCode}</div></div>}
+            <button onClick={async()=>{if(!pairingPhone.trim())return;setQrLoading(true);try{const d=await apiCall(`/api/whatsapp/pairing-code?phone=${encodeURIComponent(pairingPhone)}`);if(d?.pairingCode)setPairingCode(d.pairingCode);}catch(e){}setQrLoading(false);}} disabled={qrLoading||!pairingPhone.trim()} style={{width:'100%',background:'var(--gd)',border:'none',borderRadius:12,padding:'12px',color:'#000',fontSize:14,fontWeight:700,cursor:'pointer',marginTop:8,opacity:qrLoading?0.6:1}}>{qrLoading?'Aguarde…':'Obter código'}</button>
+            <button onClick={()=>setPairingMode(false)} style={{width:'100%',background:'transparent',border:'none',color:'var(--t2)',fontSize:12,cursor:'pointer',marginTop:8,padding:8}}>← Voltar para QR Code</button>
+          </>
+        )}
+      </div></div>}
       {showDisp&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowDisp(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Novo disparo</div><div className="sh-s">Configure sua automação</div><div className="shf"><div className="shl">Nome do disparo</div><input className="shin" placeholder="Ex: Boas-vindas"/></div><div className="shf"><div className="shl">Quando enviar</div><select className="shin" style={{WebkitAppearance:'none'}}><option>Após a compra</option><option>Antes do aniversário</option><option>Após inatividade</option><option>Manual</option></select></div><div className="shf"><div className="shl">Dias</div><input className="shin" type="number" defaultValue={3}/></div><div className="shf"><div className="shl">Mensagem</div><textarea className="shin" style={{height:80,fontSize:15,lineHeight:1.5}} placeholder="Olá {nome}!..."/></div><button className="shbtn" onClick={()=>setShowDisp(false)}>Criar disparo</button></div></div>}
     </div>
   );

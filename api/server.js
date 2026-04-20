@@ -1343,7 +1343,7 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
     await Promise.all(withPhone.slice(i, i + CHUNK).map(async c => {
       try {
         const r = await evo.post(`/message/sendText/${EVOLUTION_INST}`, {
-          number: c.phone.replace(/\D/g, ""),
+          number: (n=>(n.startsWith("55")?n:"55"+n))(c.phone.replace(/\D/g,"")),
           text: message.replace(/\{nome\}/g, c.name || ""),
         });
         const providerId = r.data?.key?.id || null;
@@ -1372,6 +1372,18 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   }).catch(() => {});
 
   res.json({ sent, failed, total: withPhone.length });
+});
+
+app.get("/api/whatsapp/pairing-code", requireAuth, async (req, res) => {
+  if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
+  const phone = (req.query.phone || "").replace(/\D/g, "");
+  if (!phone) return res.status(400).json({ error: "Telefone obrigatório" });
+  try {
+    const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`, { params: { phoneNumber: phone } });
+    res.json({ pairingCode: data.pairingCode, code: data.code });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
 });
 
 app.get("/api/user/disparos", requireAuth, async (req, res) => {
