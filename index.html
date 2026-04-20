@@ -1836,9 +1836,9 @@ function ClientesTab({targetCustomerId}){
   const togDisp=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,open:!d.open}:d));
   const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on,live:!d.on,open:!d.on}:d));
   const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
-  const tabNames=['Conversas','Mensagens','Painel','Disparos'];
+  const tabNames=['Painel','Mensagens','Conversas','Disparos'];
 
-  if(tab===2&&sel!==null&&clientes){
+  if(tab===0&&sel!==null&&clientes){
     const c=clientes[sel];const compras=selSales||[];
     const ls=(c.sales||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
     const uc=ls?new Date(ls.created_at).toLocaleDateString('pt-BR'):'—';
@@ -1893,7 +1893,7 @@ function ClientesTab({targetCustomerId}){
     <div className="crm-v9">
       <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>setTab(i)}>{n}</div>)}</div>
 
-      {tab===0&&(
+      {tab===2&&(
         <div className="scr">
           <div className="kpi-row">
             <div className="kpi"><div className="kl">Total de clientes</div><div className="kv">{clientes?totalClientes:'—'}</div></div>
@@ -1902,7 +1902,7 @@ function ClientesTab({targetCustomerId}){
           <div className="bday-msgs-card">
             <div className="bm-header"><div className="bm-title">Próximos aniversários</div><div className="msgs-badge">Hoje: {msgsHoje} msgs</div></div>
             {anivs.length>0
-              ?<div className="bday-circles">{anivs.map((a,i)=><div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(2);}}}><div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div><div className="bday-circle-name">{a.name.split(' ')[0]}</div><div className="bday-circle-date">{a.label}</div></div>)}</div>
+              ?<div className="bday-circles">{anivs.map((a,i)=><div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}><div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div><div className="bday-circle-name">{a.name.split(' ')[0]}</div><div className="bday-circle-date">{a.label}</div></div>)}</div>
               :<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>
             }
             <div className="bm-today"><div className="bm-today-left">Mensagens enviadas hoje</div><div className="bm-today-val">{msgsHoje}</div></div>
@@ -1976,7 +1976,7 @@ function ClientesTab({targetCustomerId}){
         </div>
       )}
 
-      {tab===2&&(
+      {tab===0&&(
         <div className="scr">
           <button className="nova" onClick={()=>setShowNova(true)}>Nova ação<div className="nova-ic"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="rgba(0,0,0,.6)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div></button>
           <div className="sacts">
