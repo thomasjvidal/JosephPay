@@ -172,7 +172,7 @@ textarea{resize:none}
 .crm-v9 .wval{font-size:14px;font-weight:600}
 .crm-v9 .wcb{margin-left:auto;padding:6px 16px;border-radius:20px;background:var(--gd);border:none;color:#0b0b0c;font-size:12px;font-weight:700;cursor:pointer}
 .crm-v9 .dc{background:var(--c1);border-radius:13px;overflow:hidden;margin-bottom:8px}
-.crm-v9 .dtop{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer}
+.crm-v9 .dtop{display:flex;align-items:center;justify-content:space-between;padding:13px 16px}
 .crm-v9 .dleft{flex:1}.crm-v9 .dname{font-size:14px;font-weight:600;margin-bottom:1px}.crm-v9 .dst{font-size:12px}
 .crm-v9 .dst.on{color:var(--gr)}.crm-v9 .dst.off{color:var(--t3)}
 .crm-v9 .dlive{display:flex;align-items:center;gap:6px;margin-right:10px}
@@ -1756,7 +1756,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,billing_type,products(name))').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
@@ -1797,7 +1797,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,status,created_at,product_id,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
@@ -1818,6 +1818,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const msgsHoje=msgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
   const groupMsgs=msgs.filter(m=>m.group_target);
   const calcSpent=c=>(c.sales||[]).filter(s=>s.status==='paid').reduce((a,s)=>a+(s.producer_amount||s.amount||0),0);
+  const fmtPay=t=>t==='PIX'?'PIX':t==='CREDIT_CARD'?'Cartão':t==='BOLETO'?'Boleto':t==='DEBIT_CARD'?'Débito':null;
   const cnts={todos:totalClientes,lead:(clientes||[]).filter(c=>c.status==='lead').length,cliente:(clientes||[]).filter(c=>!c.status||c.status==='cliente').length,assinante:(clientes||[]).filter(c=>c.status==='assinante').length};
   const groupMap={'Todos':'todos','Interessados':'lead','Clientes':'cliente','Assinantes':'assinante'};
   const listaGrupo=(clientes||[]).filter(c=>{if(group==='Todos')return true;const st=c.status||'cliente';if(group==='Clientes')return st==='cliente';if(group==='Interessados')return st==='lead';if(group==='Assinantes')return st==='assinante';return true;});
@@ -1932,7 +1933,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
           <div className="ib"><div className="ibh">Histórico de compras</div>
             {compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
             {compras.map((cp,i)=>(
-              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
+              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span>{fmtPay(cp.billing_type)&&<span className="hc">{fmtPay(cp.billing_type)}</span>}<span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
             ))}
           </div>
           <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
@@ -1953,48 +1954,60 @@ function ClientesTab({targetCustomerId,onWapChange}){
 
       {tab===1&&(
         <div className="scr">
-          <div className="kpi-row">
-            <div className="kpi"><div className="kl">Total de clientes</div><div className="kv">{clientes?totalClientes:'—'}</div></div>
-            <div className="kpi"><div className="kl">Clientes ativos</div><div className="kv">{clientes?totalAtivos:'—'}</div></div>
-          </div>
-          <div className="bday-msgs-card">
-            <div className="bm-header"><div className="bm-title">Próximos aniversários</div></div>
-            {anivs.length>0
-              ?<div className="bday-circles">{anivs.map((a,i)=><div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}><div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div><div className="bday-circle-name">{a.name.split(' ')[0]}</div><div className="bday-circle-date">{a.label}</div></div>)}</div>
-              :<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhum aniversário nos próximos 60 dias.</div>
-            }
-            <div className="bm-today"><div className="bm-today-left">Mensagens enviadas hoje</div><div className="bm-today-val">{msgsHoje}</div></div>
-          </div>
-          <div className="conv-section-lbl">Disparos em grupo</div>
-          {groupMsgs.length===0&&<div className="conv-item"><div className="conv-item-top"><div style={{flex:1,textAlign:'center',color:'var(--t2)',fontSize:13,padding:'4px 0'}}>Nenhum disparo enviado ainda.</div></div></div>}
-          {groupMsgs.slice(0,5).map((m,i)=>(
-            <div key={i} className="conv-item">
-              <div className="conv-item-top">
-                <div style={{flex:1}}><div className="ci-type grupo">Grupo · {m.group_target}</div><div className="ci-name2">{m.content.slice(0,40)}{m.content.length>40?'…':''}</div><div className="ci-preview">"{m.content.slice(0,60)}"</div></div>
-                <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+          {/* Stats */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:1,background:'var(--ln)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
+            {[{l:'Clientes',v:clientes?totalClientes:'—'},{l:'Ativos',v:clientes?totalAtivos:'—'},{l:'Msgs hoje',v:msgsHoje}].map(({l,v})=>(
+              <div key={l} style={{background:'var(--c1)',padding:'12px 14px'}}>
+                <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.5px',color:'var(--t3)',marginBottom:4}}>{l}</div>
+                <div style={{fontSize:20,fontWeight:700,color:'var(--tx)'}}>{v}</div>
               </div>
-              <div className="conv-stats">
-                <div className="cs-item"><div className="cs-val sent">{m.group_count||1}</div><div className="cs-lbl">Enviadas</div></div>
-                <div className="cs-item"><div className="cs-val viewed">—</div><div className="cs-lbl">Lidas</div></div>
-                <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Responderam</div></div>
+            ))}
+          </div>
+          {/* Aniversários */}
+          {anivs.length>0&&(
+            <div className="bday-msgs-card" style={{marginBottom:12}}>
+              <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div></div>
+              <div className="bday-circles">
+                {anivs.map((a,i)=>(
+                  <div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}>
+                    <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
+                    <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
+                    <div className="bday-circle-date">{a.label}</div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-          <div className="conv-section-lbl">Automáticas</div>
-          {msgs.filter(m=>!m.group_target).slice(0,3).map((m,i)=>(
-            <div key={i} className="conv-item">
-              <div className="conv-item-top">
-                <div style={{flex:1}}><div className="ci-type auto">Automático</div><div className="ci-name2">{m.content.slice(0,45)}{m.content.length>45?'…':''}</div></div>
-                <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+          )}
+          {/* Feed unificado */}
+          <div className="conv-section-lbl">Atividade recente</div>
+          {(()=>{
+            const feed=[...groupMsgs,...msgs.filter(m=>!m.group_target)].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,10);
+            if(feed.length===0)return(
+              <div style={{textAlign:'center',color:'var(--t2)',fontSize:13,padding:'28px 0',lineHeight:1.6}}>
+                Nenhuma atividade ainda.<br/>
+                <span style={{fontSize:12,color:'var(--t3)'}}>Envie sua primeira mensagem na aba Mensagens.</span>
               </div>
-              <div className="conv-stats">
-                <div className="cs-item"><div className="cs-val sent">1</div><div className="cs-lbl">Enviada</div></div>
-                <div className="cs-item"><div className={`cs-val${m.status==='read'?' viewed':''}`}>{m.status==='read'?'1':'—'}</div><div className="cs-lbl">Lida</div></div>
-                <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Resposta</div></div>
-              </div>
-            </div>
-          ))}
-          {msgs.filter(m=>!m.group_target).length===0&&<div style={{color:'var(--t2)',fontSize:13,textAlign:'center',padding:'14px 0'}}>Nenhuma mensagem automática ainda.</div>}
+            );
+            return feed.map((m,i)=>{
+              const isGroup=!!m.group_target;
+              return(
+                <div key={i} className="conv-item">
+                  <div className="conv-item-top">
+                    <div style={{flex:1}}>
+                      <div className={`ci-type${isGroup?' grupo':' auto'}`}>{isGroup?`Grupo · ${m.group_target}`:'Automático'}</div>
+                      <div className="ci-name2">{m.content.slice(0,50)}{m.content.length>50?'…':''}</div>
+                    </div>
+                    <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+                  </div>
+                  <div className="conv-stats">
+                    <div className="cs-item"><div className="cs-val sent">{isGroup?(m.group_count||1):1}</div><div className="cs-lbl">Enviadas</div></div>
+                    <div className="cs-item"><div className={`cs-val${m.status==='read'?' viewed':''}`}>{m.status==='read'?'1':'—'}</div><div className="cs-lbl">Lidas</div></div>
+                    <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Respostas</div></div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -2017,7 +2030,10 @@ function ClientesTab({targetCustomerId,onWapChange}){
           {sentBubbles.map((b,i)=>(
             <div key={i}>
               <div className="bubble-out"><div className="btxt">{b.text}</div><div className="btm"><span style={{fontSize:10}}>{b.time}</span><svg className="ck" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#c8a84b" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg></div></div>
-              <div className="sent-ok">Enviado para {b.sent} pessoas{b.failed>0?` · ${b.failed} falha(s)`:''}</div>
+              {b.sent>0
+                ?<div className="sent-ok">✓ Enviado para {b.sent} {b.sent===1?'pessoa':'pessoas'}{b.failed>0?` · ${b.failed} falha`:''}</div>
+                :<div className="sent-ok" style={{color:'var(--rd)'}}>⚠ Nenhuma mensagem enviada{b.failed>0?` (${b.failed} erro${b.failed>1?'s':''})`:''} — verifique se o WhatsApp está conectado</div>
+              }
             </div>
           ))}
           <div className="vars-wrap">
