@@ -1367,7 +1367,14 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
   const skipped = (customers || []).filter(c => !c.phone || excludedIds.has(c.id))
     .map(c => ({ name: c.name, reason: !c.phone ? 'no_phone' : 'excluded' }));
-  const withPhone = (customers || []).filter(c => c.phone && !excludedIds.has(c.id));
+  const seenPhones = new Set();
+  const withPhone = (customers || []).filter(c => {
+    if (!c.phone || excludedIds.has(c.id)) return false;
+    const normalized = c.phone.replace(/\D/g, '');
+    if (seenPhones.has(normalized)) return false;
+    seenPhones.add(normalized);
+    return true;
+  });
   let sent = 0, failed = 0;
   const log = [...skipped];
 
