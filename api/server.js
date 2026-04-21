@@ -654,6 +654,7 @@ const EVOLUTION_INST = process.env.EVOLUTION_INSTANCE || "josephpay";
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
   headers: { apikey: EVOLUTION_KEY },
+  timeout: 5000,
 }) : null;
 
 app.get("/api/whatsapp/status", requireAuth, async (req, res) => {
@@ -1384,17 +1385,18 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
           owner_id: req.user.id, customer_id: c.id,
           direction: "outbound", content: message, type: "text",
           group_target: group || "todos", status: "sent", provider_id: providerId,
-        }).catch(() => {}); // tabela pode não ter colunas v8 ainda
+        }).then(null, () => {}); // tabela pode não ter colunas v8 ainda
         log.push({ name: c.name, reason: 'sent' });
         sent++;
       } catch (e) {
-        const errMsg = e.response?.data?.message || e.message;
+        const errMsg = e.response?.data?.message || e.response?.data?.error || e.message;
+        console.error(`[send-group] falha ${c.name}:`, errMsg);
         await supabase.from("messages").insert({
           owner_id: req.user.id, customer_id: c.id,
           direction: "outbound", content: message, type: "text",
           group_target: group || "todos", status: "failed",
           error_message: errMsg,
-        }).catch(() => {});
+        }).then(null, () => {});
         log.push({ name: c.name, reason: errMsg });
         failed++;
       }
@@ -1405,7 +1407,7 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   await supabase.from("messages").insert({
     owner_id: req.user.id, direction: "outbound", content: message, type: "text",
     group_target: group || "todos", group_count: sent, status: sent > 0 ? "sent" : "failed",
-  }).catch(() => {});
+  }).then(null, () => {});
 
   res.json({ sent, failed, total: withPhone.length, log });
   } catch (e) {
