@@ -1756,7 +1756,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,billing_type,products(name))').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
@@ -1797,7 +1797,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
@@ -1818,7 +1818,6 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const msgsHoje=msgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
   const groupMsgs=msgs.filter(m=>m.group_target);
   const calcSpent=c=>(c.sales||[]).filter(s=>s.status==='paid').reduce((a,s)=>a+(s.producer_amount||s.amount||0),0);
-  const fmtPay=t=>t==='PIX'?'PIX':t==='CREDIT_CARD'?'Cartão':t==='BOLETO'?'Boleto':t==='DEBIT_CARD'?'Débito':null;
   const cnts={todos:totalClientes,lead:(clientes||[]).filter(c=>c.status==='lead').length,cliente:(clientes||[]).filter(c=>!c.status||c.status==='cliente').length,assinante:(clientes||[]).filter(c=>c.status==='assinante').length};
   const groupMap={'Todos':'todos','Interessados':'lead','Clientes':'cliente','Assinantes':'assinante'};
   const listaGrupo=(clientes||[]).filter(c=>{if(group==='Todos')return true;const st=c.status||'cliente';if(group==='Clientes')return st==='cliente';if(group==='Interessados')return st==='lead';if(group==='Assinantes')return st==='assinante';return true;});
@@ -1933,7 +1932,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
           <div className="ib"><div className="ibh">Histórico de compras</div>
             {compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
             {compras.map((cp,i)=>(
-              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span>{fmtPay(cp.billing_type)&&<span className="hc">{fmtPay(cp.billing_type)}</span>}<span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
+              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
             ))}
           </div>
           <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
