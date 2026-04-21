@@ -1801,7 +1801,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
@@ -1935,9 +1935,15 @@ function ClientesTab({targetCustomerId,onWapChange}){
           </div>
           <div className="ib"><div className="ibh">Histórico de compras</div>
             {compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
-            {compras.map((cp,i)=>(
-              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
-            ))}
+            {compras.map((cp,i)=>{
+              const btMap={'PIX':'PIX','CREDIT_CARD':'Cartão','BOLETO':'Boleto','boleto':'Boleto','credit_card':'Cartão','pix':'PIX'};
+              const bt=btMap[cp.billing_type]||cp.billing_type||'—';
+              const parc=cp.installment_count>1?`${cp.installment_count}x`:'À vista';
+              const pgLabel=bt==='—'?parc:`${bt} · ${parc}`;
+              return(
+                <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className="hc" style={{color:'var(--t2)'}}>{pgLabel}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
+              );
+            })}
           </div>
           <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
             <div className="ir"><span className="il">Status atual</span>
