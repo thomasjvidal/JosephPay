@@ -1778,7 +1778,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
     try{
       const d=await apiCall('/api/whatsapp/qr');
       if(d?.code) setQrCode(d.code);
-    }catch(e){console.error(e);}
+      else if(d?.connected) setWapStatus('conectado');
+      else if(d?.error) alert('Erro ao conectar WhatsApp: '+d.error);
+    }catch(e){console.error(e);alert('Erro ao conectar: '+e.message);}
     setQrLoading(false);
   };
   useEffect(()=>{

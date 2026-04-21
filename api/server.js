@@ -676,7 +676,20 @@ app.get("/api/whatsapp/qr", requireAuth, async (req, res) => {
   try {
     await ensureInstance();
     const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
-    res.json({ code: data.code, pairingCode: data.pairingCode });
+    if (data.code) {
+      res.json({ code: data.code, pairingCode: data.pairingCode });
+    } else {
+      const stateRes = await evo.get(`/instance/connectionState/${EVOLUTION_INST}`);
+      const state = stateRes.data?.instance?.state;
+      if (state === "open") {
+        res.json({ connected: true, state });
+      } else {
+        await evo.delete(`/instance/delete/${EVOLUTION_INST}`).catch(() => {});
+        await evo.post(`/instance/create`, { instanceName: EVOLUTION_INST, qrcode: true, integration: "WHATSAPP-BAILEYS" });
+        const { data: data2 } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
+        res.json({ code: data2.code, pairingCode: data2.pairingCode, state });
+      }
+    }
   } catch (err) {
     console.error("[whatsapp/qr]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
