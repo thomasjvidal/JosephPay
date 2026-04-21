@@ -234,7 +234,9 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
 // ────────────────────────────────────────────────────────────────────────────
 
 // ── Railway + helpers ────────────────────────────────────────────────────────
-const RAILWAY="https://josephpay-production.up.railway.app";
+const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))
+  ?'http://localhost:3001'
+  :'https://josephpay-production.up.railway.app';
 const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});return await res.json();}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
