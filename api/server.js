@@ -1328,6 +1328,25 @@ app.patch("/api/customers/:id/status", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+// ── PATCH /api/customers/:id ─────────────────────────────────────────────────
+app.patch("/api/customers/:id", requireAuth, async (req, res) => {
+  const allowed = ['name','phone','email','birthday','notes','postal_code'];
+  const updates = {};
+  for (const k of allowed) {
+    if (req.body[k] !== undefined && req.body[k] !== null && req.body[k] !== '') updates[k] = req.body[k];
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
+  if (updates.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates.email))
+    return res.status(400).json({ error: "Email inválido" });
+  if (updates.phone && !/^\d{8,15}$/.test(updates.phone.replace(/\D/g,'')))
+    return res.status(400).json({ error: "Telefone inválido" });
+  updates.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from("customers").update(updates)
+    .eq("id", req.params.id).eq("owner_id", req.user.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // ── POST /api/whatsapp/send-group ─────────────────────────────────────────────
 app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
@@ -1344,8 +1363,11 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   if (custErr) return res.status(500).json({ error: custErr.message });
 
   const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
+  const skipped = (customers || []).filter(c => !c.phone || excludedIds.has(c.id))
+    .map(c => ({ name: c.name, reason: !c.phone ? 'no_phone' : 'excluded' }));
   const withPhone = (customers || []).filter(c => c.phone && !excludedIds.has(c.id));
   let sent = 0, failed = 0;
+  const log = [...skipped];
 
   // Envio em lote com concorrência máxima de 5
   const CHUNK = 5;
@@ -1362,14 +1384,17 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
           direction: "outbound", content: message, type: "text",
           group_target: group || "todos", status: "sent", provider_id: providerId,
         }).catch(() => {}); // tabela pode não ter colunas v8 ainda
+        log.push({ name: c.name, reason: 'sent' });
         sent++;
       } catch (e) {
+        const errMsg = e.response?.data?.message || e.message;
         await supabase.from("messages").insert({
           owner_id: req.user.id, customer_id: c.id,
           direction: "outbound", content: message, type: "text",
           group_target: group || "todos", status: "failed",
-          error_message: e.response?.data?.message || e.message,
+          error_message: errMsg,
         }).catch(() => {});
+        log.push({ name: c.name, reason: errMsg });
         failed++;
       }
     }));
@@ -1381,7 +1406,7 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
     group_target: group || "todos", group_count: sent, status: sent > 0 ? "sent" : "failed",
   }).catch(() => {});
 
-  res.json({ sent, failed, total: withPhone.length });
+  res.json({ sent, failed, total: withPhone.length, log });
 });
 
 app.get("/api/whatsapp/pairing-code", requireAuth, async (req, res) => {

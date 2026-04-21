@@ -1746,6 +1746,8 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [showDisp,setShowDisp]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
+  const [editing,setEditing]=useState(false);
+  const [editForm,setEditForm]=useState({});
   const [disparos,setDisparos]=useState([
     {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00"},
     {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00"},
@@ -1754,7 +1756,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
@@ -1829,6 +1831,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
       const res=await apiCall('/api/whatsapp/send-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msgText.trim(),group:groupMap[group]||'todos',excludedIds:[...excluded]})});
       if(res){
         const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        if((res.sent||0)===0)console.warn('[send-group] enviado para 0. log:',res.log);
         setSentBubbles(p=>[...p,{text:msgText.trim(),time:now,sent:res.sent||0,failed:res.failed||0}]);
         setMsgText('');
         const {data:s}=await _sb.auth.getSession();
@@ -1841,7 +1844,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     try{
       const {data:s}=await _sb.auth.getSession();
       await apiCall('/api/user/disparos',{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(disparos)});
-      setDisparos(p=>p.map((d,j)=>j===idx?{...d,open:false}:d));
+      // saved
     }catch(e){console.error('[salvar-disparos]',e);}
   }
   async function salvarCliente(){
@@ -1868,10 +1871,16 @@ function ClientesTab({targetCustomerId,onWapChange}){
       setClientes(p=>p.map(c=>c.id===id?{...c,status}:c));
     }catch(e){console.error('[status]',e);}
   }
-  const togDisp=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,open:!d.open}:d));
-  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on,open:!d.on}:d));
+  async function saveEdit(c){
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      const res=await apiCall(`/api/customers/${c.id}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(editForm)});
+      if(res?.id){setClientes(p=>p.map(x=>x.id===c.id?{...x,...res}:x));setEditing(false);}
+    }catch(e){console.error('[edit]',e);}
+  }
+  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on}:d));
   const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
-  const tabNames=['Painel','Mensagens','Conversas','Disparos'];
+  const tabNames=['Painel','Conversas','Mensagens','Disparos'];
 
   if(tab===0&&sel!==null&&clientes){
     const c=clientes[sel];const compras=selSales!==null?selSales:(c.sales||[]);
@@ -1882,23 +1891,38 @@ function ClientesTab({targetCustomerId,onWapChange}){
       <div className="crm-v9">
         <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>{setSel(null);setTab(i);}}>{n}</div>)}</div>
         <div className="det">
-          <div className="back" onClick={()=>setSel(null)}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
+          <div className="back" onClick={()=>{setSel(null);setEditing(false);}}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
           <div className="pc">
             <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<>🎂 {af}</>}</div></div></div>
             <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
           <div className="qr">
-            <div className="qb" onClick={()=>{setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
+            <div className="qb" onClick={()=>{setSel(null);setTab(2);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></div><div className="ql">E-mail</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></div><div className="ql">Etiquetar</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Nota</div></div>
           </div>
-          <div className="ib"><div className="ibh">Dados pessoais</div>
-            {c.cpf_cnpj&&<div className="ir"><span className="il">CPF/CNPJ</span><span className="iv">{c.cpf_cnpj}</span></div>}
-            {c.birthday&&<div className="ir"><span className="il">Nascimento</span><span className="iv">{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>}
-            {c.phone&&<div className="ir"><span className="il">Telefone</span><span className="iv">{c.phone}</span></div>}
-            {c.postal_code&&<div className="ir"><span className="il">CEP</span><span className="iv">{c.postal_code}</span></div>}
-            {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
+          <div className="ib">
+            <div className="ibh" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              Dados pessoais
+              {!editing
+                ?<button onClick={()=>{setEditing(true);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',postal_code:c.postal_code||''});}} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Editar</button>
+                :<div style={{display:'flex',gap:6}}><button onClick={()=>saveEdit(c)} style={{background:'var(--gd)',border:'none',borderRadius:8,padding:'3px 10px',color:'#000',fontSize:11,fontWeight:700,cursor:'pointer'}}>Salvar</button><button onClick={()=>setEditing(false)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Cancelar</button></div>
+              }
+            </div>
+            {editing?(
+              <div>{[{k:'name',l:'Nome',t:'text'},{k:'phone',l:'Telefone',t:'tel'},{k:'email',l:'E-mail',t:'email'},{k:'birthday',l:'Aniversário',t:'date'},{k:'postal_code',l:'CEP',t:'text'}].map(f=>(
+                <div key={f.k} className="ir"><span className="il">{f.l}</span><input type={f.t} value={editForm[f.k]||''} onChange={e=>setEditForm(p=>({...p,[f.k]:e.target.value}))} style={{background:'transparent',border:'none',borderBottom:'1px solid var(--ln)',color:'var(--tx)',fontSize:13,outline:'none',flex:1,textAlign:'right',padding:'2px 0'}}/></div>
+              ))}</div>
+            ):(
+              <>
+                {c.cpf_cnpj&&<div className="ir"><span className="il">CPF/CNPJ</span><span className="iv">{c.cpf_cnpj}</span></div>}
+                {c.birthday&&<div className="ir"><span className="il">Nascimento</span><span className="iv">{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>}
+                {c.phone&&<div className="ir"><span className="il">Telefone</span><span className="iv">{c.phone}</span></div>}
+                {c.postal_code&&<div className="ir"><span className="il">CEP</span><span className="iv">{c.postal_code}</span></div>}
+                {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
+              </>
+            )}
           </div>
           <div className="ib"><div className="ibh">Financeiro</div>
             <div className="ir"><span className="il">Total pago</span><span className="iv gd">{fmtBRL(c.total_spent||calcSpent(c))}</span></div>
@@ -1927,7 +1951,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     <div className="crm-v9">
       <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>setTab(i)}>{n}</div>)}</div>
 
-      {tab===2&&(
+      {tab===1&&(
         <div className="scr">
           <div className="kpi-row">
             <div className="kpi"><div className="kl">Total de clientes</div><div className="kv">{clientes?totalClientes:'—'}</div></div>
@@ -1974,7 +1998,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
         </div>
       )}
 
-      {tab===1&&(
+      {tab===2&&(
         <div className="scr" style={{paddingBottom:160}}>
           <div className="chat-top">
             <div className="chat-to-lbl">Enviar para</div>
@@ -2057,27 +2081,27 @@ function ClientesTab({targetCustomerId,onWapChange}){
           </div>
           {disparos.map((d,i)=>(
             <div key={i} className="dc">
-              <div className="dtop" onClick={()=>togDisp(i)}>
+              <div className="dtop">
                 <div className="dleft"><div className="dname">{d.name}{d.on&&<span style={{marginLeft:6,color:'var(--gd)',fontSize:12}}>✓</span>}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
                   <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{transform:d.open?'rotate(180deg)':'none',transition:'transform .2s',flexShrink:0,opacity:.4}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
               </div>
-              {d.open&&<div className="dbody">
+              <div className="dbody">
                 {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
                 <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
                 <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
                 <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
-              </div>}
+              </div>
             </div>
           ))}
           <button className="add-disp" onClick={()=>setShowDisp(true)}>+ Novo disparo</button>
         </div>
       )}
 
-      {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(1);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
+      {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(2);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
       {showAdd&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Adicionar contato</div><div className="sh-s">Preencha os dados</div>{[{k:'name',l:'Nome completo',p:'Nome',t:'text'},{k:'phone',l:'Telefone (WhatsApp)',p:'(XX) XXXXX-XXXX',t:'tel'},{k:'email',l:'E-mail',p:'email@email.com',t:'email'},{k:'birthday',l:'Data de nascimento',p:'',t:'date'}].map(f=><div key={f.k} className="shf"><div className="shl">{f.l}</div><input className="shin" type={f.t} placeholder={f.p} value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}/></div>)}<button className="shbtn" onClick={salvarCliente} disabled={saving||!form.name.trim()}>{saving?'Salvando…':'Salvar'}</button></div></div>}
 
       {(qrCode||pairingMode)&&<div className="ov" onClick={()=>{setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');}}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div>
