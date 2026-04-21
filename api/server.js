@@ -1349,6 +1349,7 @@ app.patch("/api/customers/:id", requireAuth, async (req, res) => {
 
 // ── POST /api/whatsapp/send-group ─────────────────────────────────────────────
 app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
+  try {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
   const { message, group } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia" });
@@ -1407,6 +1408,10 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   }).catch(() => {});
 
   res.json({ sent, failed, total: withPhone.length, log });
+  } catch (e) {
+    console.error('[send-group] crash:', e.message, e.stack);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/api/whatsapp/pairing-code", requireAuth, async (req, res) => {
