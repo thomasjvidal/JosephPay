@@ -83,6 +83,7 @@ async function requireAuth(req, res, next) {
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: "Token inválido" });
   req.user = user;
+  if (!cachedOwnerId) cachedOwnerId = user.id;
 
   // Garante que o profile existe no banco (fire-and-forget)
   const profileData = {
@@ -570,6 +571,8 @@ app.post("/api/asaas/webhook", async (req, res) => {
             });
           }
           console.log(`[webhook] assinatura ${payment.subscription} salva`);
+          await supabase.from("customers").update({ status: "assinante" }).eq("id", customerId)
+            .then(null, e => console.warn("[webhook] status assinante:", e.message));
         }
 
       } else if (payment.externalReference?.startsWith("owner_")) {
@@ -649,6 +652,7 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const EVOLUTION_INST = process.env.EVOLUTION_INSTANCE || "josephpay";
+const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
 
 // Só cria cliente se URL não for o placeholder padrão
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
@@ -656,6 +660,9 @@ const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.cre
   headers: { apikey: EVOLUTION_KEY },
   timeout: 5000,
 }) : null;
+
+// ── Owner ID cache (preenchido na 1ª requisição autenticada) ─────────────────
+let cachedOwnerId = null;
 
 app.get("/api/whatsapp/status", requireAuth, async (req, res) => {
   if (!evo) return res.json({ connected: false, reason: "Evolution API não configurada" });
@@ -676,7 +683,22 @@ app.get("/api/whatsapp/qr", requireAuth, async (req, res) => {
   try {
     await ensureInstance();
     const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
-    res.json({ code: data.code, pairingCode: data.pairingCode });
+    if (data.code) {
+      res.json({ code: data.code, pairingCode: data.pairingCode });
+    } else {
+      // Instância não tem QR (pode já estar conectada ou em estado intermediário)
+      const stateRes = await evo.get(`/instance/connectionState/${EVOLUTION_INST}`);
+      const state = stateRes.data?.instance?.state;
+      if (state === "open") {
+        res.json({ connected: true, state });
+      } else {
+        // Estado desconhecido — forçar reconexão deletando e recriando
+        await evo.delete(`/instance/delete/${EVOLUTION_INST}`).catch(() => {});
+        await evo.post(`/instance/create`, { instanceName: EVOLUTION_INST, qrcode: true, integration: "WHATSAPP-BAILEYS" });
+        const { data: data2 } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
+        res.json({ code: data2.code, pairingCode: data2.pairingCode, state });
+      }
+    }
   } catch (err) {
     console.error("[whatsapp/qr]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -1367,7 +1389,14 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
   const skipped = (customers || []).filter(c => !c.phone || excludedIds.has(c.id))
     .map(c => ({ name: c.name, reason: !c.phone ? 'no_phone' : 'excluded' }));
-  const withPhone = (customers || []).filter(c => c.phone && !excludedIds.has(c.id));
+  const seenPhones = new Set();
+  const withPhone = (customers || []).filter(c => {
+    if (!c.phone || excludedIds.has(c.id)) return false;
+    const normalized = c.phone.replace(/\D/g, '');
+    if (seenPhones.has(normalized)) return false;
+    seenPhones.add(normalized);
+    return true;
+  });
   let sent = 0, failed = 0;
   const log = [...skipped];
 
@@ -1439,7 +1468,157 @@ app.patch("/api/user/disparos", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+// ── Tracking: receber visitas dos sites dos produtores ───────────────────────
+// CORS aberto só nesta rota (sensor vem de domínios externos)
+app.post("/api/track/visit", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  next();
+}, async (req, res) => {
+  res.json({ ok: true }); // responde imediatamente para não travar o site
+  try {
+    const { user_id, domain, page, referrer, source, device } = req.body || {};
+    if (!user_id) return;
+    // valida que o user_id existe (evita lixo no banco)
+    const { data: profile } = await supabase
+      .from("profiles").select("id").eq("id", user_id).maybeSingle();
+    if (!profile?.id) return;
+    await supabase.from("visits").insert({
+      owner_id: user_id,
+      site_url: domain  || "",
+      page:     page    || "/",
+      referrer: referrer|| "",
+      source:   source  || "direto",
+      device:   device  || "unknown",
+    }).then(null, e => console.warn("[track/visit]", e.message));
+  } catch(e) { console.error("[track/visit]", e.message); }
+});
+
+// preflight CORS para o sensor
+app.options("/api/track/visit", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+
+// ── Analytics: dados de visitas para a aba Máquina ───────────────────────────
+app.get("/api/analytics/visits", requireAuth, async (req, res) => {
+  const days  = Math.min(parseInt(req.query.days) || 30, 30);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data: rows } = await supabase
+    .from("visits").select("created_at, source, device")
+    .eq("owner_id", req.user.id).gte("created_at", since);
+  if (!rows) return res.json({ total: 0, daily: [], sources: [] });
+
+  // agrupamento diário
+  const byDay = {};
+  rows.forEach(r => {
+    const d = r.created_at.slice(0, 10);
+    byDay[d] = (byDay[d] || 0) + 1;
+  });
+  // preenche os últimos N dias
+  const daily = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    daily.push({ date: d, count: byDay[d] || 0 });
+  }
+
+  // agrupamento por fonte
+  const bySrc = {};
+  rows.forEach(r => { bySrc[r.source] = (bySrc[r.source] || 0) + 1; });
+  const total = rows.length;
+  const sources = Object.entries(bySrc)
+    .map(([src, cnt]) => ({ source: src, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  res.json({ total, daily, sources });
+});
+
+// ── Site do produtor: salvar/ler URL + checar status ─────────────────────────
+app.get("/api/user/site", requireAuth, async (req, res) => {
+  const { data } = await supabase.from("profiles").select("site_url").eq("id", req.user.id).single();
+  res.json({ site_url: data?.site_url || null });
+});
+
+app.patch("/api/user/site", requireAuth, async (req, res) => {
+  const { site_url } = req.body;
+  const { error } = await supabase.from("profiles").update({ site_url }).eq("id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, site_url });
+});
+
+app.get("/api/site-status", requireAuth, async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.json({ online: false });
+  try {
+    const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+    const resp = await axios.get(fullUrl, { timeout: 5000, validateStatus: () => true });
+    res.json({ online: resp.status < 500 });
+  } catch {
+    res.json({ online: false });
+  }
+});
+
+// ── Evolution API: receber mensagens inbound ─────────────────────────────────
+app.post("/api/whatsapp/inbound", async (req, res) => {
+  res.json({ ok: true }); // responde imediatamente para não gerar retry
+  try {
+    const payload = req.body;
+    // Evolution API v2 envia event + data.messages ou data como array
+    const messages = payload?.data?.messages
+      || (Array.isArray(payload?.data) ? payload.data : []);
+    for (const msg of messages) {
+      if (msg.key?.fromMe) continue;
+      const remoteJid = msg.key?.remoteJid || "";
+      if (remoteJid.endsWith("@g.us")) continue; // grupos WhatsApp, ignora
+      const fromNumber = remoteJid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+      const content = msg.message?.conversation
+        || msg.message?.extendedTextMessage?.text
+        || msg.message?.imageMessage?.caption || "";
+      if (!content || !fromNumber) continue;
+      if (!cachedOwnerId) {
+        const { data: prof } = await supabase.from("profiles").select("id").limit(1).single();
+        if (prof?.id) cachedOwnerId = prof.id;
+        else { console.warn("[inbound] owner_id não disponível, msg de", fromNumber); continue; }
+      }
+      await supabase.from("messages").insert({
+        owner_id:     cachedOwnerId,
+        content,
+        status:       "inbound",
+        group_target: "_inbound_" + fromNumber,
+        group_count:  0,
+      }).then(null, e => console.warn("[inbound] insert:", e.message));
+      console.log(`[inbound] ${fromNumber}: ${content.slice(0, 60)}`);
+    }
+  } catch(e) { console.error("[inbound]", e.message); }
+});
+
+async function syncAssinanteStatus() {
+  try {
+    const { data: subs } = await supabase.from("subscriptions").select("customer_id").eq("status", "ativo");
+    if (!subs?.length) return;
+    const ids = [...new Set(subs.map(s => s.customer_id).filter(Boolean))];
+    const { error } = await supabase.from("customers").update({ status: "assinante" }).in("id", ids).neq("status", "assinante");
+    if (error) console.warn("[syncAssinante]", error.message);
+    else console.log(`[syncAssinante] ${ids.length} assinante(s) sincronizado(s)`);
+  } catch(e) { console.warn("[syncAssinante]", e.message); }
+}
+
+async function setupEvolutionWebhook() {
+  try {
+    await evo.post(`/webhook/set/${EVOLUTION_INST}`, {
+      url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
+      webhook_by_events: false,
+      webhook_base64:   false,
+      events:           ["MESSAGES_UPSERT"],
+    });
+    console.log("[evolution] webhook inbound configurado →", PUBLIC_URL);
+  } catch(e) { console.warn("[evolution] webhook setup:", e.message); }
+}
+
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);
+  syncAssinanteStatus();
+  if (evo) setupEvolutionWebhook();
 });

@@ -234,9 +234,7 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
 // ────────────────────────────────────────────────────────────────────────────
 
 // ── Railway + helpers ────────────────────────────────────────────────────────
-const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))
-  ?'http://localhost:3001'
-  :'https://josephpay-production.up.railway.app';
+const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))?'http://localhost:3001':'https://josephpay-production.up.railway.app';
 const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});return await res.json();}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
@@ -378,36 +376,88 @@ function AdvancedChart({accent=GOLD,vis=true,endpoint}){
   );
 }
 
-function VisitorChart(){
-  const data=mkData(7,120,150).map((d,i)=>({...d,label:["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"][i]}));
+function VisitorChart({analytics,loadingAnalytics}){
+  const [siteUrl,setSiteUrl]=React.useState("");
+  const [saved,setSaved]=React.useState(null);
+  const [online,setOnline]=React.useState(null);
+  const [editing,setEditing]=React.useState(false);
+  const [saving,setSaving]=React.useState(false);
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+        const r=await fetch(`${RAILWAY}/api/user/site`,{headers:{Authorization:`Bearer ${tok}`}});
+        const d=await r.json();
+        if(d.site_url){setSaved(d.site_url);setSiteUrl(d.site_url);checkStatus(d.site_url);}
+        else setEditing(true);
+      }catch{setEditing(true);}
+    })();
+  },[]);
+  const checkStatus=async(url)=>{
+    setOnline(null);
+    try{
+      const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+      const r=await fetch(`${RAILWAY}/api/site-status?url=${encodeURIComponent(url)}`,{headers:{Authorization:`Bearer ${tok}`}});
+      const d=await r.json();setOnline(d.online);
+    }catch{setOnline(false);}
+  };
+  const save=async()=>{
+    if(!siteUrl.trim())return;setSaving(true);
+    try{
+      const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+      await fetch(`${RAILWAY}/api/user/site`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({site_url:siteUrl.trim()})});
+      setSaved(siteUrl.trim());setEditing(false);checkStatus(siteUrl.trim());
+    }catch{}setSaving(false);
+  };
+  const hasData=analytics&&analytics.total>0;
+  const chartData=analytics?.daily||[];
+  const DAYS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const chartRows=chartData.map(d=>({...d,label:DAYS[new Date(d.date+"T12:00:00").getDay()]}));
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
-          <div style={{color:MUTED,fontSize:12,marginTop:2}}>josephpay.com</div>
-        </div>
-        <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{data.reduce((a,d)=>a+d.v,0)} visitas</span>
-      </div>
-      <div style={{height:90}}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{top:4,right:4,left:-32,bottom:0}}>
-            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
-            <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
-            <YAxis hide/>
-            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
-            <Bar dataKey="v" fill={`${GOLD}66`} radius={[4,4,0,0]}/>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{display:"flex",gap:20,marginTop:14}}>
-        {[{l:"Sessões do site",v:"847",c:TEXT},{l:"Conversão do site",v:"2.3%",c:GOLD},{l:"Rejeição",v:"38%",c:TEXT}].map(k=>(
-          <div key={k.l}>
-            <div style={{color:k.c,fontWeight:700,fontSize:15}}>{k.v}</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{k.l}</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
+        {saved&&!editing&&(
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:online===null?"#888":online?"#22c55e":"#ef4444"}}/>
+            <span style={{color:MUTED,fontSize:12}}>{online===null?"verificando…":online?"online":"offline"}</span>
           </div>
-        ))}
+        )}
       </div>
+      {editing?(
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          <input value={siteUrl} onChange={e=>setSiteUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&save()} placeholder="ex: meusite.com.br" style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none"}}/>
+          <button onClick={save} disabled={saving} style={{background:GOLD,color:"#000",border:"none",borderRadius:10,padding:"8px 14px",fontWeight:700,fontSize:13,cursor:"pointer"}}>{saving?"…":"Salvar"}</button>
+        </div>
+      ):(
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <span style={{color:GOLD,fontSize:13,fontWeight:600}}>{saved}</span>
+          <button onClick={()=>setEditing(true)} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,padding:"4px 10px",color:MUTED,fontSize:12,cursor:"pointer"}}>Editar</button>
+        </div>
+      )}
+      {hasData?(
+        <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <span style={{color:MUTED,fontSize:12}}>Últimos 7 dias</span>
+            <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{analytics.total} visitas</span>
+          </div>
+          <div style={{height:80}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartRows} margin={{top:4,right:4,left:-32,bottom:0}}>
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
+                <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+                <YAxis hide/>
+                <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
+                <Bar dataKey="count" fill={`${GOLD}88`} radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      ):(
+        <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+          <div style={{color:MUTED,fontSize:12}}>{loadingAnalytics?"Carregando dados…":saved?"Aguardando visitas — instale o sensor no site":"Configure o site acima para começar"}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1739,6 +1789,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [sentBubbles,setSentBubbles]=useState([]);
   const [showNova,setShowNova]=useState(false);
   const [showAdd,setShowAdd]=useState(false);
+  const [convOpen,setConvOpen]=useState(null);
   const [excluded,setExcluded]=useState(new Set());
   const [qrCode,setQrCode]=useState(null);
   const [qrLoading,setQrLoading]=useState(false);
@@ -1758,14 +1809,14 @@ function ClientesTab({targetCustomerId,onWapChange}){
 
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id,products(name))').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
       _sb.from('messages').select('*').eq('owner_id',data.session.user.id).order('created_at',{ascending:false}).limit(20)
         .then(({data:d})=>{if(d)setMsgs(d);});
       apiCall('/api/user/disparos',{headers:{'Authorization':`Bearer ${data.session.access_token}`}})
-        .then(d=>{if(Array.isArray(d))setDisparos(d);}).catch(()=>{});
+        .then(d=>{if(Array.isArray(d))setDisparos(d.map(x=>({...x,open:false})));}).catch(()=>{});
     });
   },[]);
   useEffect(()=>{
@@ -1778,7 +1829,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
     try{
       const d=await apiCall('/api/whatsapp/qr');
       if(d?.code) setQrCode(d.code);
-    }catch(e){console.error(e);}
+      else if(d?.connected) setWapStatus('conectado');
+      else if(d?.error) alert('Erro ao conectar WhatsApp: '+d.error);
+    }catch(e){console.error(e);alert('Erro ao conectar: '+e.message);}
     setQrLoading(false);
   };
   useEffect(()=>{
@@ -1799,7 +1852,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date').eq('customer_id',c.id).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
@@ -1807,19 +1860,23 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
   const srcLabel=s=>s==='minichat'?'Site':s==='manual'?'Manual':'Compra';
   const today=new Date();const todayIso=today.toISOString().slice(0,10);
+  const todayMid=new Date(today.getFullYear(),today.getMonth(),today.getDate());
   const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
     const b=new Date(c.birthday+'T00:00:00');
-    const nx=new Date(today.getFullYear(),b.getMonth(),b.getDate());
-    if(nx<today)nx.setFullYear(today.getFullYear()+1);
-    const dias=Math.round((nx-today)/864e5);
+    const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
+    if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
+    const dias=Math.round((nx-todayMid)/864e5);
     return{name:c.name,label:dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`,dias,inits:inits(c.name),id:c.id};
-  }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias).slice(0,5);
+  }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias);
   const totalClientes=(clientes||[]).length;
   const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
-  const msgsHoje=msgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
-  const groupMsgs=msgs.filter(m=>m.group_target);
-  const calcSpent=c=>(c.sales||[]).filter(s=>s.status==='paid').reduce((a,s)=>a+(s.producer_amount||s.amount||0),0);
+  const outboundMsgs=msgs.filter(m=>m.status!=='inbound');
+  const inboundMsgs=msgs.filter(m=>m.status==='inbound');
+  const msgsHoje=outboundMsgs.filter(m=>m.created_at?.slice(0,10)===todayIso).length;
+  const groupMsgs=outboundMsgs.filter(m=>m.group_target);
+  const isPaid=s=>s.status==='paid'||s.status==='pago';
+  const calcSpent=c=>(c.sales||[]).filter(isPaid).reduce((a,s)=>a+(s.producer_amount||s.amount||0),0);
   const cnts={todos:totalClientes,lead:(clientes||[]).filter(c=>c.status==='lead').length,cliente:(clientes||[]).filter(c=>!c.status||c.status==='cliente').length,assinante:(clientes||[]).filter(c=>c.status==='assinante').length};
   const groupMap={'Todos':'todos','Interessados':'lead','Clientes':'cliente','Assinantes':'assinante'};
   const listaGrupo=(clientes||[]).filter(c=>{if(group==='Todos')return true;const st=c.status||'cliente';if(group==='Clientes')return st==='cliente';if(group==='Interessados')return st==='lead';if(group==='Assinantes')return st==='assinante';return true;});
@@ -1865,6 +1922,12 @@ function ClientesTab({targetCustomerId,onWapChange}){
     const rows=clientes.map(c=>[esc(c.name),esc(c.phone),esc(c.email),esc(stLabel(c.status)),esc(srcLabel(c.source)),esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),esc(new Date(c.created_at).toLocaleDateString('pt-BR'))].join(','));
     const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();
+  }
+  async function deleteMsg(id){
+    try{
+      await _sb.from('messages').delete().eq('id',id);
+      setMsgs(p=>p.filter(m=>m.id!==id));
+    }catch(e){console.error('[del-msg]',e);}
   }
   async function updateStatus(id,status){
     try{
@@ -1933,9 +1996,15 @@ function ClientesTab({targetCustomerId,onWapChange}){
           </div>
           <div className="ib"><div className="ibh">Histórico de compras</div>
             {compras.length===0&&<div style={{padding:'14px 16px',color:'var(--t2)',fontSize:13}}>Nenhuma compra registrada.</div>}
-            {compras.map((cp,i)=>(
-              <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className={`hc${cp.status==='paid'?' ok':''}`}>{cp.status==='paid'?'Pago':cp.status||'—'}</span></div></div>
-            ))}
+            {compras.map((cp,i)=>{
+              const btMap={'PIX':'PIX','CREDIT_CARD':'Cartão','BOLETO':'Boleto','boleto':'Boleto','credit_card':'Cartão','pix':'PIX'};
+              const bt=btMap[cp.billing_type]||cp.billing_type||'—';
+              const parc=cp.installment_count>1?`${cp.installment_count}x`:'À vista';
+              const pgLabel=bt==='—'?parc:`${bt} · ${parc}`;
+              return(
+                <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className="hc" style={{color:'var(--t2)'}}>{pgLabel}</span><span className={`hc${isPaid(cp)?' ok':''}`}>{isPaid(cp)?'Pago':cp.status||'—'}</span></div></div>
+              );
+            })}
           </div>
           <div className="ib" style={{marginBottom:4}}><div className="ibh">Grupo</div>
             <div className="ir"><span className="il">Status atual</span>
@@ -1953,7 +2022,53 @@ function ClientesTab({targetCustomerId,onWapChange}){
     <div className="crm-v9">
       <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>setTab(i)}>{n}</div>)}</div>
 
-      {tab===1&&(
+      {tab===1&&convOpen&&(()=>{
+        const replies=inboundMsgs.filter(m=>new Date(m.created_at)>new Date(convOpen.created_at)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+        const gLabel={'todos':'Todos','lead':'Interessados','cliente':'Clientes','assinante':'Assinantes'};
+        const sentCount=convOpen.group_count||1;
+        return(
+          <div className="scr" style={{paddingBottom:24}}>
+            <div className="back" onClick={()=>setConvOpen(null)} style={{marginBottom:8}}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:10}}>
+              {gLabel[convOpen.group_target]||convOpen.group_target||'Conversa'} · {new Date(convOpen.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',marginBottom:16}}>
+              <div style={{maxWidth:'78%',background:'var(--gd2)',border:'1px solid rgba(212,175,55,.25)',borderRadius:'16px 16px 4px 16px',padding:'10px 14px'}}>
+                <div style={{fontSize:12,color:'var(--tx)',lineHeight:1.5,whiteSpace:'pre-wrap'}}>{convOpen.content}</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,marginTop:6}}>
+                  <span style={{fontSize:10,color:'var(--t3)'}}>{new Date(convOpen.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+                  <span style={{fontSize:10,color:'#25D366',fontWeight:600}}>✓✓ {sentCount} enviadas</span>
+                </div>
+              </div>
+            </div>
+            {replies.length===0&&(
+              <div style={{textAlign:'center',color:'var(--t2)',fontSize:13,padding:'32px 0',lineHeight:1.7}}>
+                Nenhuma resposta ainda.<br/>
+                <span style={{fontSize:11,color:'var(--t3)'}}>As respostas aparecem aqui automaticamente.</span>
+              </div>
+            )}
+            {replies.map((r,i)=>{
+              const num=r.group_target?.replace('_inbound_','')||'';
+              const cliente=(clientes||[]).find(c=>c.phone?.replace(/\D/g,'')===num.replace(/\D/g,''));
+              const nome=cliente?.name||r.group_target||'Cliente';
+              return(
+                <div key={i} style={{display:'flex',alignItems:'flex-end',gap:8,marginBottom:12}}>
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'var(--t2)',flexShrink:0}}>{inits(nome)}</div>
+                  <div style={{maxWidth:'78%'}}>
+                    <div style={{fontSize:10,color:'var(--t3)',marginBottom:3,fontWeight:600}}>{nome}</div>
+                    <div style={{background:'var(--c2)',border:'1px solid var(--ln)',borderRadius:'4px 16px 16px 16px',padding:'10px 14px'}}>
+                      <div style={{fontSize:12,color:'var(--tx)',lineHeight:1.5,whiteSpace:'pre-wrap'}}>{r.content}</div>
+                      <div style={{fontSize:10,color:'var(--t3)',marginTop:4,textAlign:'right'}}>{new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {tab===1&&!convOpen&&(
         <div className="scr">
           {/* Stats */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:1,background:'var(--ln)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
@@ -1982,28 +2097,45 @@ function ClientesTab({targetCustomerId,onWapChange}){
           {/* Feed unificado */}
           <div className="conv-section-lbl">Atividade recente</div>
           {(()=>{
-            const feed=[...groupMsgs,...msgs.filter(m=>!m.group_target)].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,10);
+            const feed=[...groupMsgs,...outboundMsgs.filter(m=>!m.group_target)].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,10);
             if(feed.length===0)return(
               <div style={{textAlign:'center',color:'var(--t2)',fontSize:13,padding:'28px 0',lineHeight:1.6}}>
                 Nenhuma atividade ainda.<br/>
                 <span style={{fontSize:12,color:'var(--t3)'}}>Envie sua primeira mensagem na aba Mensagens.</span>
               </div>
             );
+            const gNav={'todos':'Todos','lead':'Interessados','cliente':'Clientes','assinante':'Assinantes'};
             return feed.map((m,i)=>{
               const isGroup=!!m.group_target;
+              const sentCount=isGroup?(m.group_count||1):1;
+              const hasRead=m.status==='read';
+              const groupLabel=isGroup?`Grupo · ${m.group_target}`:'Automático';
               return(
-                <div key={i} className="conv-item">
-                  <div className="conv-item-top">
-                    <div style={{flex:1}}>
-                      <div className={`ci-type${isGroup?' grupo':' auto'}`}>{isGroup?`Grupo · ${m.group_target}`:'Automático'}</div>
-                      <div className="ci-name2">{m.content.slice(0,50)}{m.content.length>50?'…':''}</div>
+                <div key={i} className="conv-item" style={{position:'relative'}}>
+                  <div className="conv-item-top" style={{alignItems:'flex-start'}}>
+                    <div style={{flex:1,paddingRight:8}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:4}}>
+                        <div className={`ci-type${isGroup?' grupo':' auto'}`} style={{margin:0}}>{groupLabel}</div>
+                        <span style={{background:'#25D366',color:'#fff',borderRadius:10,padding:'1px 6px',fontSize:9,fontWeight:700,letterSpacing:'.2px'}}>{sentCount} enviadas</span>
+                      </div>
+                      <div className="ci-name2">{m.content.slice(0,60)}{m.content.length>60?'…':''}</div>
                     </div>
-                    <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6,flexShrink:0}}>
+                      <div className="ci-time">{new Date(m.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
+                      <button onClick={e=>{e.stopPropagation();if(window.confirm('Apagar esta conversa?'))deleteMsg(m.id);}} style={{background:'none',border:'none',cursor:'pointer',color:'var(--t3)',padding:0,lineHeight:1,marginTop:2}} title="Apagar">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="conv-stats">
-                    <div className="cs-item"><div className="cs-val sent">{isGroup?(m.group_count||1):1}</div><div className="cs-lbl">Enviadas</div></div>
-                    <div className="cs-item"><div className={`cs-val${m.status==='read'?' viewed':''}`}>{m.status==='read'?'1':'—'}</div><div className="cs-lbl">Lidas</div></div>
-                    <div className="cs-item"><div className="cs-val responded">—</div><div className="cs-lbl">Respostas</div></div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:10}}>
+                    <div style={{display:'flex',gap:14}}>
+                      {hasRead&&<span style={{fontSize:11,color:'var(--t2)'}}>✓✓ <span style={{color:'var(--tx)',fontWeight:600}}>1</span> lida</span>}
+                      {!hasRead&&<span style={{fontSize:11,color:'var(--t3)'}}>Aguardando leitura</span>}
+                    </div>
+                    <button onClick={()=>setConvOpen(m)} style={{background:'var(--c2)',border:'1px solid var(--ln)',borderRadius:8,padding:'5px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:5,fontSize:11,fontWeight:600,color:'var(--tx)'}}>
+                      Ver conversa
+                      <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
                   </div>
                 </div>
               );
@@ -2042,7 +2174,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="vrs">{['{nome}','{produto}','{link}','{cupom}'].map(v=><div key={v} className="vb" onClick={()=>setMsgText(t=>t+v)}>{v.replace(/\{|\}/g,'')}</div>)}</div>
           </div>
           <div className="chat-bar">
-            <textarea className="chat-ta" value={msgText} onChange={e=>setMsgText(e.target.value)} placeholder="Mensagem..." rows={1}/>
+            <textarea className="chat-ta" value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(msgText.trim())sendMsg();}}} placeholder="Mensagem..." rows={1}/>
             <div className={`mic-send${msgText.trim()?' send':' mic'}`} onClick={msgText.trim()?sendMsg:undefined}>
               {msgText.trim()
                 ?<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="white" strokeWidth="2.1" strokeLinecap="round"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2091,27 +2223,23 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div><div className="wlbl">WhatsApp</div><div className="wval">{wapStatus==='conectado'?'Conectado':'Desconectado'}</div></div>
             <button className="wcb" onClick={wapStatus==='conectado'?()=>apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')):connectWhatsApp} disabled={qrLoading}>{qrLoading?'Aguarde…':wapStatus==='conectado'?'Verificar':'Conectar'}</button>
           </div>
-          <div style={{display:'flex',gap:16,marginBottom:12,padding:'0 2px'}}>
-            {[{c:'var(--gr)',l:'Disparando agora'},{c:'var(--t3)',l:'Pausado'},{c:'var(--rd)',l:'Desativado'}].map(({c,l})=>(
-              <div key={l} style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--t2)'}}><div style={{width:7,height:7,borderRadius:'50%',background:c}}/>{l}</div>
-            ))}
-          </div>
+          <div style={{marginBottom:12}}/>
           {disparos.map((d,i)=>(
             <div key={i} className="dc">
-              <div className="dtop">
+              <div className="dtop" style={{cursor:'pointer'}} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,open:!x.open}:x))}>
                 <div className="dleft"><div className="dname">{d.name}{d.on&&<span style={{marginLeft:6,color:'var(--gd)',fontSize:12}}>✓</span>}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
                   <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:'transform .2s',transform:d.open?'rotate(180deg)':'rotate(0deg)'}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
               </div>
-              <div className="dbody">
+              {d.open&&<div className="dbody">
                 {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
                 <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
                 <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
                 <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
-              </div>
+              </div>}
             </div>
           ))}
           <button className="add-disp" onClick={()=>setShowDisp(true)}>+ Novo disparo</button>
@@ -2145,45 +2273,99 @@ function ClientesTab({targetCustomerId,onWapChange}){
 }
 
 function MaquinaTab(){
+  const [analytics,setAnalytics]=React.useState(null);
+  const [loadingAnalytics,setLoadingAnalytics]=React.useState(true);
+  const [showSensor,setShowSensor]=React.useState(false);
+  const [userId,setUserId]=React.useState("");
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const session=(await _sb?.auth?.getSession())?.data?.session;
+        const tok=session?.access_token||"";
+        if(session?.user?.id) setUserId(session.user.id);
+        const r=await fetch(`${RAILWAY}/api/analytics/visits?days=30`,{headers:{Authorization:`Bearer ${tok}`}});
+        const d=await r.json();
+        setAnalytics(d);
+      }catch{}
+      setLoadingAnalytics(false);
+    })();
+  },[]);
+
+  const srcColors={"instagram":GOLD,"google":"#4A90D9","whatsapp":"#22c55e","facebook":"#6B7EDB","direto":"rgba(212,175,55,0.5)","referral":"rgba(255,255,255,0.3)"};
+  const srcLabel={"instagram":"Instagram","google":"Google","whatsapp":"WhatsApp","facebook":"Facebook","direto":"Direto","referral":"Referência"};
+  const hasSources=analytics?.sources?.length>0;
+
+  const sensorSnippet=`<script>
+(function(){
+  var JP="${RAILWAY}";
+  var uid="${userId}";
+  var p=window.location.pathname;
+  var ref=document.referrer;
+  var q=new URLSearchParams(window.location.search);
+  var src=q.get("utm_source")||(ref.includes("instagram")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")?"whatsapp":ref?"referral":"direto");
+  var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
+  fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
+})();
+<\/script>`;
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <VisitorChart/>
+      <VisitorChart analytics={analytics} loadingAnalytics={loadingAnalytics}/>
+
+      {/* Fontes de tráfego — real */}
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Origem de vendas</div>
-        {[{l:"Site",v:"67%",bg:GOLD},{l:"WhatsApp",v:"24%",bg:"#B8941A"},{l:"Campanhas",v:"9%",bg:"rgba(212,175,55,0.4)"}].map(t=>(
-          <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
-          </div>
-        ))}
-      </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego</div>
-        {[{l:"Instagram",v:"42%",bg:GOLD},{l:"WhatsApp",v:"31%",bg:"#B8941A"},{l:"Google",v:"18%",bg:"rgba(212,175,55,0.5)"},{l:"Direto",v:"9%",bg:"rgba(212,175,55,0.3)"}].map(t=>(
-          <div key={t.l} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13}}>{t.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.v}</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:t.bg,width:t.v}}/></div>
-          </div>
-        ))}
-      </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:16}}>Reputação</div>
-        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:14}}>
-          <div style={{textAlign:"center",flexShrink:0}}>
-            <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:38,lineHeight:1}}>4.8</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:4}}>nota média</div>
-          </div>
-          <div style={{flex:1}}>
-            {[{s:"5 ★",w:"72%"},{s:"4 ★",w:"18%"},{s:"3 ★",w:"6%"},{s:"2 ★",w:"2%"},{s:"1 ★",w:"2%"}].map(r=>(
-              <div key={r.s} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
-                <span style={{color:MUTED,fontSize:11,width:28,flexShrink:0}}>{r.s}</span>
-                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:r.w}}/></div>
-                <span style={{color:MUTED,fontSize:11,width:28,textAlign:"right",flexShrink:0}}>{r.w}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
+          {hasSources&&<span style={{color:MUTED,fontSize:11}}>{analytics.total} visitas</span>}
         </div>
-        <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>📊 Baseado em 47 avaliações Google</div>
+        {hasSources?analytics.sources.map(s=>(
+          <div key={s.source} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{color:MUTED,fontSize:13}}>{srcLabel[s.source]||s.source}</span>
+              <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{s.pct}%</span>
+            </div>
+            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}>
+              <div style={{height:"100%",borderRadius:2,background:srcColors[s.source]||GOLD,width:`${s.pct}%`}}/>
+            </div>
+          </div>
+        )):(
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+            <div style={{color:MUTED,fontSize:12}}>{loadingAnalytics?"Carregando…":"Aguardando visitas — instale o sensor abaixo"}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Origem de vendas — em breve */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:12}}>Origem de vendas</div>
+        <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+          <div style={{color:MUTED,fontSize:12}}>Em breve — cruzamento de visitas com pagamentos</div>
+        </div>
+      </div>
+
+      {/* Reputação — em breve */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:12}}>Reputação</div>
+        <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+          <div style={{color:MUTED,fontSize:12}}>Em breve — integração com Google Reviews</div>
+        </div>
+      </div>
+
+      {/* Sensor — como instalar */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Sensor de visitas</div>
+          <button onClick={()=>setShowSensor(v=>!v)} style={{background:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:GOLD,borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{showSensor?"Fechar":"Ver código"}</button>
+        </div>
+        <div style={{color:MUTED,fontSize:12,lineHeight:1.6}}>
+          Cole este código no <strong style={{color:TEXT}}>&lt;head&gt;</strong> de cada site do cliente para começar a capturar visitas reais.
+        </div>
+        {showSensor&&(
+          <div style={{marginTop:12,background:"#0d0d0c",borderRadius:10,padding:"12px",position:"relative"}}>
+            <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+            <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+          </div>
+        )}
       </div>
     </div>
   );
