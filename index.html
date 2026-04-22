@@ -438,10 +438,10 @@ function VisitorChart({analytics,loadingAnalytics}){
       {hasData?(
         <>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{color:MUTED,fontSize:12}}>Últimos 7 dias</span>
+            <span style={{color:MUTED,fontSize:12}}>Últimos 30 dias</span>
             <span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{analytics.total} visitas</span>
           </div>
-          <div style={{height:80}}>
+          <div style={{height:110}}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartRows} margin={{top:4,right:4,left:-32,bottom:0}}>
                 <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
@@ -1350,8 +1350,8 @@ function BottomNav({tab,setTab,nav}){
   );
 }
 
-function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected}){
-  const dotColor=wapConnected===true?GREEN:wapConnected===false?'#ff3b30':'rgba(255,255,255,0.2)';
+function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected,avatarUrl}){
+  const dotColor=wapConnected===true?GREEN:'rgba(255,255,255,0.2)';
   return(
     <div className="jp-glass" style={{position:"sticky",top:0,zIndex:30,borderBottom:"1px solid rgba(212,175,55,0.08)"}}>
       <div style={{padding:"18px 24px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1361,7 +1361,9 @@ function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected}){
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:dotColor,flexShrink:0}}/>
-          <button onClick={onOpenPerfil} style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0}}>{initial}</button>
+          <button onClick={onOpenPerfil} style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0,overflow:"hidden",padding:0}}>
+            {avatarUrl?<img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initial}
+          </button>
         </div>
       </div>
       <div style={{height:"1px",background:`linear-gradient(90deg,${GOLD}60,${GOLD}20,transparent)`,margin:"0 24px"}}/>
@@ -1369,28 +1371,92 @@ function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected}){
   );
 }
 
-function PerfilModal({userName,product,email,onClose,onLogout,wapConnected}){
+function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onSaved}){
+  const [senhaMsg,setSenhaMsg]=useState("");
+  const [editing,setEditing]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [editName,setEditName]=useState(profile?.name||"");
+  const [editCompany,setEditCompany]=useState(profile?.company_name||"");
+  const [avatarPreview,setAvatarPreview]=useState(profile?.avatar_url||"");
+  const [avatarFile,setAvatarFile]=useState(null);
+  const statusItems=[
+    {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED},
+    {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED},
+    {label:"Automações",val:"desligadas",c:MUTED},
+  ];
+  const handleSenha=async()=>{
+    if(!email||email==="—")return;
+    try{
+      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+      setSenhaMsg(`Email enviado para ${email}`);
+    }catch{setSenhaMsg("Erro ao enviar. Tente novamente.");}
+  };
+  const handleAvatarChange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    setAvatarFile(f);
+    const reader=new FileReader();
+    reader.onload=ev=>setAvatarPreview(ev.target.result);
+    reader.readAsDataURL(f);
+  };
+  const saveProfile=async()=>{
+    setSaving(true);
+    try{
+      const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+      let avatarUrl=profile?.avatar_url||"";
+      if(avatarFile){
+        // Upload via Supabase Storage (client-side)
+        const ext=avatarFile.name.split('.').pop();
+        const path=`avatars/${(await _sb.auth.getSession()).data.session.user.id}.${ext}`;
+        const {error:upErr}=await _sb.storage.from('avatars').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
+        if(!upErr){
+          const {data:pub}=_sb.storage.from('avatars').getPublicUrl(path);
+          avatarUrl=pub?.publicUrl||avatarUrl;
+        }
+      }
+      await fetch(`${RAILWAY}/api/user/profile`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({name:editName,company_name:editCompany,avatar_url:avatarUrl})});
+      setEditing(false);
+      onSaved&&onSaved();
+    }catch(e){console.error("[perfil save]",e);}
+    setSaving(false);
+  };
+  const contaItems=[
+    {icon:"📧",label:email||"—",onClick:null},
+    {icon:"🔒",label:senhaMsg||"Alterar senha",onClick:handleSenha},
+    {icon:"📞",label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
+  ];
+  const initials=(profile?.name||"P")[0].toUpperCase();
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
-        {/* handle */}
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
-        {/* header */}
-        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
-          <div style={{width:52,height:52,borderRadius:"50%",background:CARD3,border:`2px solid ${GOLD}30`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:TEXT,flexShrink:0}}>{userName?.[0]||"R"}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{userName}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{product}</div>
+        {/* Avatar + nome */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
+          <div style={{position:"relative",flexShrink:0}} onClick={()=>editing&&document.getElementById('avatar-file-input').click()}>
+            {avatarPreview
+              ?<img src={avatarPreview} style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:`2px solid ${GOLD}40`}}/>
+              :<div style={{width:56,height:56,borderRadius:"50%",background:CARD3,border:`2px solid ${GOLD}30`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT}}>{initials}</div>}
+            {editing&&<div style={{position:"absolute",inset:0,borderRadius:"50%",background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>📷</div>}
           </div>
+          <input id="avatar-file-input" type="file" accept="image/*" style={{display:"none"}} onChange={handleAvatarChange}/>
+          <div style={{flex:1,minWidth:0}}>
+            {editing?(
+              <>
+                <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Seu nome" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 10px",color:TEXT,fontSize:15,fontWeight:700,outline:"none",marginBottom:6,boxSizing:"border-box"}}/>
+                <input value={editCompany} onChange={e=>setEditCompany(e.target.value)} placeholder="Nome da empresa" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 10px",color:MUTED,fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+              </>
+            ):(
+              <>
+                <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{profile?.name||"Produtor"}</div>
+                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{profile?.company_name||"JosephPay"}</div>
+              </>
+            )}
+          </div>
+          <button onClick={()=>{if(editing){saveProfile();}else{setEditName(profile?.name||"");setEditCompany(profile?.company_name||"");setEditing(true);}}} style={{background:editing?GOLD:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:editing?"#000":GOLD,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>{saving?"…":editing?"Salvar":"Editar"}</button>
         </div>
-        {/* status */}
+        {/* Status */}
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
-          {[
-            {label:"WhatsApp",val:wapConnected===null?"verificando…":wapConnected?"conectado":"desconectado",c:wapConnected===null?MUTED:wapConnected?GREEN:RED},
-            {label:"Site",val:"ativo",c:GREEN},
-            {label:"Automações",val:"ligadas",c:GREEN}
-          ].map((s,i,arr)=>(
+          {statusItems.map((s,i,arr)=>(
             <div key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:s.c,flexShrink:0}}/>
               <span style={{color:MUTED,fontSize:13,flex:1}}>{s.label}</span>
@@ -1398,17 +1464,17 @@ function PerfilModal({userName,product,email,onClose,onLogout,wapConnected}){
             </div>
           ))}
         </div>
-        {/* conta */}
+        {/* Conta */}
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Conta</div>
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:24}}>
-          {[{icon:"📧",label:email||"renato@g9.com"},{icon:"🔒",label:"Alterar senha"},{icon:"📞",label:"Suporte"}].map((item,i,arr)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:"pointer"}}>
+          {contaItems.map((item,i,arr)=>(
+            <div key={i} onClick={item.onClick||undefined} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:item.onClick?"pointer":"default"}}>
               <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
-              <span style={{color:TEXT,fontSize:13}}>{item.label}</span>
+              <span style={{color:item.onClick?TEXT:MUTED,fontSize:13}}>{item.label}</span>
+              {item.onClick&&<span style={{color:MUTED,fontSize:16,marginLeft:"auto"}}>›</span>}
             </div>
           ))}
         </div>
-        {/* logout */}
         <button onClick={onLogout} style={{width:"100%",background:`${RED}14`,border:`1px solid ${RED}30`,borderRadius:100,padding:14,color:RED,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Sair da conta</button>
       </div>
     </div>
@@ -1448,12 +1514,25 @@ function ClientPanel({clientName,userEmail,onLogout}){
   const onNav=(t,cid=null)=>{setTab(t);setNavCustomerId(cid);};
   const [showPerfil,setShowPerfil]=useState(false);
   const [wapConnected,setWapConnected]=useState(null);
-  useEffect(()=>{
-    apiCall('/api/whatsapp/status').then(d=>{setWapConnected(d?.connected??false);}).catch(()=>setWapConnected(false));
-  },[]);
-  const isDeise=clientName?.includes("Deise");
+  const [siteActive,setSiteActive]=useState(false);
+  const [profile,setProfile]=useState({name:clientName,company_name:"",avatar_url:""});
+  const reloadProfile=async()=>{
+    try{
+      const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+      const [rp,rs]=await Promise.all([
+        fetch(`${RAILWAY}/api/user/profile`,{headers:{Authorization:`Bearer ${tok}`}}),
+        fetch(`${RAILWAY}/api/user/site`,{headers:{Authorization:`Bearer ${tok}`}}),
+      ]);
+      const dp=await rp.json();
+      const ds=await rs.json();
+      setProfile(p=>({...p,...dp}));
+      setSiteActive(!!ds?.site_url);
+    }catch{}
+  };
+  useEffect(()=>{reloadProfile();},[]);
   const accent=GOLD;
-  const product=isDeise?"Cirurgia Plástica":"Protocolo G9";
+  const displayName=profile.name||clientName||"Produtor";
+  const companyName=profile.company_name||"JosephPay";
   const email=userEmail||"—";
   const NAV=[
     {id:"dashboard",icon:"⌂",label:"Início"},
@@ -1462,25 +1541,25 @@ function ClientPanel({clientName,userEmail,onLogout}){
     {id:"maquina",icon:"⚙",label:"Máquina"},
     {id:"chat",icon:"✧",label:"Chat IA"},
   ];
-  const TITLES={dashboard:clientName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
+  const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
   const VIEWS={
-    dashboard:<InicioTab accent={accent} isDeise={isDeise} onNav={onNav}/>,
-    produtos:<ProdutosTab accent={accent} isDeise={isDeise}/>,
+    dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
+    produtos:<ProdutosTab accent={accent} isDeise={false}/>,
     clientes:<ClientesTab targetCustomerId={navCustomerId} onWapChange={v=>setWapConnected(v)}/>,
     maquina:<MaquinaTab/>,
-    chat:<ChatIA productName={product} onBack={()=>onNav("dashboard")}/>,
+    chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
-    vendas:<Vendas accent={accent} isDeise={isDeise}/>,
+    vendas:<Vendas accent={accent} isDeise={false}/>,
   };
   return(
     <>
-      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={clientName} initial={clientName?.[0]||"C"}/>
+      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={displayName} initial={displayName?.[0]||"P"}/>
       <div className="jp-main">
-        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${product}`:null} onLogout={onLogout} initial={clientName?.[0]||"C"} onOpenPerfil={()=>setShowPerfil(true)} wapConnected={wapConnected}/>
+        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${companyName}`:null} onLogout={onLogout} initial={displayName?.[0]||"P"} onOpenPerfil={()=>setShowPerfil(true)} wapConnected={wapConnected} avatarUrl={profile.avatar_url}/>
         <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
-      {showPerfil&&<PerfilModal userName={clientName} product={product} email={email} wapConnected={wapConnected} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}}/>}
+      {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile}/>}
     </>
   );
 }
@@ -1782,6 +1861,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [wapStatus,setWapStatus]=useState("verificando");
   const [sel,setSel]=useState(null);
   const [selSales,setSelSales]=useState(null);
+  const [prodMap,setProdMap]=useState({});
   const [filtro,setFiltro]=useState("todos");
   const [group,setGroup]=useState("Clientes");
   const [msgText,setMsgText]=useState("");
@@ -1807,6 +1887,11 @@ function ClientesTab({targetCustomerId,onWapChange}){
     {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00"},
   ]);
 
+  useEffect(()=>{
+    apiCall('/api/products').then(d=>{
+      if(d?.products){const m={};d.products.forEach(p=>{m[p.id]=p.name;});setProdMap(m);}
+    });
+  },[]);
   useEffect(()=>{
     if(!_sb)return;
     _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
@@ -1852,8 +1937,8 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
-      .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date').eq('customer_id',c.id).order('created_at',{ascending:false})
+      .then(({data,error})=>{if(error){console.error("[sales]",error.message);setSelSales([]);}else{setSelSales(data||[]);}});
   },[sel,clientes]);
 
   const inits=n=>n?n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2):'?';
@@ -1922,6 +2007,42 @@ function ClientesTab({targetCustomerId,onWapChange}){
     const rows=clientes.map(c=>[esc(c.name),esc(c.phone),esc(c.email),esc(stLabel(c.status)),esc(srcLabel(c.source)),esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),esc(new Date(c.created_at).toLocaleDateString('pt-BR'))].join(','));
     const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clientes.csv';a.click();
+  }
+  function parseCSVLine(line){
+    const res=[];let cur='';let inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else{inQ=!inQ;}}
+      else if(ch===','&&!inQ){res.push(cur.trim());cur='';}
+      else cur+=ch;
+    }
+    res.push(cur.trim());return res;
+  }
+  async function importCSV(file){
+    if(!file)return;
+    const text=await file.text();
+    const lines=text.split(/\r?\n/).filter(Boolean);
+    if(!lines.length)return;
+    const hdrLine=lines[0].toLowerCase();
+    const isOurFormat=hdrLine.includes('nome')&&hdrLine.includes('telefone');
+    const start=isOurFormat?1:0;
+    const rows=[];
+    for(let i=start;i<lines.length;i++){
+      const cols=parseCSVLine(lines[i]);
+      if(!cols[0])continue;
+      rows.push({name:cols[0]||'',phone:cols[1]||'',email:cols[2]||''});
+    }
+    if(!rows.length)return;
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      const res=await apiCall('/api/customers/import',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify({customers:rows})});
+      if(res?.inserted>0){
+        // recarrega lista
+        _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
+          .then(({data})=>{if(data)setClientes(data);});
+        alert(`${res.inserted} cliente(s) importado(s) com sucesso!`);
+      }else{alert('Nenhum cliente novo importado.');}
+    }catch(e){console.error('[import]',e);alert('Erro ao importar.');}
   }
   async function deleteMsg(id){
     try{
@@ -2002,7 +2123,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
               const parc=cp.installment_count>1?`${cp.installment_count}x`:'À vista';
               const pgLabel=bt==='—'?parc:`${bt} · ${parc}`;
               return(
-                <div key={i} className="hitem"><div className="hp">{cp.products?.name||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className="hc" style={{color:'var(--t2)'}}>{pgLabel}</span><span className={`hc${isPaid(cp)?' ok':''}`}>{isPaid(cp)?'Pago':cp.status||'—'}</span></div></div>
+                <div key={i} className="hitem"><div className="hp">{prodMap[cp.product_id]||'Compra '+(i+1)}</div><div className="hcs"><span className="hc">{new Date(cp.created_at).toLocaleDateString('pt-BR')}</span><span className="hc">{fmtBRL(cp.producer_amount||cp.amount||0)}</span><span className="hc" style={{color:'var(--t2)'}}>{pgLabel}</span><span className={`hc${isPaid(cp)?' ok':''}`}>{isPaid(cp)?'Pago':cp.status||'—'}</span></div></div>
               );
             })}
           </div>
@@ -2189,7 +2310,8 @@ function ClientesTab({targetCustomerId,onWapChange}){
           <button className="nova" onClick={()=>setShowNova(true)}>Nova ação<div className="nova-ic"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5h6M5.5 2.5L8 5l-2.5 2.5" stroke="rgba(0,0,0,.6)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div></button>
           <div className="sacts">
             <button className="sa" onClick={()=>setShowAdd(true)}>+ Adicionar</button>
-            <button className="sa">Importar</button>
+            <button className="sa" onClick={()=>document.getElementById('csv-import-input').click()}>Importar</button>
+            <input id="csv-import-input" type="file" accept=".csv" style={{display:"none"}} onChange={e=>{importCSV(e.target.files[0]);e.target.value='';}}/>
             <button className="sa" onClick={exportCSV}>Exportar</button>
           </div>
           <div className="segs">
@@ -2351,22 +2473,40 @@ function MaquinaTab(){
         </div>
       </div>
 
-      {/* Sensor — como instalar */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Sensor de visitas</div>
-          <button onClick={()=>setShowSensor(v=>!v)} style={{background:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:GOLD,borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{showSensor?"Fechar":"Ver código"}</button>
-        </div>
-        <div style={{color:MUTED,fontSize:12,lineHeight:1.6}}>
-          Cole este código no <strong style={{color:TEXT}}>&lt;head&gt;</strong> de cada site do cliente para começar a capturar visitas reais.
-        </div>
-        {showSensor&&(
-          <div style={{marginTop:12,background:"#0d0d0c",borderRadius:10,padding:"12px",position:"relative"}}>
-            <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
-            <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+      {/* Sensor — mostra completo se não instalado, compacto se já tem visitas */}
+      {analytics?.total>0?(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"14px 18px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:GREEN}}/>
+              <span style={{color:TEXT,fontWeight:600,fontSize:13}}>Sensor ativo</span>
+            </div>
+            <button onClick={()=>setShowSensor(v=>!v)} style={{background:"none",border:`1px solid ${BDR}`,color:MUTED,borderRadius:8,padding:"3px 10px",fontSize:11,cursor:"pointer"}}>{showSensor?"Fechar":"Ver código"}</button>
           </div>
-        )}
-      </div>
+          {showSensor&&(
+            <div style={{marginTop:12,background:"#0d0d0c",borderRadius:10,padding:"12px",position:"relative"}}>
+              <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+              <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+            </div>
+          )}
+        </div>
+      ):(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Sensor de visitas</div>
+            <button onClick={()=>setShowSensor(v=>!v)} style={{background:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:GOLD,borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{showSensor?"Fechar":"Ver código"}</button>
+          </div>
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.6}}>
+            Cole este código no <strong style={{color:TEXT}}>&lt;head&gt;</strong> do site para começar a capturar visitas reais.
+          </div>
+          {showSensor&&(
+            <div style={{marginTop:12,background:"#0d0d0c",borderRadius:10,padding:"12px",position:"relative"}}>
+              <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+              <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

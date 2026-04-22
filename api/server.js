@@ -1291,6 +1291,43 @@ app.post("/api/customers/add", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+// ── CRM: importar lista de clientes via CSV ────────────────────────────────────
+app.post("/api/customers/import", requireAuth, async (req, res) => {
+  const { customers } = req.body;
+  if (!Array.isArray(customers) || customers.length === 0)
+    return res.status(400).json({ error: "Lista vazia" });
+
+  const rows = customers
+    .filter(c => c.name && c.name.trim())
+    .map(c => ({
+      owner_id: req.user.id,
+      name:     c.name.trim(),
+      phone:    c.phone?.trim() || null,
+      email:    c.email?.trim() || null,
+      source:   "manual",
+      status:   "lead",
+    }));
+
+  if (!rows.length) return res.json({ inserted: 0 });
+
+  // upsert por nome+owner — evita duplicatas exatas
+  const { data, error } = await supabase
+    .from("customers")
+    .upsert(rows, { onConflict: "owner_id,phone", ignoreDuplicates: true })
+    .select("id");
+
+  if (error) {
+    // fallback: insere um a um ignorando erros individuais
+    let inserted = 0;
+    for (const row of rows) {
+      const { error: e } = await supabase.from("customers").insert(row);
+      if (!e) inserted++;
+    }
+    return res.json({ inserted });
+  }
+  res.json({ inserted: data?.length || rows.length });
+});
+
 // ── CRM: entrada de lead via MiniChat (protegido por X-Owner-Key) ─────────────
 const leadsRateMap = new Map();
 app.post("/api/leads/create", async (req, res) => {
@@ -1532,6 +1569,26 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
     .sort((a, b) => b.count - a.count);
 
   res.json({ total, daily, sources });
+});
+
+// ── Perfil do produtor: ler e salvar nome/empresa/avatar ──────────────────────
+app.get("/api/user/profile", requireAuth, async (req, res) => {
+  const { data } = await supabase.from("profiles")
+    .select("name,company_name,avatar_url,email")
+    .eq("id", req.user.id).single();
+  res.json(data || {});
+});
+
+app.patch("/api/user/profile", requireAuth, async (req, res) => {
+  const { name, company_name, avatar_url } = req.body;
+  const updates = {};
+  if (name        !== undefined) updates.name         = name?.trim()         || null;
+  if (company_name!== undefined) updates.company_name = company_name?.trim() || null;
+  if (avatar_url  !== undefined) updates.avatar_url   = avatar_url           || null;
+  if (!Object.keys(updates).length) return res.json({ ok: true });
+  const { error } = await supabase.from("profiles").update(updates).eq("id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, ...updates });
 });
 
 // ── Site do produtor: salvar/ler URL + checar status ─────────────────────────
