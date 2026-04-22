@@ -1852,7 +1852,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
     setSelSales(null);
-    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date').eq('customer_id',c.id).order('created_at',{ascending:false})
+    _sb.from('sales').select('amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date,products(name)').eq('customer_id',c.id).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error)console.error("[sales]",error.message);setSelSales(data||[]);});
   },[sel,clientes]);
 
