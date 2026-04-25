@@ -80,17 +80,17 @@ const MP_RATES = {
 function calcTotal(basePrice, method, parcelas = 1) {
   const plat = Math.round(basePrice * PLATFORM_RATE * 100) / 100;
   let gatewayFee = 0;
+  // Para cartão de crédito NÃO calculamos taxa aqui — o MP Checkout Pro aplica
+  // as taxas reais do banco emissor (variam por cartão). Exibir valor estimado
+  // confundiria o cliente pois seria diferente do valor real no MP.
   if (method === "PIX")    gatewayFee = MP_RATES.PIX.fixed;
   if (method === "BOLETO") gatewayFee = MP_RATES.BOLETO.fixed;
-  if (method === "CREDIT_CARD") {
-    const r = parcelas <= 1 ? MP_RATES.CC_1 :
-              parcelas <= 6 ? MP_RATES.CC_2_6 : MP_RATES.CC_7_12;
-    gatewayFee = Math.round((basePrice * r.pct + r.fixed) * 100) / 100;
-  }
+  // CREDIT_CARD: gatewayFee permanece 0, flag ccRedirect sinaliza para o UI
   return {
-    total:    Math.round((basePrice + plat + gatewayFee) * 100) / 100,
+    total:      Math.round((basePrice + plat + gatewayFee) * 100) / 100,
     plat,
-    asaasFee: gatewayFee,
+    asaasFee:   gatewayFee,
+    ccRedirect: method === "CREDIT_CARD",
   };
 }
 
@@ -207,7 +207,7 @@ function App() {
   if (!product) return <div className="card"><div className="loading" style={{color:"#f87171"}}>Produto não encontrado.</div></div>;
 
   const isRecurrent = product.billingType === "RECURRENT";
-  const { total, plat, asaasFee } = method ? calcTotal(product.price, method, parcelas) : { total: product.price * (1+PLATFORM_RATE), plat: 0, asaasFee: 0 };
+  const { total, plat, asaasFee, ccRedirect } = method ? calcTotal(product.price, method, parcelas) : { total: product.price * (1+PLATFORM_RATE), plat: 0, asaasFee: 0, ccRedirect: false };
 
   return (
     <div className="card">
@@ -313,9 +313,12 @@ function App() {
           {method && (
             <div className="price-breakdown">
               <div className="price-row"><span>Produto</span><span>{fmtBRL(product.price)}</span></div>
-<div className="price-row"><span>Taxa {method==="PIX"?"PIX":method==="BOLETO"?"Boleto":"Cartão"} (Mercado Pago)</span><span>+ {fmtBRL(asaasFee || MP_RATES.PIX.fixed)}</span></div>
+              {ccRedirect
+                ? <div className="price-row"><span style={{color:"#94a3b8",fontSize:"0.8rem"}}>Parcelamento calculado pelo Mercado Pago</span><span style={{color:"#94a3b8",fontSize:"0.8rem"}}>na próxima tela</span></div>
+                : <div className="price-row"><span>Taxa {method==="PIX"?"PIX":"Boleto"} (Mercado Pago)</span><span>+ {fmtBRL(asaasFee)}</span></div>
+              }
               <div className="price-row total">
-                <span>Total{method==="CREDIT_CARD"&&parcelas>1?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}</span>
+                <span>Total{ccRedirect?" à vista":""}{method==="CREDIT_CARD"&&parcelas>1&&!ccRedirect?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}</span>
                 <span>{fmtBRL(total)}</span>
               </div>
             </div>

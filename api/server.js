@@ -40,8 +40,13 @@ const mp = axios.create({
   headers: {
     Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
     "Content-Type": "application/json",
-    "X-Idempotency-Key": Date.now().toString(),
+    // X-Idempotency-Key NÃO entra aqui — gerado por request no interceptor abaixo
   },
+});
+// Gera chave de idempotência ÚNICA por requisição (chave estática causaria cache no MP)
+mp.interceptors.request.use((config) => {
+  config.headers["X-Idempotency-Key"] = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return config;
 });
 
 // ── Taxa da plataforma ────────────────────────────────────────────────────────
@@ -129,7 +134,27 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
     const clientPrice = Math.round(basePrice * (1 + PLATFORM_FEE_RATE) * 100) / 100;
     const isRecurrent = billingType === "RECURRENT";
 
-    // Cria Preference no Mercado Pago (equivalente ao paymentLink do Asaas)
+    // 1. Insere produto no banco PRIMEIRO para obter o ID antes de criar a preference
+    const { data: product, error: dbErr } = await supabase.from("products").insert({
+      name,
+      description:        description || "",
+      price:              basePrice,
+      asaas_price:        clientPrice,
+      asaas_link_id:      "",   // preenchido após criar preference
+      status:             "ativo",
+      owner_id:           req.user.id,
+      url:                "",   // preenchido após criar preference
+      billing_type:       billingType || "UNDEFINED",
+      subscription_cycle: isRecurrent ? subscriptionCycle : null,
+    }).select().single();
+
+    if (dbErr) {
+      console.error("[products/create] erro Supabase:", dbErr.message);
+      return res.status(500).json({ error: `Erro ao salvar produto: ${dbErr.message}` });
+    }
+
+    // 2. Cria Preference no MP com external_reference incluindo o productId
+    //    (necessário para o webhook identificar qual produto foi vendido via cartão)
     const prefPayload = {
       items: [{
         title:       name,
@@ -138,7 +163,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
         unit_price:  clientPrice,
         currency_id: "BRL",
       }],
-      external_reference: `owner_${req.user.id}`,
+      external_reference: JSON.stringify({ ownerId: req.user.id, productId: product.id }),
       notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
       payment_methods: {
         installments: isRecurrent ? 1 : 12,
@@ -158,34 +183,23 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
     } catch (mpErr) {
       const errMsg = mpErr.response?.data?.message || mpErr.message;
       console.error("[products/create] ERRO MP:", JSON.stringify(mpErr.response?.data));
+      // Remove produto órfão do banco
+      await supabase.from("products").delete().eq("id", product.id);
       return res.status(400).json({ error: `Não foi possível criar o link no Mercado Pago: ${errMsg}` });
     }
 
     if (!mpPrefId) {
+      await supabase.from("products").delete().eq("id", product.id);
       return res.status(400).json({ error: "Mercado Pago retornou resposta sem ID. Verifique os logs." });
     }
 
-    // Salva no Supabase — asaas_link_id guarda o MP preference ID
-    const { data: product, error: dbErr } = await supabase.from("products").insert({
-      name,
-      description:        description || "",
-      price:              basePrice,
-      asaas_price:        clientPrice,
-      asaas_link_id:      mpPrefId,
-      status:             "ativo",
-      owner_id:           req.user.id,
-      url:                paymentUrl,
-      billing_type:       billingType || "UNDEFINED",
-      subscription_cycle: isRecurrent ? subscriptionCycle : null,
-    }).select().single();
-
-    if (dbErr) {
-      console.error("[products/create] erro Supabase:", dbErr.message);
-      return res.status(500).json({
-        error: `Link criado no MP (${mpPrefId}) mas não salvo no banco: ${dbErr.message}`,
-        paymentUrl, asaasLinkId: mpPrefId,
-      });
-    }
+    // 3. Atualiza produto com o ID e URL da preference criada
+    await supabase.from("products").update({
+      asaas_link_id: mpPrefId,
+      url:           paymentUrl,
+    }).eq("id", product.id);
+    product.asaas_link_id = mpPrefId;
+    product.url           = paymentUrl;
 
     console.log(`[products/create] "${name}" salvo id=${product.id} — base R$${basePrice}, cliente R$${clientPrice}`);
     res.json({ product, paymentUrl, asaasLinkId: mpPrefId });
@@ -438,18 +452,29 @@ app.post("/api/mp/webhook", async (req, res) => {
       const payerEmail = payment.payer?.email;
       const payerName  = [payment.payer?.first_name, payment.payer?.last_name].filter(Boolean).join(" ") || "Cliente";
 
-      // Descobre owner via external_reference ou preference (MP não tem paymentLink)
-      let ownerId = null;
-      const extRef = payment.external_reference || "";
+      // Descobre owner e produto via external_reference
+      // Formatos suportados:
+      //   "owner_<uuid>"                              → legado (antes da correção)
+      //   JSON { ownerId, productId }                 → preference MP (cartão) — novo formato
+      //   JSON { saleId, type }                       → payment direto (PIX/Boleto)
+      let ownerId   = null;
+      let productId = null;
+      const extRef  = payment.external_reference || "";
       if (extRef.startsWith("owner_")) {
+        // formato legado
         ownerId = extRef.replace("owner_", "");
       } else {
         try {
           const ref = JSON.parse(extRef);
-          // tenta buscar produto pelo preference_id (não disponível direto — usa fallback)
-          if (ref?.saleId) {
-            const { data: s } = await supabase.from("sales").select("owner_id").eq("id", ref.saleId).maybeSingle();
-            ownerId = s?.owner_id;
+          if (ref?.ownerId) {
+            // formato preference (cartão) — inclui productId
+            ownerId   = ref.ownerId;
+            productId = ref.productId || null;
+          } else if (ref?.saleId) {
+            // formato payment direto (PIX/Boleto) — ownerId via sale
+            const { data: s } = await supabase.from("sales").select("owner_id,product_id").eq("id", ref.saleId).maybeSingle();
+            ownerId   = s?.owner_id;
+            productId = s?.product_id || null;
           }
         } catch {}
       }
@@ -470,6 +495,7 @@ app.post("/api/mp/webhook", async (req, res) => {
       if (ownerId) {
         await supabase.from("sales").insert({
           owner_id:        ownerId,
+          product_id:      productId,
           customer_id:     customerId,
           amount:          grossAmount,
           gross_amount:    grossAmount,
@@ -482,7 +508,7 @@ app.post("/api/mp/webhook", async (req, res) => {
           status:          "pago",
           asaas_id:        mpPaymentId,
         });
-        console.log(`[mp/webhook] venda criada owner=${ownerId} bruto R$${grossAmount}`);
+        console.log(`[mp/webhook] venda criada owner=${ownerId} produto=${productId} bruto R$${grossAmount}`);
         await updateCustomerStats(customerId);
       }
 
