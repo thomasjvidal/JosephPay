@@ -179,7 +179,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       mpPrefId   = resp.data.id || "";
       // sandbox_init_point em teste, init_point em produção
       paymentUrl = resp.data.sandbox_init_point || resp.data.init_point || "";
-      console.log(`[products/create] MP preference criada id=${mpPrefId} url=${paymentUrl}`);
+      console.log(`[products/create] MP preference criada id=${mpPrefId} | titulo_retornado=${resp.data.items?.[0]?.title} | url=${paymentUrl}`);
     } catch (mpErr) {
       const errMsg = mpErr.response?.data?.message || mpErr.message;
       console.error("[products/create] ERRO MP:", JSON.stringify(mpErr.response?.data));
@@ -403,24 +403,37 @@ app.post("/api/mp/webhook", async (req, res) => {
     const { data: payment } = await mp.get(`/v1/payments/${eventData.id}`);
     console.log("[mp/webhook] status:", payment.status, "ref:", payment.external_reference);
 
-    // ── Proteção contra duplicata ─────────────────────────────────────────────
+    // ── Localiza a sale pendente (3 estratégias, em ordem de prioridade) ─────────
     const mpPaymentId = String(payment.id);
-    const { data: existingSale } = await supabase.from("sales")
-      .select("id,status").eq("asaas_id", mpPaymentId).maybeSingle();
+    const SALE_FIELDS = "id,status,customer_id,owner_id,product_id";
 
-    // Busca também pelo saleId embutido no external_reference
+    // 1. Pelo payment ID (já foi processado antes — proteção contra duplicata)
+    const { data: existingSale } = await supabase.from("sales")
+      .select(SALE_FIELDS).eq("asaas_id", mpPaymentId).maybeSingle();
+
+    // 2. Pelo saleId no external_reference (PIX / Boleto — payment direto)
     let saleByRef = null;
     if (!existingSale && payment.external_reference) {
       try {
         const ref = JSON.parse(payment.external_reference);
         if (ref?.saleId) {
-          const { data } = await supabase.from("sales").select("id,status").eq("id", ref.saleId).maybeSingle();
+          const { data } = await supabase.from("sales")
+            .select(SALE_FIELDS).eq("id", ref.saleId).maybeSingle();
           saleByRef = data;
         }
       } catch { /* formato legado owner_xxx */ }
     }
 
-    const targetSale = existingSale || saleByRef;
+    // 3. Pelo preference_id (CARTÃO via Checkout Pro)
+    //    A sale pendente foi gravada com asaas_id = preference_id, não com o payment ID
+    let saleByPrefId = null;
+    if (!existingSale && !saleByRef && payment.preference_id) {
+      const { data } = await supabase.from("sales")
+        .select(SALE_FIELDS).eq("asaas_id", payment.preference_id).maybeSingle();
+      saleByPrefId = data;
+    }
+
+    const targetSale = existingSale || saleByRef || saleByPrefId;
 
     if (payment.status === "approved") {
       const grossAmount  = Number(payment.transaction_amount || 0);
@@ -442,8 +455,8 @@ app.post("/api/mp/webhook", async (req, res) => {
           billing_type:    billingType,
           payment_date:    paymentDate,
         }).eq("id", targetSale.id);
-        console.log(`[mp/webhook] sale ${targetSale.id} marcada como paga`);
-        await updateCustomerStats(null);
+        console.log(`[mp/webhook] sale ${targetSale.id} marcada como paga (customer=${targetSale.customer_id})`);
+        await updateCustomerStats(targetSale.customer_id);
         return;
       }
 
