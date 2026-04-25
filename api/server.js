@@ -1,3 +1,4 @@
+try { require("dotenv").config(); } catch(e) {}
 /**
  * JosephPay — API Server
  * Express.js — proxy seguro para Asaas, Anthropic e WhatsApp (Evolution API)
@@ -33,12 +34,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ── Asaas base URL ─────────────────────────────────────────────────────────
-const ASAAS_URL = process.env.ASAAS_API_URL || "https://sandbox.asaas.com/api/v3";
-
-const asaas = axios.create({
-  baseURL: ASAAS_URL,
-  headers: { access_token: process.env.ASAAS_API_KEY, "Content-Type": "application/json" },
+// ── Mercado Pago client ────────────────────────────────────────────────────
+const mp = axios.create({
+  baseURL: "https://api.mercadopago.com",
+  headers: {
+    Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+    "Content-Type": "application/json",
+    "X-Idempotency-Key": Date.now().toString(),
+  },
 });
 
 // ── Taxa da plataforma ────────────────────────────────────────────────────────
@@ -83,9 +86,9 @@ async function requireAuth(req, res, next) {
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: "Token inválido" });
   req.user = user;
-  if (!cachedOwnerId) cachedOwnerId = user.id;
 
-  // Garante que o profile existe no banco (fire-and-forget)
+  // Garante que o profile existe no banco — ignoreDuplicates=true: só insere se não existe,
+  // nunca sobrescreve nome/avatar que o usuário já editou
   const profileData = {
     id:    user.id,
     name:  user.user_metadata?.name || user.email?.split("@")[0] || "Produtor",
@@ -93,11 +96,11 @@ async function requireAuth(req, res, next) {
     email: user.email,
   };
   supabase.from("profiles")
-    .upsert(profileData, { onConflict: "id" })
+    .upsert(profileData, { onConflict: "id", ignoreDuplicates: true })
     .then(({ error: e }) => {
       if (e) {
         const { email: _e, ...sem } = profileData;
-        supabase.from("profiles").upsert(sem, { onConflict: "id" }).then(() => {});
+        supabase.from("profiles").upsert(sem, { onConflict: "id", ignoreDuplicates: true }).then(() => {});
       }
     });
 
@@ -124,96 +127,68 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
     const clientPrice = Math.round(basePrice * (1 + PLATFORM_FEE_RATE) * 100) / 100;
-    const asaasBase   = ASAAS_URL.replace("/api/v3", "");
     const isRecurrent = billingType === "RECURRENT";
 
-    const payload = {
-      name,
-      billingType:     "UNDEFINED", // aceita todos os métodos de pagamento
-      chargeType:      isRecurrent ? "RECURRENT" : "DETACHED",
-      value:           clientPrice,
-      description:     name + (description ? " — " + description : ""),
-      isActive:        true,
-      dueDateLimitDays: 3,          // campo obrigatório: dias úteis para vencimento
-      externalReference: `owner_${req.user.id}`,
-      customerPaysFees: true,       // repassa taxas Asaas ao cliente final
+    // Cria Preference no Mercado Pago (equivalente ao paymentLink do Asaas)
+    const prefPayload = {
+      items: [{
+        title:       name,
+        description: description || name,
+        quantity:    1,
+        unit_price:  clientPrice,
+        currency_id: "BRL",
+      }],
+      external_reference: `owner_${req.user.id}`,
+      notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+      payment_methods: {
+        installments: isRecurrent ? 1 : 12,
+      },
+      statement_descriptor: "JosephPay",
     };
-    if (isRecurrent) {
-      payload.subscriptionCycle = subscriptionCycle;
-    } else {
-      payload.allowInstallment   = true;  // habilita parcelamento
-      payload.maxInstallmentCount = 12;   // até 12x
-    }
-
-    console.log("[products/create] payload Asaas:", JSON.stringify(payload));
 
     let paymentUrl  = "";
-    let asaasLinkId = "";
+    let mpPrefId    = "";
 
     try {
-      const resp = await asaas.post("/paymentLinks", payload);
-      console.log("[products/create] resposta Asaas:", JSON.stringify({
-        id: resp.data.id, url: resp.data.url,
-        paymentLinkUrl: resp.data.paymentLinkUrl, shortUrl: resp.data.shortUrl,
-        customerPaysFees: resp.data.customerPaysFees,
-      }));
-      asaasLinkId = resp.data.id || "";
-      paymentUrl  = resp.data.url
-        || resp.data.paymentLinkUrl
-        || resp.data.shortUrl
-        || (asaasLinkId ? `${asaasBase}/c/${asaasLinkId}` : "");
-
-      // Habilitar repasse de taxas ao cliente via PUT (configurado na 2ª etapa no Asaas)
-      if (asaasLinkId) {
-        try {
-          const putResp = await asaas.put(`/paymentLinks/${asaasLinkId}`, {
-            ...payload,
-            customerPaysFees: true,
-          });
-          const taxRepass = putResp.data?.customerPaysFees;
-          console.log("[products/create] customerPaysFees via PUT:", taxRepass ? "✓ ativo" : "✗ não ativado");
-        } catch(e) {
-          console.warn("[products/create] falha ao habilitar repasse de taxas:", e.message);
-        }
-      }
-    } catch (asaasErr) {
-      const errMsg = asaasErr.response?.data?.errors?.[0]?.description || asaasErr.message;
-      console.error("[products/create] ERRO Asaas:", JSON.stringify(asaasErr.response?.data));
-      return res.status(400).json({
-        error: `Não foi possível criar o link no Asaas: ${errMsg}`,
-      });
+      const resp = await mp.post("/checkout/preferences", prefPayload);
+      mpPrefId   = resp.data.id || "";
+      // sandbox_init_point em teste, init_point em produção
+      paymentUrl = resp.data.sandbox_init_point || resp.data.init_point || "";
+      console.log(`[products/create] MP preference criada id=${mpPrefId} url=${paymentUrl}`);
+    } catch (mpErr) {
+      const errMsg = mpErr.response?.data?.message || mpErr.message;
+      console.error("[products/create] ERRO MP:", JSON.stringify(mpErr.response?.data));
+      return res.status(400).json({ error: `Não foi possível criar o link no Mercado Pago: ${errMsg}` });
     }
 
-    if (!asaasLinkId) {
-      return res.status(400).json({
-        error: "Asaas retornou resposta sem ID de link. Verifique os logs do Railway.",
-      });
+    if (!mpPrefId) {
+      return res.status(400).json({ error: "Mercado Pago retornou resposta sem ID. Verifique os logs." });
     }
 
-    // Salva no Supabase — schema completo (migration_v2 já aplicada)
+    // Salva no Supabase — asaas_link_id guarda o MP preference ID
     const { data: product, error: dbErr } = await supabase.from("products").insert({
       name,
-      description:      description || "",
-      price:            basePrice,
-      asaas_price:      clientPrice,
-      asaas_link_id:    asaasLinkId,
-      status:           "ativo",
-      owner_id:         req.user.id,
-      url:              paymentUrl,
-      billing_type:     billingType || "UNDEFINED",
+      description:        description || "",
+      price:              basePrice,
+      asaas_price:        clientPrice,
+      asaas_link_id:      mpPrefId,
+      status:             "ativo",
+      owner_id:           req.user.id,
+      url:                paymentUrl,
+      billing_type:       billingType || "UNDEFINED",
       subscription_cycle: isRecurrent ? subscriptionCycle : null,
     }).select().single();
 
     if (dbErr) {
       console.error("[products/create] erro Supabase:", dbErr.message);
       return res.status(500).json({
-        error: `Link criado no Asaas (${asaasLinkId}) mas não salvo no banco: ${dbErr.message}`,
-        paymentUrl, asaasLinkId,
+        error: `Link criado no MP (${mpPrefId}) mas não salvo no banco: ${dbErr.message}`,
+        paymentUrl, asaasLinkId: mpPrefId,
       });
     }
 
     console.log(`[products/create] "${name}" salvo id=${product.id} — base R$${basePrice}, cliente R$${clientPrice}`);
-    res.json({ product, paymentUrl, asaasLinkId });
+    res.json({ product, paymentUrl, asaasLinkId: mpPrefId });
   } catch (err) {
     console.error("[products/create] erro geral:", err.message);
     res.status(500).json({ error: err.message });
@@ -283,27 +258,27 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
 
 /**
  * GET /api/products/:id/sync
- * Sincroniza produto com dados reais do Asaas (customerPaysFees, URL, status).
+ * Sincroniza produto com dados reais do Mercado Pago (preference).
  */
 app.get("/api/products/:id/sync", requireAuth, async (req, res) => {
   try {
     const uid = req.user.id;
     const { data: product } = await supabase.from("products")
-      .select("id,asaas_link_id").eq("id", req.params.id).eq("owner_id", uid).maybeSingle();
+      .select("id,asaas_link_id,url").eq("id", req.params.id).eq("owner_id", uid).maybeSingle();
     if (!product?.asaas_link_id) return res.status(404).json({ error: "Produto não encontrado" });
 
-    const { data: link } = await asaas.get(`/paymentLinks/${product.asaas_link_id}`);
+    const { data: pref } = await mp.get(`/checkout/preferences/${product.asaas_link_id}`);
+    const freshUrl = pref?.sandbox_init_point || pref?.init_point || product.url;
 
-    if (link?.url) {
-      await supabase.from("products").update({ url: link.url }).eq("id", product.id);
+    if (freshUrl && freshUrl !== product.url) {
+      await supabase.from("products").update({ url: freshUrl }).eq("id", product.id);
     }
 
     res.json({
-      asaas_link_id:    product.asaas_link_id,
-      customerPaysFees: link?.customerPaysFees ?? false,
-      active:           link?.active ?? true,
-      url:              link?.url,
-      value:            link?.value,
+      asaas_link_id: product.asaas_link_id,
+      active:        pref?.active ?? true,
+      url:           freshUrl,
+      value:         pref?.items?.[0]?.unit_price,
     });
   } catch (err) {
     console.error("[products/sync]", err.message);
@@ -317,49 +292,32 @@ app.get("/api/products/:id/sync", requireAuth, async (req, res) => {
 
 /**
  * POST /api/asaas/checkout
- * Cria cobrança avulsa (requer cliente cadastrado no Asaas).
+ * Cria cobrança avulsa via Mercado Pago (mantém path para compatibilidade).
  */
 app.post("/api/asaas/checkout", requireAuth, async (req, res) => {
   try {
-    const { productId, amount, description, billingType = "UNDEFINED", customer } = req.body;
+    const { productId, amount, description, customer } = req.body;
+    const saleId = require("crypto").randomUUID();
 
-    let asaasCustomerId;
-    if (customer?.email) {
-      const search = await asaas.get(`/customers?email=${encodeURIComponent(customer.email)}`);
-      if (search.data.totalCount > 0) {
-        asaasCustomerId = search.data.data[0].id;
-      } else {
-        const created = await asaas.post("/customers", {
-          name: customer.name || customer.email,
-          email: customer.email,
-          phone: customer.phone,
-        });
-        asaasCustomerId = created.data.id;
-      }
-    }
-
-    const charge = await asaas.post("/payments", {
-      customer:          asaasCustomerId,
-      billingType,
-      value:             amount,
-      dueDate:           new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      description:       description || "JosephPay",
-      externalReference: `owner_${req.user.id}`,
+    const pref = await mp.post("/checkout/preferences", {
+      items: [{ title: description || "JosephPay", quantity: 1, unit_price: Number(amount), currency_id: "BRL" }],
+      payer: customer?.email ? { name: customer.name, email: customer.email } : undefined,
+      external_reference: JSON.stringify({ saleId, type: "ONE_TIME" }),
+      notification_url: `${PUBLIC_URL}/api/mp/webhook`,
     });
+
+    const chargeId  = pref.data.id;
+    const paymentUrl = pref.data.sandbox_init_point || pref.data.init_point;
 
     await supabase.from("sales").insert({
-      product_id:  productId,
-      owner_id:    req.user.id,
-      amount,
-      gross_amount: amount,
-      status:      "pendente",
-      asaas_id:    charge.data.id,
+      id: saleId, product_id: productId, owner_id: req.user.id,
+      amount, gross_amount: amount, status: "pendente", asaas_id: chargeId,
     });
 
-    res.json({ paymentUrl: charge.data.invoiceUrl, chargeId: charge.data.id });
+    res.json({ paymentUrl, chargeId });
   } catch (err) {
     console.error("[asaas/checkout]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+    res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 });
 
@@ -387,25 +345,20 @@ app.post("/api/asaas/withdraw", requireAuth, async (req, res) => {
       });
     }
 
-    const transfer = await asaas.post("/transfers", {
-      value:             amount,
-      operationType:     "PIX",
-      pixAddressKey:     pixKey,
-      pixAddressKeyType: pixKeyType,
-    });
-
+    // Registra saque no banco — MP Sandbox não processa saques reais
+    const transferId = "mp_withdrawal_" + Date.now();
     await supabase.from("withdrawals").insert({
       owner_id: uid,
       amount,
       status:   "processando",
-      asaas_id: transfer.data.id,
+      asaas_id: transferId,
       pix_key:  pixKey,
     });
 
-    res.json({ status: "processando", transferId: transfer.data.id });
+    res.json({ status: "processando", transferId });
   } catch (err) {
     console.error("[asaas/withdraw]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -415,205 +368,148 @@ app.post("/api/asaas/withdraw", requireAuth, async (req, res) => {
  * Configure no painel Asaas → Configurações → Webhooks:
  *   URL: https://josephpay-production.up.railway.app/api/asaas/webhook
  */
-app.post("/api/asaas/webhook", async (req, res) => {
-  const event = req.body;
-  console.log("[asaas/webhook]", event.event, event.payment?.id);
+// Webhook Asaas legado — mantido vazio para não quebrar configurações antigas
+app.post("/api/asaas/webhook", async (req, res) => res.json({ received: true }));
 
-  if (event.event === "PAYMENT_RECEIVED" || event.event === "PAYMENT_CONFIRMED") {
-    const payment = event.payment;
+// ══════════════════════════════════════════════════════════════════════════════
+// WEBHOOK — MERCADO PAGO
+// Configure no painel MP Developers → Webhooks:
+//   URL: https://josephpay-production.up.railway.app/api/mp/webhook
+//   Eventos: payment (created, updated)
+// ══════════════════════════════════════════════════════════════════════════════
+app.post("/api/mp/webhook", async (req, res) => {
+  res.json({ received: true }); // responde imediatamente para evitar retry do MP
+  try {
+    const { type, action, data: eventData } = req.body;
+    console.log("[mp/webhook]", type, action, eventData?.id);
+
+    if (type !== "payment" || !eventData?.id) return;
+
+    // Busca detalhes reais do pagamento no MP
+    const { data: payment } = await mp.get(`/v1/payments/${eventData.id}`);
+    console.log("[mp/webhook] status:", payment.status, "ref:", payment.external_reference);
 
     // ── Proteção contra duplicata ─────────────────────────────────────────────
-    // Asaas dispara PAYMENT_RECEIVED e PAYMENT_CONFIRMED para o mesmo pagamento
-    const { data: alreadyExists } = await supabase
-      .from("sales")
-      .select("id")
-      .eq("asaas_id", payment.id)
-      .maybeSingle();
+    const mpPaymentId = String(payment.id);
+    const { data: existingSale } = await supabase.from("sales")
+      .select("id,status").eq("asaas_id", mpPaymentId).maybeSingle();
 
-    // Fallback: busca sale pelo saleId embutido no externalReference (installments, assinaturas)
-    let existsByRef = null;
-    if (!alreadyExists && payment.externalReference) {
+    // Busca também pelo saleId embutido no external_reference
+    let saleByRef = null;
+    if (!existingSale && payment.external_reference) {
       try {
-        const ref = JSON.parse(payment.externalReference);
+        const ref = JSON.parse(payment.external_reference);
         if (ref?.saleId) {
-          const { data } = await supabase.from("sales").select("id").eq("id", ref.saleId).maybeSingle();
-          existsByRef = data;
+          const { data } = await supabase.from("sales").select("id,status").eq("id", ref.saleId).maybeSingle();
+          saleByRef = data;
         }
-      } catch { /* formato legado — ignora */ }
+      } catch { /* formato legado owner_xxx */ }
     }
 
-    const existingSale = alreadyExists || existsByRef;
-    if (existingSale) {
-      // Atualiza só campos operacionais — valores financeiros já foram calculados corretamente no checkout
-      await supabase.from("sales").update({
-        status:            "pago",
-        asaas_id:          payment.id,
-        installment_count: payment.installmentCount || 1,
-        billing_type:      payment.billingType || "UNKNOWN",
-        payment_date:      payment.confirmedDate || payment.paymentDate || new Date().toISOString(),
-      }).eq("id", existingSale.id);
-      console.log(`[webhook] sale atualizada via ${alreadyExists ? "asaas_id" : "externalRef"} — ${payment.id}`);
-      return res.json({ received: true });
-    }
+    const targetSale = existingSale || saleByRef;
 
-    // ── Dados financeiros reais ───────────────────────────────────────────────
-    const grossAmount = Number(payment.value || 0);
-    const netAmount   = Number(payment.netValue || grossAmount);
-    const { platformFee, asaasFee, producerAmount } = calcFees(grossAmount, netAmount);
-    const paymentDate = payment.confirmedDate || payment.paymentDate || new Date().toISOString();
+    if (payment.status === "approved") {
+      const grossAmount  = Number(payment.transaction_amount || 0);
+      const mpFee        = (payment.fee_details || []).reduce((a, f) => a + Number(f.amount || 0), 0);
+      const netAmount    = Math.max(0, grossAmount - mpFee);
+      const { platformFee, asaasFee, producerAmount } = calcFees(grossAmount, netAmount);
+      const paymentDate  = payment.date_approved || new Date().toISOString();
+      const billingType  = payment.payment_type_id?.toUpperCase() || "UNKNOWN";
 
-    // ── Cria/atualiza customer usando asaas_customer_id (sem duplicar por PIX) ─
-    let customerId = null;
-    const asaasCustomerId = payment.customer;
-    if (asaasCustomerId) {
-      let custObj = payment.customerObject || {};
-      if (!custObj.name) {
-        try {
-          const { data: asaasCust } = await asaas.get(`/customers/${asaasCustomerId}`);
-          if (asaasCust?.name) custObj = asaasCust;
-        } catch(e) {
-          console.warn("[webhook] falha ao buscar cliente Asaas:", e.message);
-        }
-      }
-      const custName  = custObj.name  || "Cliente";
-      const custEmail = custObj.email || null;
-      const custPhone = custObj.mobilePhone || custObj.phone || null;
-
-      // Descobre owner via produto ou externalReference
-      let ownerForCustomer = null;
-      if (payment.paymentLink) {
-        const { data: prod } = await supabase.from("products")
-          .select("owner_id").eq("asaas_link_id", payment.paymentLink).maybeSingle();
-        ownerForCustomer = prod?.owner_id;
-      }
-      if (!ownerForCustomer && payment.externalReference?.startsWith("owner_")) {
-        ownerForCustomer = payment.externalReference.replace("owner_", "");
+      if (targetSale) {
+        // Atualiza sale existente (criada no checkout)
+        await supabase.from("sales").update({
+          status:          "pago",
+          asaas_id:        mpPaymentId,
+          asaas_fee:       mpFee,
+          net_amount:      netAmount,
+          producer_amount: producerAmount,
+          platform_fee:    platformFee,
+          billing_type:    billingType,
+          payment_date:    paymentDate,
+        }).eq("id", targetSale.id);
+        console.log(`[mp/webhook] sale ${targetSale.id} marcada como paga`);
+        await updateCustomerStats(null);
+        return;
       }
 
-      if (ownerForCustomer) {
-        // check-then-insert: índice parcial (WHERE asaas_customer_id IS NOT NULL)
-        // não funciona com onConflict no PostgREST — fazemos lookup manual
-        const { data: existingCust } = await supabase.from("customers")
-          .select("id")
-          .eq("asaas_customer_id", asaasCustomerId)
-          .eq("owner_id", ownerForCustomer)
-          .maybeSingle();
+      // Cria/identifica customer pelo email do pagador
+      let customerId = null;
+      const payerEmail = payment.payer?.email;
+      const payerName  = [payment.payer?.first_name, payment.payer?.last_name].filter(Boolean).join(" ") || "Cliente";
 
-        if (existingCust) {
-          await supabase.from("customers")
-            .update({ name: custName, email: custEmail, phone: custPhone })
-            .eq("id", existingCust.id);
-          customerId = existingCust.id;
-          console.log("[webhook] customer atualizado:", customerId, custName);
-        } else {
-          const { data: newCust, error: custErr } = await supabase.from("customers")
-            .insert({ name: custName, email: custEmail, phone: custPhone,
-                      owner_id: ownerForCustomer, asaas_customer_id: asaasCustomerId })
-            .select("id").maybeSingle();
-          if (custErr) {
-            console.error("[webhook] ERRO ao criar customer:", custErr.message, custErr.code, custErr.details);
-          } else {
-            customerId = newCust?.id || null;
-            console.log("[webhook] customer criado:", customerId, custName);
-          }
-        }
-      }
-    }
-
-    // ── Payload base ──────────────────────────────────────────────────────────
-    const saleBase = {
-      amount:            grossAmount,
-      gross_amount:      grossAmount,
-      net_amount:        netAmount,
-      asaas_fee:         asaasFee,
-      platform_fee:      platformFee,
-      producer_amount:   producerAmount,
-      installment_count: payment.installmentCount || 1,
-      billing_type:      payment.billingType || "UNKNOWN",
-      payment_date:      paymentDate,
-      status:            "pago",
-      asaas_id:          payment.id,
-      customer_id:       customerId,
-    };
-
-    if (payment.paymentLink) {
-      // ── CASO 2: Pagamento via link de produto ─────────────────────────────
-      const { data: product } = await supabase.from("products")
-        .select("id,owner_id,name,price")
-        .eq("asaas_link_id", payment.paymentLink)
-        .maybeSingle();
-
-      if (product) {
-        // Opção B: produtor recebe exatamente o preço base que ele definiu
-        saleBase.producer_amount = Number(product.price);
-        saleBase.platform_fee    = Math.round((grossAmount - Number(product.price)) * 100) / 100;
-
-        await supabase.from("sales").insert({ ...saleBase, product_id: product.id, owner_id: product.owner_id });
-        console.log(`[webhook] produto "${product.name}" pago — bruto R$${grossAmount}, produtor R$${product.price}`);
-        await updateCustomerStats(customerId);
-
-        if (payment.subscription) {
-          const { data: existingSub } = await supabase.from("subscriptions")
-            .select("id").eq("asaas_id", payment.subscription).maybeSingle();
-          if (existingSub) {
-            await supabase.from("subscriptions")
-              .update({ status: "ativo", customer_id: customerId, amount: Number(product.price) })
-              .eq("asaas_id", payment.subscription);
-          } else {
-            await supabase.from("subscriptions").insert({
-              asaas_id:    payment.subscription,
-              product_id:  product.id,
-              owner_id:    product.owner_id,
-              customer_id: customerId,
-              amount:      Number(product.price),
-              status:      "ativo",
-              plan:        "mensal",
-            });
-          }
-          console.log(`[webhook] assinatura ${payment.subscription} salva`);
-          await supabase.from("customers").update({ status: "assinante" }).eq("id", customerId)
-            .then(null, e => console.warn("[webhook] status assinante:", e.message));
-        }
-
-      } else if (payment.externalReference?.startsWith("owner_")) {
-        // ── CASO 3: Fallback via externalReference ────────────────────────
-        const ownerId = payment.externalReference.replace("owner_", "");
-        // Sem product.price: extrai valor base pelo inverso da taxa embutida
-        saleBase.producer_amount = Math.round(grossAmount / (1 + PLATFORM_FEE_RATE) * 100) / 100;
-        saleBase.platform_fee    = Math.round((grossAmount - saleBase.producer_amount) * 100) / 100;
-        await supabase.from("sales").insert({ ...saleBase, owner_id: ownerId });
-        console.log(`[webhook] venda via externalReference owner=${ownerId} — bruto R$${grossAmount}, produtor R$${saleBase.producer_amount}`);
-        await updateCustomerStats(customerId);
-
+      // Descobre owner via external_reference ou preference (MP não tem paymentLink)
+      let ownerId = null;
+      const extRef = payment.external_reference || "";
+      if (extRef.startsWith("owner_")) {
+        ownerId = extRef.replace("owner_", "");
       } else {
-        console.warn("[webhook] paymentLink sem produto nem externalReference:", payment.paymentLink);
+        try {
+          const ref = JSON.parse(extRef);
+          // tenta buscar produto pelo preference_id (não disponível direto — usa fallback)
+          if (ref?.saleId) {
+            const { data: s } = await supabase.from("sales").select("owner_id").eq("id", ref.saleId).maybeSingle();
+            ownerId = s?.owner_id;
+          }
+        } catch {}
       }
 
-    } else {
-      console.warn("[webhook] pagamento sem paymentLink e sem registro existente:", payment.id);
+      if (ownerId && payerEmail) {
+        const { data: existCust } = await supabase.from("customers")
+          .select("id").eq("email", payerEmail).eq("owner_id", ownerId).maybeSingle();
+        if (existCust) {
+          customerId = existCust.id;
+        } else {
+          const { data: newCust } = await supabase.from("customers")
+            .insert({ name: payerName, email: payerEmail, owner_id: ownerId })
+            .select("id").maybeSingle();
+          customerId = newCust?.id || null;
+        }
+      }
+
+      if (ownerId) {
+        await supabase.from("sales").insert({
+          owner_id:        ownerId,
+          customer_id:     customerId,
+          amount:          grossAmount,
+          gross_amount:    grossAmount,
+          net_amount:      netAmount,
+          asaas_fee:       mpFee,
+          platform_fee:    platformFee,
+          producer_amount: producerAmount,
+          billing_type:    billingType,
+          payment_date:    paymentDate,
+          status:          "pago",
+          asaas_id:        mpPaymentId,
+        });
+        console.log(`[mp/webhook] venda criada owner=${ownerId} bruto R$${grossAmount}`);
+        await updateCustomerStats(customerId);
+      }
+
+    } else if (payment.status === "refunded" || payment.status === "cancelled") {
+      if (targetSale) {
+        await supabase.from("sales")
+          .update({ status: "estornado", platform_fee: 0, producer_amount: 0, asaas_fee: 0 })
+          .eq("id", targetSale.id);
+      }
     }
 
-  } else if (event.event === "PAYMENT_REFUNDED") {
-    await supabase.from("sales")
-      .update({ status: "estornado", platform_fee: 0, producer_amount: 0, asaas_fee: 0 })
-      .eq("asaas_id", event.payment.id);
-
-  } else if (event.event === "TRANSFER_DONE") {
-    await supabase.from("withdrawals")
-      .update({ status: "concluido" })
-      .eq("asaas_id", event.transfer?.id);
-  }
-
-  res.json({ received: true });
+  } catch(e) { console.error("[mp/webhook] erro:", e.message); }
 });
 
 /**
- * GET /api/asaas/balance
+ * GET /api/asaas/balance — retorna saldo interno do produtor (calculado do banco)
  */
 app.get("/api/asaas/balance", requireAuth, async (req, res) => {
   try {
-    const { data } = await asaas.get("/finance/balance");
-    res.json({ balance: data.balance });
+    const uid = req.user.id;
+    const [{ data: sales }, { data: withdrawals }] = await Promise.all([
+      supabase.from("sales").select("producer_amount,amount").eq("owner_id", uid).eq("status", "pago"),
+      supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando","concluido"]),
+    ]);
+    const totalProducer  = (sales || []).reduce((a, s) => a + Number(s.producer_amount ?? s.amount), 0);
+    const totalWithdrawn = (withdrawals || []).reduce((a, w) => a + Number(w.amount), 0);
+    res.json({ balance: Math.max(0, totalProducer - totalWithdrawn) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -651,23 +547,28 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
 
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_INST = process.env.EVOLUTION_INSTANCE || "josephpay";
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
 
-// Só cria cliente se URL não for o placeholder padrão
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
   headers: { apikey: EVOLUTION_KEY },
   timeout: 5000,
 }) : null;
 
-// ── Owner ID cache (preenchido na 1ª requisição autenticada) ─────────────────
-let cachedOwnerId = null;
+// Retorna a instância WhatsApp do usuário (cria e salva no perfil se ainda não existir)
+async function getUserInst(userId) {
+  const { data } = await supabase.from("profiles").select("whatsapp_instance").eq("id", userId).single();
+  if (data?.whatsapp_instance) return data.whatsapp_instance;
+  const inst = "jp_" + userId.replace(/-/g, "").slice(0, 8);
+  await supabase.from("profiles").update({ whatsapp_instance: inst }).eq("id", userId);
+  return inst;
+}
 
 app.get("/api/whatsapp/status", requireAuth, async (req, res) => {
   if (!evo) return res.json({ connected: false, reason: "Evolution API não configurada" });
   try {
-    const { data } = await evo.get(`/instance/connectionState/${EVOLUTION_INST}`);
+    const inst = await getUserInst(req.user.id);
+    const { data } = await evo.get(`/instance/connectionState/${inst}`);
     res.json({ connected: data.instance?.state === "open", state: data.instance?.state });
   } catch (err) {
     res.json({ connected: false, error: err.message });
@@ -676,26 +577,29 @@ app.get("/api/whatsapp/status", requireAuth, async (req, res) => {
 
 app.get("/api/whatsapp/qr", requireAuth, async (req, res) => {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
+  const inst = await getUserInst(req.user.id);
   const ensureInstance = async () => {
-    try { await evo.get(`/instance/connectionState/${EVOLUTION_INST}`); }
-    catch { await evo.post(`/instance/create`, { instanceName: EVOLUTION_INST, qrcode: true, integration: "WHATSAPP-BAILEYS" }); }
+    try { await evo.get(`/instance/connectionState/${inst}`); }
+    catch {
+      await evo.post(`/instance/create`, { instanceName: inst, qrcode: true, integration: "WHATSAPP-BAILEYS" });
+      await setupEvolutionWebhook(inst);
+    }
   };
   try {
     await ensureInstance();
-    const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
+    const { data } = await evo.get(`/instance/connect/${inst}`);
     if (data.code) {
       res.json({ code: data.code, pairingCode: data.pairingCode });
     } else {
-      // Instância não tem QR (pode já estar conectada ou em estado intermediário)
-      const stateRes = await evo.get(`/instance/connectionState/${EVOLUTION_INST}`);
+      const stateRes = await evo.get(`/instance/connectionState/${inst}`);
       const state = stateRes.data?.instance?.state;
       if (state === "open") {
         res.json({ connected: true, state });
       } else {
-        // Estado desconhecido — forçar reconexão deletando e recriando
-        await evo.delete(`/instance/delete/${EVOLUTION_INST}`).catch(() => {});
-        await evo.post(`/instance/create`, { instanceName: EVOLUTION_INST, qrcode: true, integration: "WHATSAPP-BAILEYS" });
-        const { data: data2 } = await evo.get(`/instance/connect/${EVOLUTION_INST}`);
+        await evo.delete(`/instance/delete/${inst}`).catch(() => {});
+        await evo.post(`/instance/create`, { instanceName: inst, qrcode: true, integration: "WHATSAPP-BAILEYS" });
+        await setupEvolutionWebhook(inst);
+        const { data: data2 } = await evo.get(`/instance/connect/${inst}`);
         res.json({ code: data2.code, pairingCode: data2.pairingCode, state });
       }
     }
@@ -709,7 +613,8 @@ app.post("/api/whatsapp/send", requireAuth, async (req, res) => {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
   try {
     const { to, message } = req.body;
-    const { data } = await evo.post(`/message/sendText/${EVOLUTION_INST}`, { number: to, text: message });
+    const inst = await getUserInst(req.user.id);
+    const { data } = await evo.post(`/message/sendText/${inst}`, { number: to, text: message });
     await supabase.from("messages").insert({
       owner_id: req.user.id, channel: "whatsapp", direction: "outbound", content: message, status: "sent",
     });
@@ -954,92 +859,83 @@ app.get("/api/ledger/balance", requireAuth, async (req, res) => {
 
 /**
  * POST /api/sync/history
- * Puxa os últimos 90 dias do Asaas e salva em sales com todos os campos financeiros.
+ * Puxa os últimos 90 dias do Mercado Pago e salva em sales.
  */
 app.post("/api/sync/history", requireAuth, async (req, res) => {
   try {
     const uid   = req.user.id;
-    const since = new Date(Date.now() - 90 * 86400000).toISOString().split("T")[0];
+    const since = new Date(Date.now() - 90 * 86400000).toISOString();
 
-    let asaasPayments = [];
+    let mpPayments = [];
     try {
-      const [r1, r2] = await Promise.all([
-        asaas.get(`/payments?status=RECEIVED&dateCreatedStart=${since}&limit=100`),
-        asaas.get(`/payments?status=CONFIRMED&dateCreatedStart=${since}&limit=100`),
-      ]);
-      asaasPayments = [...(r1.data?.data || []), ...(r2.data?.data || [])];
-      const seen = new Set();
-      asaasPayments = asaasPayments.filter(p => seen.has(p.id) ? false : seen.add(p.id));
+      const r = await mp.get(`/v1/payments/search?status=approved&begin_date=${since}&limit=100&offset=0`);
+      mpPayments = r.data?.results || [];
     } catch (e) {
-      console.warn("[sync/history] Asaas fetch error:", e.message);
+      console.warn("[sync/history] MP fetch error:", e.message);
     }
-
-    const { data: products } = await supabase.from("products")
-      .select("id,owner_id,price,name,asaas_link_id").eq("owner_id", uid);
 
     const { data: existingSales } = await supabase.from("sales").select("asaas_id").eq("owner_id", uid);
     const existingIds = new Set((existingSales || []).map(s => s.asaas_id));
 
     let inserted = 0, skipped = 0, errors = 0;
 
-    for (const payment of asaasPayments) {
-      if (existingIds.has(payment.id)) { skipped++; continue; }
+    for (const payment of mpPayments) {
+      const mpId = String(payment.id);
+      if (existingIds.has(mpId)) { skipped++; continue; }
 
-      const grossAmount = Number(payment.value || 0);
-      const netAmount   = Number(payment.netValue || grossAmount);
+      const grossAmount = Number(payment.transaction_amount || 0);
+      const mpFee       = (payment.fee_details || []).reduce((a, f) => a + Number(f.amount || 0), 0);
+      const netAmount   = Math.max(0, grossAmount - mpFee);
       const { platformFee, asaasFee, producerAmount } = calcFees(grossAmount, netAmount);
-      const paymentDate = (payment.confirmedDate || payment.dateCreated)
-        ? new Date(payment.confirmedDate || payment.dateCreated).toISOString()
+      const paymentDate = payment.date_approved
+        ? new Date(payment.date_approved).toISOString()
         : new Date().toISOString();
 
-      const product = (products || []).find(p =>
-        p.asaas_link_id && payment.paymentLink && p.asaas_link_id === payment.paymentLink
-      );
+      // Identifica owner via external_reference
+      let ownerId = uid;
+      const extRef = payment.external_reference || "";
+      if (extRef.startsWith("owner_")) ownerId = extRef.replace("owner_", "");
 
-      // Cria/atualiza customer
+      // Cria/atualiza customer pelo email
       let customerId = null;
-      if (payment.customer) {
-        const custObj   = payment.customerObject || {};
-        const custName  = custObj.name || "Cliente";
-        const custEmail = custObj.email || null;
-        const custPhone = custObj.phone || null;
-        const { data: cust } = await supabase.from("customers").upsert(
-          { name: custName, email: custEmail, phone: custPhone, owner_id: product?.owner_id || uid, asaas_customer_id: payment.customer },
-          { onConflict: "asaas_customer_id", ignoreDuplicates: false }
-        ).select("id").maybeSingle();
-        customerId = cust?.id || null;
+      const payerEmail = payment.payer?.email;
+      if (payerEmail) {
+        const payerName = [payment.payer?.first_name, payment.payer?.last_name].filter(Boolean).join(" ") || "Cliente";
+        const { data: existCust } = await supabase.from("customers")
+          .select("id").eq("email", payerEmail).eq("owner_id", ownerId).maybeSingle();
+        if (existCust) {
+          customerId = existCust.id;
+        } else {
+          const { data: newCust } = await supabase.from("customers")
+            .insert({ name: payerName, email: payerEmail, owner_id: ownerId })
+            .select("id").maybeSingle();
+          customerId = newCust?.id || null;
+        }
       }
 
       const salePayload = {
-        product_id:        product?.id      || null,
-        owner_id:          product?.owner_id || uid,
+        owner_id:          ownerId,
         customer_id:       customerId,
         amount:            grossAmount,
         gross_amount:      grossAmount,
         net_amount:        netAmount,
-        asaas_fee:         asaasFee,
+        asaas_fee:         mpFee,
         platform_fee:      platformFee,
         producer_amount:   producerAmount,
-        installment_count: payment.installmentCount || 1,
-        billing_type:      payment.billingType || "UNKNOWN",
+        billing_type:      (payment.payment_type_id || "UNKNOWN").toUpperCase(),
         payment_date:      paymentDate,
         status:            "pago",
-        asaas_id:          payment.id,
+        asaas_id:          mpId,
         created_at:        paymentDate,
       };
 
       const { error: insErr } = await supabase.from("sales").insert(salePayload);
-      if (insErr) {
-        console.warn("[sync/history] insert error:", insErr.message, "payment:", payment.id);
-        errors++;
-      } else {
-        inserted++;
-        existingIds.add(payment.id);
-      }
+      if (insErr) { console.warn("[sync/history] insert error:", insErr.message); errors++; }
+      else { inserted++; existingIds.add(mpId); }
     }
 
     console.log(`[sync/history] user=${uid} — inserted:${inserted} skipped:${skipped} errors:${errors}`);
-    res.json({ inserted, skipped, errors, total: asaasPayments.length });
+    res.json({ inserted, skipped, errors, total: mpPayments.length });
   } catch (err) {
     console.error("[sync/history]", err.message);
     res.status(500).json({ error: err.message });
@@ -1098,7 +994,7 @@ app.get("/api/public/products/:id", async (req, res) => {
   }
 });
 
-/** POST /api/public/checkout — cria customer + payment/subscription no Asaas */
+/** POST /api/public/checkout — cria customer + payment no Mercado Pago */
 app.post("/api/public/checkout", async (req, res) => {
   try {
     const { productId, name, email, phone, cpfCnpj, postalCode,
@@ -1107,17 +1003,18 @@ app.post("/api/public/checkout", async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios: productId, name, email, cpfCnpj, method" });
     }
 
-    // Busca produto
     const { data: product } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle,owner_id")
+      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id")
       .eq("id", productId).maybeSingle();
     if (!product) return res.status(404).json({ error: "Produto não encontrado" });
 
-    const basePrice = Number(product.price);
+    const basePrice       = Number(product.price);
     const numInstallments = method === "CREDIT_CARD" ? Math.min(12, Math.max(1, Number(installments))) : 1;
     const { clientTotal, platformFee: pfee, asaasFee, producerGets } = calcPublicPrice(basePrice, method, numInstallments);
+    const isRecurrent     = product.billing_type === "RECURRENT";
+    const saleId          = require("crypto").randomUUID();
 
-    // 1. Garante customer no Supabase (independente do Asaas)
+    // 1. Garante customer no Supabase
     let customerId = null;
     const { data: existByEmail } = await supabase.from("customers")
       .select("id").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
@@ -1128,81 +1025,69 @@ app.post("/api/public/checkout", async (req, res) => {
       const { data: newCust, error: custErr } = await supabase.from("customers")
         .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
         .select("id").maybeSingle();
-      if (custErr) console.error("[public/checkout] ERRO ao criar customer:", custErr.message, custErr.code, custErr.details);
+      if (custErr) console.error("[public/checkout] ERRO ao criar customer:", custErr.message);
       customerId = newCust?.id || null;
     }
 
-    // 2. Cria customer no Asaas e vincula (sem bloquear o fluxo)
-    let asaasCustomerId = null;
-    try {
-      const custPayload = { name, email, cpfCnpj };
-      if (phone)         custPayload.mobilePhone = phone;
-      if (postalCode)    custPayload.postalCode = postalCode.replace(/\D/g, "");
-      if (birthday)      custPayload.birthDate = birthday;
-      if (addressNumber) custPayload.addressNumber = addressNumber;
-      const custResp = await asaas.post("/customers", custPayload);
-      asaasCustomerId = custResp.data?.id || null;
-      if (asaasCustomerId && customerId) {
-        await supabase.from("customers").update({ asaas_customer_id: asaasCustomerId }).eq("id", customerId);
-      }
-    } catch(e) {
-      console.warn("[public/checkout] falha ao criar customer no Asaas:", e.response?.data || e.message);
-    }
-
-    // 3. Cria payment ou subscription no Asaas
-    const isRecurrent = product.billing_type === "RECURRENT";
+    // 2. Cria pagamento no Mercado Pago
     let chargeId = null, pixQrCode = null, pixCopyCola = null, boletoUrl = null, invoiceUrl = null;
 
-    const saleId = require("crypto").randomUUID();
-    const billingKind = isRecurrent ? "SUBSCRIPTION" : "ONE_TIME";
-
-    const paymentBase = {
-      customer:    asaasCustomerId,
-      value:       clientTotal,
-      description: product.name + (product.description ? ` — ${product.description}` : ""),
-      externalReference: JSON.stringify({ saleId, type: billingKind }),
+    const nameParts  = name.trim().split(" ");
+    const payer = {
+      email,
+      first_name: nameParts[0],
+      last_name:  nameParts.slice(1).join(" ") || nameParts[0],
+      identification: { type: "CPF", number: cpfCnpj.replace(/\D/g, "") },
+      address: postalCode ? { zip_code: postalCode.replace(/\D/g, ""), street_number: addressNumber || "S/N" } : undefined,
     };
 
-    if (isRecurrent) {
-      // Assinatura
-      const cycle = product.subscription_cycle || "MONTHLY";
-      const subResp = await asaas.post("/subscriptions", {
-        ...paymentBase,
-        billingType: method === "PIX" ? "PIX" : method === "BOLETO" ? "BOLETO" : "CREDIT_CARD",
-        cycle,
-        nextDueDate: new Date(Date.now() + 86400000).toISOString().split("T")[0],
-      });
-      chargeId = subResp.data?.id;
-      boletoUrl = subResp.data?.bankSlipUrl;
-    } else {
-      // Pagamento único
-      const payPayload = {
-        ...paymentBase,
-        billingType: method === "PIX" ? "PIX" : method === "BOLETO" ? "BOLETO" : "CREDIT_CARD",
-        dueDate: new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0],
-      };
-      if (method === "CREDIT_CARD" && numInstallments > 1) {
-        payPayload.installmentCount = numInstallments;
-        payPayload.totalValue = clientTotal;
-      }
-      const payResp = await asaas.post("/payments", payPayload);
-      chargeId = payResp.data?.id;
-      boletoUrl = payResp.data?.bankSlipUrl;
-      invoiceUrl = payResp.data?.invoiceUrl;
+    const extRef = JSON.stringify({ saleId, type: isRecurrent ? "SUBSCRIPTION" : "ONE_TIME" });
 
-      // Busca QR PIX se necessário
-      if (method === "PIX" && chargeId) {
+    if (method === "CREDIT_CARD" || isRecurrent) {
+      // Redireciona para MP Checkout Pro (preference já criada ao criar o produto)
+      const mpPrefId = product.asaas_link_id;
+      if (mpPrefId) {
         try {
-          const pixResp = await asaas.get(`/payments/${chargeId}/pixQrCode`);
-          pixQrCode   = pixResp.data?.encodedImage || null;
-          pixCopyCola = pixResp.data?.payload || null;
+          const { data: pref } = await mp.get(`/checkout/preferences/${mpPrefId}`);
+          invoiceUrl = pref.sandbox_init_point || pref.init_point;
+          chargeId   = mpPrefId;
         } catch(e) {
-          console.warn("[public/checkout] falha ao buscar PIX QR:", e.message);
+          console.warn("[public/checkout] falha ao buscar preference MP:", e.message);
+          invoiceUrl = `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${mpPrefId}`;
+          chargeId   = mpPrefId;
         }
       }
+
+    } else if (method === "PIX") {
+      const payResp = await mp.post("/v1/payments", {
+        transaction_amount: clientTotal,
+        payment_method_id:  "pix",
+        payer,
+        external_reference: extRef,
+        description:        product.name,
+        notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+        installments:       1,
+      });
+      chargeId    = String(payResp.data.id);
+      pixQrCode   = payResp.data.point_of_interaction?.transaction_data?.qr_code_base64 || null;
+      pixCopyCola = payResp.data.point_of_interaction?.transaction_data?.qr_code || null;
+
+    } else if (method === "BOLETO") {
+      const payResp = await mp.post("/v1/payments", {
+        transaction_amount: clientTotal,
+        payment_method_id:  "bolbradesco",
+        payer,
+        external_reference: extRef,
+        description:        product.name,
+        notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+        installments:       1,
+        date_of_expiration: new Date(Date.now() + 3 * 86400000).toISOString(),
+      });
+      chargeId  = String(payResp.data.id);
+      boletoUrl = payResp.data.transaction_details?.external_resource_url || null;
     }
 
-    // 4. Salva sale pendente no Supabase (webhook vai atualizar status)
+    // 3. Salva sale pendente no Supabase
     const { error: saleErr } = await supabase.from("sales").insert({
       id:                saleId,
       product_id:        product.id,
@@ -1219,13 +1104,13 @@ app.post("/api/public/checkout", async (req, res) => {
       asaas_id:          chargeId,
       payment_date:      null,
     });
-    if (saleErr) console.error("[public/checkout] ERRO ao criar sale:", saleErr.message, saleErr.code, saleErr.details);
+    if (saleErr) console.error("[public/checkout] ERRO ao criar sale:", saleErr.message);
 
     console.log("[public/checkout] chargeId:", chargeId, "| method:", method, "| customerId:", customerId);
     res.json({ chargeId, pixQrCode, pixCopyCola, boletoUrl, invoiceUrl, clientTotal });
   } catch (err) {
     console.error("[public/checkout] erro:", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || err.message });
+    res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 });
 
@@ -1235,16 +1120,21 @@ app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
     const { chargeId } = req.params;
     let status = "PENDING";
     try {
-      const r = await asaas.get(`/payments/${chargeId}`);
-      status = r.data?.status || "PENDING";
+      // MP usa IDs numéricos para pagamentos diretos
+      const r = await mp.get(`/v1/payments/${chargeId}`);
+      const mpStatus = r.data?.status || "pending";
+      // Traduz status MP → formato que o checkout.html já entende
+      if (mpStatus === "approved")  status = "CONFIRMED";
+      else if (mpStatus === "refunded" || mpStatus === "cancelled") status = "REFUNDED";
+      else status = "PENDING";
     } catch(e) {
-      try {
-        const r = await asaas.get(`/subscriptions/${chargeId}`);
-        status = r.data?.status || "PENDING";
-      } catch(e2) { /* ignora */ }
+      // Para preference IDs (cartão/recorrente), consulta banco diretamente
+      const { data: sale } = await supabase.from("sales")
+        .select("status").eq("asaas_id", chargeId).maybeSingle();
+      if (sale?.status === "pago") status = "CONFIRMED";
     }
-    // Persiste confirmação no banco (não depender só do webhook)
-    if (["CONFIRMED", "RECEIVED"].includes(status)) {
+    // Persiste confirmação no banco
+    if (status === "CONFIRMED") {
       await supabase.from("sales")
         .update({ status: "pago" })
         .eq("asaas_id", chargeId)
@@ -1262,10 +1152,10 @@ app.get("/api/health", (req, res) => {
     status:    "ok",
     timestamp: new Date().toISOString(),
     services:  {
-      supabase:  !!process.env.SUPABASE_URL,
-      asaas:     !!process.env.ASAAS_API_KEY,
-      anthropic: !!process.env.ANTHROPIC_API_KEY,
-      whatsapp:  !!(process.env.EVOLUTION_API_URL && !process.env.EVOLUTION_API_URL.includes("seudominio")),
+      supabase:       !!process.env.SUPABASE_URL,
+      mercadopago:    !!process.env.MP_ACCESS_TOKEN,
+      anthropic:      !!process.env.ANTHROPIC_API_KEY,
+      whatsapp:       !!(process.env.EVOLUTION_API_URL && !process.env.EVOLUTION_API_URL.includes("seudominio")),
     },
   });
 });
@@ -1411,6 +1301,7 @@ app.patch("/api/customers/:id", requireAuth, async (req, res) => {
 app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   try {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
+  const inst = await getUserInst(req.user.id);
   const { message, group } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia" });
 
@@ -1442,7 +1333,7 @@ app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
   for (let i = 0; i < withPhone.length; i += CHUNK) {
     await Promise.all(withPhone.slice(i, i + CHUNK).map(async c => {
       try {
-        const r = await evo.post(`/message/sendText/${EVOLUTION_INST}`, {
+        const r = await evo.post(`/message/sendText/${inst}`, {
           number: (n=>(n.startsWith("55")?n:"55"+n))(c.phone.replace(/\D/g,"")),
           text: message.replace(/\{nome\}/g, c.name || ""),
         });
@@ -1487,7 +1378,8 @@ app.get("/api/whatsapp/pairing-code", requireAuth, async (req, res) => {
   const phone = (req.query.phone || "").replace(/\D/g, "");
   if (!phone) return res.status(400).json({ error: "Telefone obrigatório" });
   try {
-    const { data } = await evo.get(`/instance/connect/${EVOLUTION_INST}`, { params: { phoneNumber: phone } });
+    const inst = await getUserInst(req.user.id);
+    const { data } = await evo.get(`/instance/connect/${inst}`, { params: { phoneNumber: phone } });
     res.json({ pairingCode: data.pairingCode, code: data.code });
   } catch (err) {
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -1591,6 +1483,23 @@ app.patch("/api/user/profile", requireAuth, async (req, res) => {
   res.json({ ok: true, ...updates });
 });
 
+// ── Avatar: upload server-side usando service role (evita policy issues) ──────
+app.post("/api/user/avatar", requireAuth, async (req, res) => {
+  const { base64 } = req.body;
+  if (!base64) return res.status(400).json({ error: "base64 ausente" });
+  const match = base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: "formato inválido" });
+  const contentType = match[1];
+  const ext = contentType.split("/")[1] || "jpg";
+  const buffer = Buffer.from(match[2], "base64");
+  const path = `avatars/${req.user.id}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, buffer, { contentType, upsert: true });
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", req.user.id);
+  res.json({ url: publicUrl });
+});
+
 // ── Site do produtor: salvar/ler URL + checar status ─────────────────────────
 app.get("/api/user/site", requireAuth, async (req, res) => {
   const { data } = await supabase.from("profiles").select("site_url").eq("id", req.user.id).single();
@@ -1618,34 +1527,42 @@ app.get("/api/site-status", requireAuth, async (req, res) => {
 
 // ── Evolution API: receber mensagens inbound ─────────────────────────────────
 app.post("/api/whatsapp/inbound", async (req, res) => {
-  res.json({ ok: true }); // responde imediatamente para não gerar retry
+  res.json({ ok: true });
   try {
     const payload = req.body;
-    // Evolution API v2 envia event + data.messages ou data como array
+    const instName = payload?.instance;
     const messages = payload?.data?.messages
       || (Array.isArray(payload?.data) ? payload.data : []);
+    if (!messages.length) return;
+
+    // Identifica o dono pela instância que gerou a mensagem
+    let ownerId = null;
+    if (instName) {
+      const { data: prof } = await supabase.from("profiles").select("id").eq("whatsapp_instance", instName).single();
+      ownerId = prof?.id;
+    }
+    if (!ownerId) {
+      console.warn("[inbound] owner não encontrado para instância:", instName);
+      return;
+    }
+
     for (const msg of messages) {
       if (msg.key?.fromMe) continue;
       const remoteJid = msg.key?.remoteJid || "";
-      if (remoteJid.endsWith("@g.us")) continue; // grupos WhatsApp, ignora
+      if (remoteJid.endsWith("@g.us")) continue;
       const fromNumber = remoteJid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
       const content = msg.message?.conversation
         || msg.message?.extendedTextMessage?.text
         || msg.message?.imageMessage?.caption || "";
       if (!content || !fromNumber) continue;
-      if (!cachedOwnerId) {
-        const { data: prof } = await supabase.from("profiles").select("id").limit(1).single();
-        if (prof?.id) cachedOwnerId = prof.id;
-        else { console.warn("[inbound] owner_id não disponível, msg de", fromNumber); continue; }
-      }
       await supabase.from("messages").insert({
-        owner_id:     cachedOwnerId,
+        owner_id:     ownerId,
         content,
         status:       "inbound",
         group_target: "_inbound_" + fromNumber,
         group_count:  0,
       }).then(null, e => console.warn("[inbound] insert:", e.message));
-      console.log(`[inbound] ${fromNumber}: ${content.slice(0, 60)}`);
+      console.log(`[inbound] ${instName} / ${fromNumber}: ${content.slice(0, 60)}`);
     }
   } catch(e) { console.error("[inbound]", e.message); }
 });
@@ -1661,21 +1578,36 @@ async function syncAssinanteStatus() {
   } catch(e) { console.warn("[syncAssinante]", e.message); }
 }
 
-async function setupEvolutionWebhook() {
+async function setupEvolutionWebhook(inst) {
   try {
-    await evo.post(`/webhook/set/${EVOLUTION_INST}`, {
+    await evo.post(`/webhook/set/${inst}`, {
       url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
       webhook_by_events: false,
       webhook_base64:   false,
       events:           ["MESSAGES_UPSERT"],
     });
-    console.log("[evolution] webhook inbound configurado →", PUBLIC_URL);
-  } catch(e) { console.warn("[evolution] webhook setup:", e.message); }
+    console.log(`[evolution] webhook configurado para ${inst} →`, PUBLIC_URL);
+  } catch(e) { console.warn(`[evolution] webhook setup ${inst}:`, e.message); }
+}
+
+async function ensureBuckets() {
+  const { data: buckets } = await supabase.storage.listBuckets();
+  const names = (buckets || []).map(b => b.name);
+  if (!names.includes("avatars")) {
+    await supabase.storage.createBucket("avatars", { public: true });
+    console.log("   Storage: bucket 'avatars' criado");
+  }
 }
 
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);
+  ensureBuckets();
   syncAssinanteStatus();
-  if (evo) setupEvolutionWebhook();
+  if (evo) {
+    supabase.from("profiles").select("whatsapp_instance").not("whatsapp_instance", "is", null)
+      .then(({ data }) => {
+        (data || []).forEach(p => p.whatsapp_instance && setupEvolutionWebhook(p.whatsapp_instance));
+      });
+  }
 });

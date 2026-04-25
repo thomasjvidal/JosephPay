@@ -471,7 +471,7 @@ function ChatIA({productName, onBack}){
   const [showQ,setShowQ]=useState(true);
   const [sending,setSending]=useState(false);
   const bottom=useRef(null);
-  useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"})},[msgs]);
+  useEffect(()=>{bottom.current?.scrollIntoView({block:"nearest"})},[msgs]);
   const send=async(text)=>{
     const msg=text||input;if(!msg.trim()||sending)return;
     setInput("");setShowQ(false);setSending(true);
@@ -489,7 +489,7 @@ function ChatIA({productName, onBack}){
     setSending(false);
   };
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 150px)",minHeight:380}}>
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 83px)",minHeight:300}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexShrink:0}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para o Início</button>
       </div>
@@ -510,7 +510,7 @@ function ChatIA({productName, onBack}){
         {sending&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"11px 16px",borderRadius:16,background:"rgba(255,255,255,0.05)",border:`1px solid ${BDR}`,color:MUTED,fontSize:13}}>✦ digitando…</div></div>}
         <div ref={bottom}/>
       </div>
-      <div style={{display:"flex",gap:8,flexShrink:0,paddingBottom:20}}>
+      <div style={{display:"flex",gap:8,flexShrink:0,paddingBottom:4}}>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." disabled={sending} style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,opacity:sending?0.6:1}}/>
         <button onClick={()=>send()} disabled={sending} style={{width:46,height:46,borderRadius:14,background:sending?"rgba(212,175,55,0.4)":GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:sending?"not-allowed":"pointer",fontWeight:900,flexShrink:0}}>→</button>
       </div>
@@ -1119,7 +1119,7 @@ function SiteAdmin(){
 }
 
 function DashClient({accent=GOLD,isDeise,onNav}){
-  const [vis,setVis]=useState(false);
+  const [vis,setVis]=useState(()=>localStorage.getItem('jp_vis')==='true');
   const [kpis,setKpis]=useState(null);
   const [lastSales,setLastSales]=useState(null);
   const [totalClientes,setTotalClientes]=useState(null);
@@ -1148,19 +1148,15 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   useEffect(()=>{refreshData();},[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.25,pointerEvents:"none"}}/>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+      <div className="jp-gold-card" style={{padding:"20px 24px 20px",minHeight:0}}>
+        <div style={{display:"none"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
-          <button onClick={()=>setVis(!vis)} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"4px 10px",color:"rgba(12,12,12,0.55)",cursor:"pointer",display:"flex",alignItems:"center"}}>{vis?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>}</button>
+          <button onClick={()=>{const nv=!vis;setVis(nv);localStorage.setItem('jp_vis',String(nv));}} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"4px 10px",color:"rgba(12,12,12,0.55)",cursor:"pointer",display:"flex",alignItems:"center"}}>{vis?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:48,letterSpacing:"-0.01em",marginBottom:16,lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <span style={{background:"rgba(12,12,12,0.12)",color:"rgba(12,12,12,0.7)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Líquido do produtor</span>
-          {kpis?.receitaBrutaMes&&kpis.receitaBrutaMes!==kpis.receitaLiquidaMes&&<span style={{background:"rgba(212,175,55,0.1)",color:"rgba(12,12,12,0.5)",border:"none",fontSize:11,fontWeight:600,padding:"5px 14px",borderRadius:100}}>Bruto: {vis?fmtBRL(kpis.receitaBrutaMes):"••••••"}</span>}
-        </div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:44,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
       </div>
-      <button onClick={()=>onNav("saque")} style={{background:`linear-gradient(135deg,${GOLD},#B8941A)`,border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
+      <button onClick={()=>onNav("saque")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
           <KPICard label="Vendas hoje" value={kpis?String(kpis.vendasHoje):"—"} accent={GOLD} icon="↑" vis={vis}/>
@@ -1186,7 +1182,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={syncHistory} disabled={syncing} title="Sincronizar vendas do Asaas" style={{background:syncing?"rgba(212,175,55,0.1)":"rgba(212,175,55,0.08)",border:`1px solid ${GOLD}20`,borderRadius:20,padding:"4px 11px",color:syncing?MUTED:GOLD,fontSize:11,fontWeight:700,cursor:syncing?"not-allowed":"pointer",fontFamily:F,transition:"all 0.2s"}}>{syncing?"⟳ Sync…":"⟳ Sync"}</button>
+            {/* botão sync oculto */}
             <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:accent,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
           </div>
         </div>
@@ -1371,6 +1367,48 @@ function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected,avatarUrl}
   );
 }
 
+function CropModal({src,onConfirm,onCancel}){
+  const SIZE=240;
+  const [zoom,setZoom]=useState(1);
+  const [pos,setPos]=useState({x:0,y:0});
+  const [drag,setDrag]=useState(null);
+  const imgRef=useRef();
+  const onDown=e=>{const c=e.touches?e.touches[0]:e;setDrag({sx:c.clientX-pos.x,sy:c.clientY-pos.y});};
+  const onMove=e=>{if(!drag)return;const c=e.touches?e.touches[0]:e;setPos({x:c.clientX-drag.sx,y:c.clientY-drag.sy});};
+  const onUp=()=>setDrag(null);
+  const confirm=()=>{
+    const OUT=400;const canvas=document.createElement('canvas');canvas.width=OUT;canvas.height=OUT;
+    const ctx=canvas.getContext('2d');const img=imgRef.current;
+    ctx.beginPath();ctx.arc(OUT/2,OUT/2,OUT/2,0,Math.PI*2);ctx.clip();
+    const nw=img.naturalWidth,nh=img.naturalHeight;
+    const cs=SIZE/Math.min(nw,nh);
+    const ts=cs*zoom*(OUT/SIZE);
+    const dw=nw*ts,dh=nh*ts;
+    const cx=OUT/2+pos.x*(OUT/SIZE),cy=OUT/2+pos.y*(OUT/SIZE);
+    ctx.drawImage(img,cx-dw/2,cy-dh/2,dw,dh);
+    canvas.toBlob(b=>onConfirm(b),'image/jpeg',0.92);
+  };
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:300,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,touchAction:'none'}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:16,marginBottom:20}}>Ajustar foto</div>
+      <div style={{width:SIZE,height:SIZE,borderRadius:'50%',overflow:'hidden',border:`3px solid ${GOLD}`,cursor:'grab',position:'relative',background:'#111',userSelect:'none',touchAction:'none'}}
+        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+        <img ref={imgRef} src={src} draggable={false}
+          style={{position:'absolute',left:'50%',top:'50%',transform:`translate(calc(-50% + ${pos.x}px),calc(-50% + ${pos.y}px)) scale(${zoom})`,width:SIZE,height:SIZE,objectFit:'cover',transformOrigin:'center',pointerEvents:'none'}}/>
+      </div>
+      <div style={{marginTop:20,width:'100%',maxWidth:260}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:6,textAlign:'center'}}>Zoom</div>
+        <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={e=>setZoom(Number(e.target.value))} style={{width:'100%',accentColor:GOLD}}/>
+      </div>
+      <div style={{color:MUTED,fontSize:12,marginTop:6,textAlign:'center'}}>Arraste para reposicionar</div>
+      <div style={{display:'flex',gap:12,marginTop:24,width:'100%',maxWidth:260}}>
+        <button onClick={onCancel} style={{flex:1,background:'transparent',border:`1px solid ${BDR}`,borderRadius:12,padding:'12px',color:MUTED,fontSize:14,cursor:'pointer',fontFamily:F}}>Cancelar</button>
+        <button onClick={confirm} style={{flex:1,background:GOLD,border:'none',borderRadius:12,padding:'12px',color:'#0C0C0A',fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:F}}>Usar foto</button>
+      </div>
+    </div>
+  );
+}
 function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onSaved}){
   const [senhaMsg,setSenhaMsg]=useState("");
   const [editing,setEditing]=useState(false);
@@ -1378,7 +1416,8 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   const [editName,setEditName]=useState(profile?.name||"");
   const [editCompany,setEditCompany]=useState(profile?.company_name||"");
   const [avatarPreview,setAvatarPreview]=useState(profile?.avatar_url||"");
-  const [avatarFile,setAvatarFile]=useState(null);
+  const [croppedBlob,setCroppedBlob]=useState(null);
+  const [cropSrc,setCropSrc]=useState(null);
   const statusItems=[
     {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED},
     {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED},
@@ -1393,28 +1432,30 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   };
   const handleAvatarChange=e=>{
     const f=e.target.files[0];if(!f)return;
-    setAvatarFile(f);
     const reader=new FileReader();
-    reader.onload=ev=>setAvatarPreview(ev.target.result);
+    reader.onload=ev=>setCropSrc(ev.target.result);
     reader.readAsDataURL(f);
+    e.target.value="";
+  };
+  const handleCropConfirm=blob=>{
+    setCroppedBlob(blob);
+    setAvatarPreview(URL.createObjectURL(blob));
+    setCropSrc(null);
   };
   const saveProfile=async()=>{
     setSaving(true);
     try{
       const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
       let avatarUrl=profile?.avatar_url||"";
-      if(avatarFile){
-        // Upload via Supabase Storage (client-side)
-        const ext=avatarFile.name.split('.').pop();
-        const path=`avatars/${(await _sb.auth.getSession()).data.session.user.id}.${ext}`;
-        const {error:upErr}=await _sb.storage.from('avatars').upload(path,avatarFile,{upsert:true,contentType:avatarFile.type});
-        if(!upErr){
-          const {data:pub}=_sb.storage.from('avatars').getPublicUrl(path);
-          avatarUrl=pub?.publicUrl||avatarUrl;
-        }
+      if(croppedBlob){
+        const b64=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(croppedBlob);});
+        const resp=await fetch(`${RAILWAY}/api/user/avatar`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({base64:b64})});
+        const d=await resp.json();
+        if(d.url)avatarUrl=d.url;
       }
       await fetch(`${RAILWAY}/api/user/profile`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({name:editName,company_name:editCompany,avatar_url:avatarUrl})});
       setEditing(false);
+      setCroppedBlob(null);
       onSaved&&onSaved();
     }catch(e){console.error("[perfil save]",e);}
     setSaving(false);
@@ -1426,6 +1467,8 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   ];
   const initials=(profile?.name||"P")[0].toUpperCase();
   return(
+    <>
+    {cropSrc&&<CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={()=>setCropSrc(null)}/>}
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
@@ -1478,6 +1521,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
         <button onClick={onLogout} style={{width:"100%",background:`${RED}14`,border:`1px solid ${RED}30`,borderRadius:100,padding:14,color:RED,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Sair da conta</button>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1501,7 +1545,7 @@ function AdminPanel({onLogout}){
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName="Joseph Admin" initial="J"/>
       <div className="jp-main">
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial="J"/>
-        <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
+        <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
     </>
@@ -1512,6 +1556,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
   const [tab,setTab]=useState("dashboard");
   const [navCustomerId,setNavCustomerId]=useState(null);
   const onNav=(t,cid=null)=>{setTab(t);setNavCustomerId(cid);};
+  React.useLayoutEffect(()=>{if(tab==="chat")window.scrollTo(0,0);},[tab]);
   const [showPerfil,setShowPerfil]=useState(false);
   const [wapConnected,setWapConnected]=useState(null);
   const [siteActive,setSiteActive]=useState(false);
@@ -1556,7 +1601,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={displayName} initial={displayName?.[0]||"P"}/>
       <div className="jp-main">
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?`● ${companyName}`:null} onLogout={onLogout} initial={displayName?.[0]||"P"} onOpenPerfil={()=>setShowPerfil(true)} wapConnected={wapConnected} avatarUrl={profile.avatar_url}/>
-        <div style={{padding:"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
+        <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
       {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile}/>}
@@ -1818,7 +1863,6 @@ function ProdutosTab({accent,isDeise}){
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
-                  <Tag status={p.status||"ativo"}/>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
                     <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>🔗 josephpay.vercel.app/checkout.html?p={p.id}</span>
@@ -1826,15 +1870,9 @@ function ProdutosTab({accent,isDeise}){
                   </div>
               </div>
             </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,paddingBottom:20,borderBottom:`1px solid ${BDR}`}}>
-              <div>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Receita (mês)</div>
-                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,lineHeight:1,letterSpacing:"-0.02em"}}>{fmtBRL(p.receitaMes||0)}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Vendas</div>
-                <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,lineHeight:1}}>{p.totalVendas||0}</div>
-              </div>
+            <div style={{marginBottom:20,paddingBottom:20,borderBottom:`1px solid ${BDR}`}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Receita (mês)</div>
+              <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28,lineHeight:1,letterSpacing:"-0.02em"}}>{fmtBRL(p.receitaMes||0)}</div>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
               <div>
@@ -1842,8 +1880,8 @@ function ProdutosTab({accent,isDeise}){
                 <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.afiliadosAtivos||0}</div>
               </div>
               <div style={{textAlign:"right"}}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Assinaturas</div>
-                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.assinaturasAtivas||0}</div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>Vendas</div>
+                <div style={{color:TEXT,fontWeight:600,fontSize:16}}>{p.totalVendas||0}</div>
               </div>
             </div>
             <button onClick={()=>setSel(i)} style={{width:"100%",background:TEXT,border:"none",borderRadius:100,padding:"14px",color:BG,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,transition:"transform 0.2s",letterSpacing:"0.01em"}}>Gerenciar Produto</button>
@@ -2066,7 +2104,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   }
   const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on}:d));
   const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
-  const tabNames=['Painel','Conversas','Mensagens','Disparos'];
+  const tabNames=['Painel','Mensagens','Conversas','Disparos'];
 
   if(tab===0&&sel!==null&&clientes){
     const c=clientes[sel];const compras=selSales!==null?selSales:(c.sales||[]);
@@ -2083,7 +2121,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
           <div className="qr">
-            <div className="qb" onClick={()=>{setSel(null);setTab(2);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
+            <div className="qb" onClick={()=>{setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></div><div className="ql">E-mail</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></div><div className="ql">Etiquetar</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Nota</div></div>
@@ -2143,7 +2181,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     <div className="crm-v9">
       <div className="tabs">{tabNames.map((n,i)=><div key={i} className={`tab${tab===i?' on':''}`} onClick={()=>setTab(i)}>{n}</div>)}</div>
 
-      {tab===1&&convOpen&&(()=>{
+      {tab===2&&convOpen&&(()=>{
         const replies=inboundMsgs.filter(m=>new Date(m.created_at)>new Date(convOpen.created_at)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
         const gLabel={'todos':'Todos','lead':'Interessados','cliente':'Clientes','assinante':'Assinantes'};
         const sentCount=convOpen.group_count||1;
@@ -2189,7 +2227,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
         );
       })()}
 
-      {tab===1&&!convOpen&&(
+      {tab===2&&!convOpen&&(
         <div className="scr">
           {/* Stats */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:1,background:'var(--ln)',borderRadius:14,overflow:'hidden',marginBottom:12}}>
@@ -2265,7 +2303,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
         </div>
       )}
 
-      {tab===2&&(
+      {tab===1&&(
         <div className="scr" style={{paddingBottom:160}}>
           <div className="chat-top">
             <div className="chat-to-lbl">Enviar para</div>
@@ -2473,8 +2511,8 @@ function MaquinaTab(){
         </div>
       </div>
 
-      {/* Sensor — mostra completo se não instalado, compacto se já tem visitas */}
-      {analytics?.total>0?(
+      {/* Sensor — oculto se site salvo e sensor já ativo */}
+      {!(analytics?.total>0) && (analytics?.total>0?(
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"14px 18px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -2506,7 +2544,7 @@ function MaquinaTab(){
             </div>
           )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
