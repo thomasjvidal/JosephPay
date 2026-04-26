@@ -443,87 +443,31 @@ app.post("/api/mp/webhook", async (req, res) => {
       const paymentDate  = payment.date_approved || new Date().toISOString();
       const billingType  = payment.payment_type_id?.toUpperCase() || "UNKNOWN";
 
-      if (targetSale) {
-        // Atualiza sale existente (criada no checkout)
-        await supabase.from("sales").update({
-          status:          "pago",
-          asaas_id:        mpPaymentId,
-          asaas_fee:       mpFee,
-          net_amount:      netAmount,
-          producer_amount: producerAmount,
-          platform_fee:    platformFee,
-          billing_type:    billingType,
-          payment_date:    paymentDate,
-        }).eq("id", targetSale.id);
-        console.log(`[mp/webhook] sale ${targetSale.id} marcada como paga (customer=${targetSale.customer_id})`);
-        await updateCustomerStats(targetSale.customer_id);
+      if (!targetSale) {
+        // Sale pendente não encontrada — não criar duplicata
+        console.error("[mp/webhook] SALE NÃO ENCONTRADA — preference_id:", payment.preference_id, "| payment_id:", mpPaymentId, "| ref:", payment.external_reference);
         return;
       }
 
-      // Cria/identifica customer pelo email do pagador
-      let customerId = null;
-      const payerEmail = payment.payer?.email;
-      const payerName  = [payment.payer?.first_name, payment.payer?.last_name].filter(Boolean).join(" ") || "Cliente";
+      // Busca preço base do produto para garantir que produtor recebe 100%
+      // (taxas MP e plataforma são sempre do comprador — já embutidas no clientTotal)
+      const { data: prod } = await supabase.from("products")
+        .select("price").eq("id", targetSale.product_id).maybeSingle();
+      const baseProductPrice = prod?.price ?? grossAmount;
 
-      // Descobre owner e produto via external_reference
-      // Formatos suportados:
-      //   "owner_<uuid>"                              → legado (antes da correção)
-      //   JSON { ownerId, productId }                 → preference MP (cartão) — novo formato
-      //   JSON { saleId, type }                       → payment direto (PIX/Boleto)
-      let ownerId   = null;
-      let productId = null;
-      const extRef  = payment.external_reference || "";
-      if (extRef.startsWith("owner_")) {
-        // formato legado
-        ownerId = extRef.replace("owner_", "");
-      } else {
-        try {
-          const ref = JSON.parse(extRef);
-          if (ref?.ownerId) {
-            // formato preference (cartão) — inclui productId
-            ownerId   = ref.ownerId;
-            productId = ref.productId || null;
-          } else if (ref?.saleId) {
-            // formato payment direto (PIX/Boleto) — ownerId via sale
-            const { data: s } = await supabase.from("sales").select("owner_id,product_id").eq("id", ref.saleId).maybeSingle();
-            ownerId   = s?.owner_id;
-            productId = s?.product_id || null;
-          }
-        } catch {}
-      }
-
-      if (ownerId && payerEmail) {
-        const { data: existCust } = await supabase.from("customers")
-          .select("id").eq("email", payerEmail).eq("owner_id", ownerId).maybeSingle();
-        if (existCust) {
-          customerId = existCust.id;
-        } else {
-          const { data: newCust } = await supabase.from("customers")
-            .insert({ name: payerName, email: payerEmail, owner_id: ownerId })
-            .select("id").maybeSingle();
-          customerId = newCust?.id || null;
-        }
-      }
-
-      if (ownerId) {
-        await supabase.from("sales").insert({
-          owner_id:        ownerId,
-          product_id:      productId,
-          customer_id:     customerId,
-          amount:          grossAmount,
-          gross_amount:    grossAmount,
-          net_amount:      netAmount,
-          asaas_fee:       mpFee,
-          platform_fee:    platformFee,
-          producer_amount: producerAmount,
-          billing_type:    billingType,
-          payment_date:    paymentDate,
-          status:          "pago",
-          asaas_id:        mpPaymentId,
-        });
-        console.log(`[mp/webhook] venda criada owner=${ownerId} produto=${productId} bruto R$${grossAmount}`);
-        await updateCustomerStats(customerId);
-      }
+      // Atualiza sale existente (criada no checkout)
+      await supabase.from("sales").update({
+        status:          "pago",
+        asaas_id:        mpPaymentId,
+        asaas_fee:       mpFee,
+        net_amount:      netAmount,
+        producer_amount: baseProductPrice,
+        platform_fee:    platformFee,
+        billing_type:    billingType,
+        payment_date:    paymentDate,
+      }).eq("id", targetSale.id);
+      console.log(`[mp/webhook] sale ${targetSale.id} paga | produtor=R$${baseProductPrice} | mp_fee=R$${mpFee} | customer=${targetSale.customer_id}`);
+      await updateCustomerStats(targetSale.customer_id);
 
     } else if (payment.status === "refunded" || payment.status === "cancelled") {
       if (targetSale) {
