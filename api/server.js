@@ -425,12 +425,17 @@ app.post("/api/mp/webhook", async (req, res) => {
     }
 
     // 3. Pelo preference_id (CARTÃO via Checkout Pro)
-    //    A sale pendente foi gravada com asaas_id = preference_id, não com o payment ID
+    //    Múltiplas sales podem ter o mesmo preference_id (1 preference por produto, N compras)
+    //    → usar status=pendente + mais recente em vez de maybeSingle (que falha com múltiplas rows)
     let saleByPrefId = null;
     if (!existingSale && !saleByRef && payment.preference_id) {
-      const { data } = await supabase.from("sales")
-        .select(SALE_FIELDS).eq("asaas_id", payment.preference_id).maybeSingle();
-      saleByPrefId = data;
+      const { data: rows } = await supabase.from("sales")
+        .select(SALE_FIELDS)
+        .eq("asaas_id", payment.preference_id)
+        .eq("status", "pendente")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      saleByPrefId = rows?.[0] ?? null;
     }
 
     const targetSale = existingSale || saleByRef || saleByPrefId;
@@ -1008,8 +1013,18 @@ app.post("/api/public/checkout", async (req, res) => {
       const { data: newCust, error: custErr } = await supabase.from("customers")
         .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
         .select("id").maybeSingle();
-      if (custErr) console.error("[public/checkout] ERRO ao criar customer:", custErr.message);
-      customerId = newCust?.id || null;
+      if (custErr) {
+        // Race condition: outro request pode ter inserido o mesmo email simultaneamente
+        console.error("[public/checkout] ERRO insert customer:", JSON.stringify(custErr));
+        const { data: retried } = await supabase.from("customers")
+          .select("id").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
+        customerId = retried?.id ?? null;
+      } else {
+        customerId = newCust?.id ?? null;
+      }
+      if (!customerId) {
+        return res.status(500).json({ error: "Não foi possível identificar o cliente. Tente novamente." });
+      }
     }
 
     // 2. Cria pagamento no Mercado Pago
