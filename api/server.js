@@ -178,7 +178,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       const resp = await mp.post("/checkout/preferences", prefPayload);
       mpPrefId   = resp.data.id || "";
       // sandbox_init_point em teste, init_point em produção
-      paymentUrl = resp.data.sandbox_init_point || resp.data.init_point || "";
+      paymentUrl = resp.data.init_point || resp.data.sandbox_init_point || "";
       console.log(`[products/create] MP preference criada id=${mpPrefId} | titulo_retornado=${resp.data.items?.[0]?.title} | url=${paymentUrl}`);
     } catch (mpErr) {
       const errMsg = mpErr.response?.data?.message || mpErr.message;
@@ -282,7 +282,7 @@ app.get("/api/products/:id/sync", requireAuth, async (req, res) => {
     if (!product?.asaas_link_id) return res.status(404).json({ error: "Produto não encontrado" });
 
     const { data: pref } = await mp.get(`/checkout/preferences/${product.asaas_link_id}`);
-    const freshUrl = pref?.sandbox_init_point || pref?.init_point || product.url;
+    const freshUrl = pref?.init_point || pref?.sandbox_init_point || product.url;
 
     if (freshUrl && freshUrl !== product.url) {
       await supabase.from("products").update({ url: freshUrl }).eq("id", product.id);
@@ -321,7 +321,7 @@ app.post("/api/asaas/checkout", requireAuth, async (req, res) => {
     });
 
     const chargeId  = pref.data.id;
-    const paymentUrl = pref.data.sandbox_init_point || pref.data.init_point;
+    const paymentUrl = pref.data.init_point || pref.data.sandbox_init_point;
 
     await supabase.from("sales").insert({
       id: saleId, product_id: productId, owner_id: req.user.id,
@@ -1058,7 +1058,7 @@ app.post("/api/public/checkout", async (req, res) => {
         statement_descriptor: "JosephPay",
       });
       chargeId   = String(prefResp.data.id);
-      invoiceUrl = prefResp.data.sandbox_init_point || prefResp.data.init_point;
+      invoiceUrl = prefResp.data.init_point || prefResp.data.sandbox_init_point;
       console.log("[public/checkout] preference criada:", chargeId, "→ invoiceUrl:", invoiceUrl?.slice(0, 60));
 
     } else if (method === "PIX") {
