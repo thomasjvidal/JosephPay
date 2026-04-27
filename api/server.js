@@ -395,7 +395,7 @@ app.post("/api/mp/webhook", async (req, res) => {
   res.json({ received: true }); // responde imediatamente para evitar retry do MP
   try {
     const { type, action, data: eventData } = req.body;
-    console.log("[mp/webhook]", type, action, eventData?.id);
+    console.log(`[mp/webhook] ✓ chegou — type=${type} action=${action} id=${eventData?.id} live=${req.body.live_mode}`);
 
     if (type !== "payment" || !eventData?.id) return;
 
