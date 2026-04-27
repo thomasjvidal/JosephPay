@@ -411,22 +411,24 @@ app.post("/api/mp/webhook", async (req, res) => {
     const { data: existingSale } = await supabase.from("sales")
       .select(SALE_FIELDS).eq("asaas_id", mpPaymentId).maybeSingle();
 
-    // 2. Pelo saleId no external_reference (PIX / Boleto — payment direto)
+    // 2. Pelo saleId no external_reference (PIX / Boleto / CARTÃO novo fluxo)
+    //    CARTÃO: preference criada por checkout com external_reference = {"saleId":"...","type":"..."}
+    //    PIX/Boleto: pagamento direto MP com mesmo external_reference
     let saleByRef = null;
     if (!existingSale && payment.external_reference) {
       try {
         const ref = JSON.parse(payment.external_reference);
+        console.log("[mp/webhook] ext_ref parsed:", JSON.stringify(ref), "| saleId:", ref?.saleId ?? "AUSENTE");
         if (ref?.saleId) {
           const { data } = await supabase.from("sales")
             .select(SALE_FIELDS).eq("id", ref.saleId).maybeSingle();
           saleByRef = data;
+          console.log("[mp/webhook] strategy2 (saleId):", saleByRef?.id ?? "não encontrada");
         }
-      } catch { /* formato legado owner_xxx */ }
+      } catch { /* external_reference não é JSON válido */ }
     }
 
-    // 3. Pelo preference_id (CARTÃO via Checkout Pro)
-    //    Múltiplas sales podem ter o mesmo preference_id (1 preference por produto, N compras)
-    //    → usar status=pendente + mais recente em vez de maybeSingle (que falha com múltiplas rows)
+    // 3. Fallback: pelo preference_id (CARTÃO — compras antigas sem saleId no external_reference)
     let saleByPrefId = null;
     if (!existingSale && !saleByRef && payment.preference_id) {
       const { data: rows } = await supabase.from("sales")
@@ -436,9 +438,11 @@ app.post("/api/mp/webhook", async (req, res) => {
         .order("created_at", { ascending: false })
         .limit(1);
       saleByPrefId = rows?.[0] ?? null;
+      console.log("[mp/webhook] strategy3 (pref_id):", saleByPrefId?.id ?? "não encontrada");
     }
 
     const targetSale = existingSale || saleByRef || saleByPrefId;
+    console.log("[mp/webhook] target:", targetSale?.id ?? "NENHUMA — nenhuma strategy achou a sale");
 
     if (payment.status === "approved") {
       const grossAmount  = Number(payment.transaction_amount || 0);
@@ -934,29 +938,23 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
 // ROTAS PÚBLICAS — checkout próprio (sem autenticação)
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Taxas Asaas (promo até 07/2026) — atualizar se mudarem
-const ASAAS_RATES = {
-  PIX:     { fixed: 0.99, pct: 0 },
-  BOLETO:  { fixed: 0.99, pct: 0 },
-  CC_1:    { fixed: 0.49, pct: 0.0199 }, // à vista
-  CC_2_6:  { fixed: 0.49, pct: 0.0249 }, // 2-6x
-  CC_7_12: { fixed: 0.49, pct: 0.0299 }, // 7-12x
+// Taxas Mercado Pago — iguais ao checkout.html
+const MP_SERVER_RATES = {
+  PIX:    { fixed: 0, pct: 0.0099 },
+  BOLETO: { fixed: 3.49, pct: 0 },
+  CC:     { fixed: 0, pct: 0.0449 }, // MP gerencia parcelamento internamente
 };
 
 function calcPublicPrice(basePrice, method, installments = 1) {
   const plat = Math.round(basePrice * PLATFORM_FEE_RATE * 100) / 100;
-  let asaasFee = 0;
-  if (method === "PIX")    asaasFee = ASAAS_RATES.PIX.fixed;
-  if (method === "BOLETO") asaasFee = ASAAS_RATES.BOLETO.fixed;
-  if (method === "CREDIT_CARD") {
-    const r = installments <= 1 ? ASAAS_RATES.CC_1 :
-              installments <= 6 ? ASAAS_RATES.CC_2_6 : ASAAS_RATES.CC_7_12;
-    asaasFee = Math.round((basePrice * r.pct + r.fixed) * 100) / 100;
-  }
+  let mpFee = 0;
+  if (method === "PIX")         mpFee = Math.round(basePrice * MP_SERVER_RATES.PIX.pct * 100) / 100;
+  if (method === "BOLETO")      mpFee = MP_SERVER_RATES.BOLETO.fixed;
+  if (method === "CREDIT_CARD") mpFee = Math.round(basePrice * MP_SERVER_RATES.CC.pct * 100) / 100;
   return {
-    clientTotal:  Math.round((basePrice + plat + asaasFee) * 100) / 100,
+    clientTotal:  Math.round((basePrice + plat + mpFee) * 100) / 100,
     platformFee:  plat,
-    asaasFee:     asaasFee,
+    asaasFee:     mpFee,
     producerGets: basePrice,
   };
 }
@@ -1042,19 +1040,26 @@ app.post("/api/public/checkout", async (req, res) => {
     const extRef = JSON.stringify({ saleId, type: isRecurrent ? "SUBSCRIPTION" : "ONE_TIME" });
 
     if (method === "CREDIT_CARD" || isRecurrent) {
-      // Redireciona para MP Checkout Pro (preference já criada ao criar o produto)
-      const mpPrefId = product.asaas_link_id;
-      if (mpPrefId) {
-        try {
-          const { data: pref } = await mp.get(`/checkout/preferences/${mpPrefId}`);
-          invoiceUrl = pref.sandbox_init_point || pref.init_point;
-          chargeId   = mpPrefId;
-        } catch(e) {
-          console.warn("[public/checkout] falha ao buscar preference MP:", e.message);
-          invoiceUrl = `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${mpPrefId}`;
-          chargeId   = mpPrefId;
-        }
-      }
+      // Cria preference NOVA por checkout — external_reference contém saleId
+      // Isso garante que o webhook encontre a sale via strategy 2 (ref.saleId) — sem ambiguidade
+      console.log("[public/checkout] criando preference CC com saleId:", saleId, "extRef:", extRef);
+      const prefResp = await mp.post("/checkout/preferences", {
+        items: [{
+          title:       product.name,
+          description: product.description || product.name,
+          quantity:    1,
+          unit_price:  clientTotal,
+          currency_id: "BRL",
+        }],
+        payer: { email, first_name: nameParts[0], last_name: nameParts.slice(1).join(" ") || nameParts[0] },
+        external_reference: extRef,    // {"saleId": "uuid", "type": "ONE_TIME"}
+        notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+        payment_methods:    { installments: isRecurrent ? 1 : 12 },
+        statement_descriptor: "JosephPay",
+      });
+      chargeId   = String(prefResp.data.id);
+      invoiceUrl = prefResp.data.sandbox_init_point || prefResp.data.init_point;
+      console.log("[public/checkout] preference criada:", chargeId, "→ invoiceUrl:", invoiceUrl?.slice(0, 60));
 
     } else if (method === "PIX") {
       const payResp = await mp.post("/v1/payments", {
