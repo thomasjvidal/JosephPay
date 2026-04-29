@@ -546,7 +546,7 @@ const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.u
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
   headers: { apikey: EVOLUTION_KEY },
-  timeout: 5000,
+  timeout: 20000,
 }) : null;
 
 // Retorna a instância WhatsApp do usuário (cria e salva no perfil se ainda não existir)
@@ -1008,10 +1008,24 @@ app.post("/api/public/checkout", async (req, res) => {
       .select("id").eq("email", email).eq("owner_id", product.owner_id).maybeSingle();
     if (existByEmail) {
       customerId = existByEmail.id;
-      await supabase.from("customers").update({ name, phone: phone || null }).eq("id", customerId);
+      const { data: existing } = await supabase.from("customers")
+        .select("phone,birthday,cpf_cnpj,postal_code,address_number")
+        .eq("id", customerId).maybeSingle();
+      await supabase.from("customers").update({
+        name,
+        phone:          phone                          || existing?.phone          || null,
+        birthday:       birthday                       || existing?.birthday       || null,
+        cpf_cnpj:      (cpfCnpj?.replace(/\D/g,''))   || existing?.cpf_cnpj      || null,
+        postal_code:   (postalCode?.replace(/\D/g,'')) || existing?.postal_code   || null,
+        address_number: addressNumber                  || existing?.address_number || null,
+      }).eq("id", customerId);
     } else {
       const { data: newCust, error: custErr } = await supabase.from("customers")
-        .insert({ name, email, phone: phone || null, owner_id: product.owner_id })
+        .insert({ name, email, phone: phone || null, owner_id: product.owner_id,
+          birthday: birthday || null,
+          cpf_cnpj: cpfCnpj?.replace(/\D/g,'') || null,
+          postal_code: postalCode?.replace(/\D/g,'') || null,
+          address_number: addressNumber || null })
         .select("id").maybeSingle();
       if (custErr) {
         // Race condition: outro request pode ter inserido o mesmo email simultaneamente
@@ -1283,9 +1297,19 @@ app.patch("/api/customers/:id/status", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+// ── DELETE /api/customers/:id (soft delete) ───────────────────────────────────
+app.delete("/api/customers/:id", requireAuth, async (req, res) => {
+  const { error } = await supabase.from("customers")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", req.params.id)
+    .eq("owner_id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ── PATCH /api/customers/:id ─────────────────────────────────────────────────
 app.patch("/api/customers/:id", requireAuth, async (req, res) => {
-  const allowed = ['name','phone','email','birthday','notes','postal_code'];
+  const allowed = ['name','phone','email','birthday','notes','postal_code','address_number'];
   const updates = {};
   for (const k of allowed) {
     if (req.body[k] !== undefined && req.body[k] !== null && req.body[k] !== '') updates[k] = req.body[k];
@@ -1295,7 +1319,6 @@ app.patch("/api/customers/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Email inválido" });
   if (updates.phone && !/^\d{8,15}$/.test(updates.phone.replace(/\D/g,'')))
     return res.status(400).json({ error: "Telefone inválido" });
-  updates.updated_at = new Date().toISOString();
   const { data, error } = await supabase.from("customers").update(updates)
     .eq("id", req.params.id).eq("owner_id", req.user.id).select().single();
   if (error) return res.status(500).json({ error: error.message });

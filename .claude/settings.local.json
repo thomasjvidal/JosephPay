@@ -13,7 +13,23 @@
       "Bash(powershell -command \"Add-Type -Assembly ''System.IO.Compression.FileSystem''; [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho\\\\stitch.zip''\\).Entries | Select-Object FullName, Length | Format-Table -AutoSize\")",
       "Bash(powershell -command \"Add-Type -Assembly ''System.IO.Compression.FileSystem''; [System.IO.Compression.ZipFile]::OpenRead\\(''C:\\\\Users\\\\milen\\\\Downloads\\\\stitch \\(1\\).zip''\\).Entries | Select-Object FullName, Length | Format-Table -AutoSize\")",
       "Bash(dir 'C:\\\\Users\\\\milen\\\\OneDrive\\\\Ambiente de Trabalho')",
-      "Bash(powershell -command \"Expand-Archive -Path ''WhatsApp Unknown 2026-03-21 at 11.20.27.zip'' -DestinationPath ''whatsapp_imgs'' -Force\")"
+      "Bash(powershell -command \"Expand-Archive -Path ''WhatsApp Unknown 2026-03-21 at 11.20.27.zip'' -DestinationPath ''whatsapp_imgs'' -Force\")",
+      "Bash(command -v node)",
+      "Bash(where node *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\\", \"$env:APPDATA\", \"$env:LOCALAPPDATA\", \"$env:ProgramFiles\", \"$env:ProgramW6432\" -Filter \"node.exe\" -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 5 FullName)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git update-ref *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git reset *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(where \"GitHub Desktop\")",
+      "Read(//c/Users/junio/AppData/Local/GitHubDesktop\" 2>/dev/null | head -5; where gh 2>/dev/**)",
+      "Bash(git push *)",
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); \\(Get-Command node\\).Source)"
     ]
   }
 }

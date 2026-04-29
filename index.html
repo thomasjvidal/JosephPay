@@ -1125,11 +1125,18 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   const [totalClientes,setTotalClientes]=useState(null);
   const [syncing,setSyncing]=useState(false);
   const [syncResult,setSyncResult]=useState(null);
+  const [msgsHoje,setMsgsHoje]=useState(null);
   const refreshData=()=>{
     apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     if(_sb){
       _sb.from('sales').select('amount,producer_amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
       _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
+      _sb.auth.getSession().then(({data:sd})=>{
+        if(sd?.session){
+          const t=new Date();t.setHours(0,0,0,0);
+          _sb.from('messages').select('id',{count:'exact',head:true}).eq('owner_id',sd.session.user.id).neq('status','inbound').gte('created_at',t.toISOString()).then(({count})=>{if(count!==null)setMsgsHoje(count);});
+        }
+      });
     }
   };
   const syncHistory=async()=>{
@@ -1162,7 +1169,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <KPICard label="Vendas hoje" value={kpis?String(kpis.vendasHoje):"—"} accent={GOLD} icon="↑" vis={vis}/>
           <KPICard label="Assinaturas ativas" value={kpis?String(kpis.assinaturasAtivas):"—"} accent={GOLD} icon="⟳" vis={vis}/>
           <KPICard label="Total de clientes" value={totalClientes!==null?String(totalClientes):"—"} accent={GOLD} icon="◻" vis={vis}/>
-          <KPICard label="Mensagens hoje" value="—" accent={GOLD} icon="✉" vis={vis}/>
+          <KPICard label="Mensagens hoje" value={msgsHoje!==null?String(msgsHoje):"—"} accent={GOLD} icon="✉" vis={vis}/>
         </div>
       </div>
       <AdvancedChart accent={accent} vis={vis} endpoint="/api/dashboard/chart"/>
@@ -1277,9 +1284,8 @@ function Sidebar({tab,setTab,nav,userName,initial}){
 function BottomNav({tab,setTab,nav}){
   return(
     <div className="jp-bnav" style={{
-      display: "flex", 
-      justifyContent: "space-around", 
-      padding: "12px 24px", 
+      justifyContent: "space-around",
+      padding: "12px 24px",
       background: "rgba(19, 19, 18, 0.85)", 
       backdropFilter: "blur(20px)", 
       WebkitBackdropFilter: "blur(20px)",
@@ -1907,6 +1913,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [sentBubbles,setSentBubbles]=useState([]);
   const [showNova,setShowNova]=useState(false);
   const [showAdd,setShowAdd]=useState(false);
+  const [showAllBdays,setShowAllBdays]=useState(false);
   const [convOpen,setConvOpen]=useState(null);
   const [excluded,setExcluded]=useState(new Set());
   const [qrCode,setQrCode]=useState(null);
@@ -1932,7 +1939,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   },[]);
   useEffect(()=>{
     if(!_sb)return;
-    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
+    _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').is('deleted_at',null).order('created_at',{ascending:false})
       .then(({data,error})=>{if(error){console.error("[clientes]",error.message);return;}setClientes(data||[]);});
     _sb.auth.getSession().then(({data})=>{
       if(!data.session)return;
@@ -1991,7 +1998,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
     if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
     const dias=Math.round((nx-todayMid)/864e5);
     return{name:c.name,label:dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`,dias,inits:inits(c.name),id:c.id};
-  }).filter(a=>a.dias<=60).sort((a,b)=>a.dias-b.dias);
+  }).sort((a,b)=>a.dias-b.dias);
   const totalClientes=(clientes||[]).length;
   const totalAtivos=(clientes||[]).filter(c=>c.status==='assinante').length;
   const outboundMsgs=msgs.filter(m=>m.status!=='inbound');
@@ -2076,7 +2083,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
       const res=await apiCall('/api/customers/import',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify({customers:rows})});
       if(res?.inserted>0){
         // recarrega lista
-        _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').order('created_at',{ascending:false})
+        _sb.from('customers').select('*,sales(amount,producer_amount,status,created_at,product_id)').is('deleted_at',null).order('created_at',{ascending:false})
           .then(({data})=>{if(data)setClientes(data);});
         alert(`${res.inserted} cliente(s) importado(s) com sucesso!`);
       }else{alert('Nenhum cliente novo importado.');}
@@ -2130,12 +2137,12 @@ function ClientesTab({targetCustomerId,onWapChange}){
             <div className="ibh" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               Dados pessoais
               {!editing
-                ?<button onClick={()=>{setEditing(true);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',postal_code:c.postal_code||''});}} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Editar</button>
+                ?<button onClick={()=>{setEditing(true);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',postal_code:c.postal_code||'',address_number:c.address_number||''});}} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Editar</button>
                 :<div style={{display:'flex',gap:6}}><button onClick={()=>saveEdit(c)} style={{background:'var(--gd)',border:'none',borderRadius:8,padding:'3px 10px',color:'#000',fontSize:11,fontWeight:700,cursor:'pointer'}}>Salvar</button><button onClick={()=>setEditing(false)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Cancelar</button></div>
               }
             </div>
             {editing?(
-              <div>{[{k:'name',l:'Nome',t:'text'},{k:'phone',l:'Telefone',t:'tel'},{k:'email',l:'E-mail',t:'email'},{k:'birthday',l:'Aniversário',t:'date'},{k:'postal_code',l:'CEP',t:'text'}].map(f=>(
+              <div>{[{k:'name',l:'Nome',t:'text'},{k:'phone',l:'Telefone',t:'tel'},{k:'email',l:'E-mail',t:'email'},{k:'birthday',l:'Aniversário',t:'date'},{k:'postal_code',l:'CEP',t:'text'},{k:'address_number',l:'Número',t:'text'}].map(f=>(
                 <div key={f.k} className="ir"><span className="il">{f.l}</span><input type={f.t} value={editForm[f.k]||''} onChange={e=>setEditForm(p=>({...p,[f.k]:e.target.value}))} style={{background:'transparent',border:'none',borderBottom:'1px solid var(--ln)',color:'var(--tx)',fontSize:13,outline:'none',flex:1,textAlign:'right',padding:'2px 0'}}/></div>
               ))}</div>
             ):(
@@ -2144,7 +2151,9 @@ function ClientesTab({targetCustomerId,onWapChange}){
                 {c.birthday&&<div className="ir"><span className="il">Nascimento</span><span className="iv">{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR')}</span></div>}
                 {c.phone&&<div className="ir"><span className="il">Telefone</span><span className="iv">{c.phone}</span></div>}
                 {c.postal_code&&<div className="ir"><span className="il">CEP</span><span className="iv">{c.postal_code}</span></div>}
-                {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
+                {c.address_number&&<div className="ir"><span className="il">Número</span><span className="iv">{c.address_number}</span></div>}
+                {c.notes&&<div className="ir"><span className="il">Observações</span><span className="iv">{c.notes}</span></div>}
+                {!c.cpf_cnpj&&!c.birthday&&!c.phone&&!c.postal_code&&!c.address_number&&!c.notes&&<div className="ir"><span className="il" style={{fontStyle:'italic',color:'var(--t3)'}}>Sem dados pessoais</span></div>}
               </>
             )}
           </div>
@@ -2171,6 +2180,16 @@ function ClientesTab({targetCustomerId,onWapChange}){
                 <option value="cliente">Cliente</option><option value="lead">Interessado</option><option value="assinante">Assinante</option>
               </select>
             </div>
+          </div>
+          <div style={{padding:'12px 0 4px',textAlign:'center'}}>
+            <button onClick={async(e)=>{
+              if(!window.confirm('Excluir este contato permanentemente?'))return;
+              e.target.textContent='Excluindo...';e.target.disabled=true;
+              const {data:s}=await _sb.auth.getSession();
+              const r=await apiCall(`/api/customers/${c.id}`,{method:'DELETE',headers:{Authorization:`Bearer ${s.session?.access_token}`}});
+              if(r?.ok){setClientes(p=>p.filter(x=>x.id!==c.id));setSel(null);}
+              else{alert(r?.error||'Erro ao excluir contato.');e.target.textContent='Excluir contato';e.target.disabled=false;}
+            }} style={{background:'transparent',border:'1px solid rgba(220,53,69,0.35)',borderRadius:8,padding:'6px 20px',color:'rgba(220,53,69,0.7)',fontSize:12,cursor:'pointer'}}>Excluir contato</button>
           </div>
         </div>
       </div>
@@ -2241,13 +2260,45 @@ function ClientesTab({targetCustomerId,onWapChange}){
           {/* Aniversários */}
           {anivs.length>0&&(
             <div className="bday-msgs-card" style={{marginBottom:12}}>
-              <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div></div>
+              <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
               <div className="bday-circles">
                 {anivs.map((a,i)=>(
                   <div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}>
                     <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
                     <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
                     <div className="bday-circle-date">{a.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Modal: todos os aniversários */}
+          {showAllBdays&&(
+            <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
+              <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
+                  <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
+                  <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
+                </div>
+                {(clientes||[]).filter(c=>c.birthday).map(c=>{
+                  const b=new Date(c.birthday+'T00:00:00');
+                  const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
+                  if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
+                  const dias=Math.round((nx-todayMid)/864e5);
+                  const label=dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`;
+                  return{...c,dias,label};
+                }).sort((a,b)=>a.dias-b.dias).map((c,i)=>(
+                  <div key={i} onClick={()=>{const idx=(clientes||[]).findIndex(x=>x.id===c.id);if(idx!==-1){setSel(idx);setTab(0);setShowAllBdays(false);}}} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',background:'var(--c1)',borderRadius:14,marginBottom:8,cursor:'pointer'}}>
+                    <div style={{width:44,height:44,borderRadius:'50%',background:'var(--c2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:'var(--t2)',border:'2px solid var(--ln)',flexShrink:0}}>
+                      {inits(c.name)}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:600,color:'var(--tx)',marginBottom:2}}>{c.name}</div>
+                      <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
+                    </div>
+                    <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>
+                      🎂 {c.label}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -7,6 +7,12 @@
       "runtimeArgs": ["serve.js"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "JosephPay-API",
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": ["api/server.js"],
+      "port": 3001
     }
   ]
 }
