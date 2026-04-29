@@ -21,7 +21,9 @@ app.use(cors({
     const ok =
       origin === process.env.FRONTEND_ORIGIN ||
       origin.endsWith(".vercel.app") ||
-      origin.startsWith("http://localhost");
+      origin.startsWith("http://localhost") ||
+      origin === "https://josephpay.com" ||
+      origin === "https://www.josephpay.com";
     cb(null, ok);
   },
   credentials: true,
