@@ -1652,7 +1652,7 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
     await apiCall(`/api/products/${produto.id}`,{method:"DELETE"});
     onBack();
   };
-  const checkoutLink=`https://josephpay.vercel.app/checkout.html?p=${produto.id}`;
+  const checkoutLink=`https://josephpay.com/checkout.html?p=${produto.id}`;
   const copiarLink=()=>{
     navigator.clipboard?.writeText(checkoutLink).then(()=>{setCopiedLink(true);setTimeout(()=>setCopiedLink(false),2500);});
   };
@@ -1754,7 +1754,7 @@ function CriarProdutoModal({onClose,onCreated}){
     setLoading(false);
     if(d.error){setError(d.error);return;}
     if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}
-    setLink(`https://josephpay.vercel.app/checkout.html?p=${d.product.id}`);
+    setLink(`https://josephpay.com/checkout.html?p=${d.product.id}`);
     setCreated(true);
     if(onCreated) onCreated();
   };
@@ -1871,8 +1871,8 @@ function ProdutosTab({accent,isDeise}){
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-                    <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>🔗 josephpay.vercel.app/checkout.html?p={p.id}</span>
-                    <button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(`https://josephpay.vercel.app/checkout.html?p=${p.id}`).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});}} style={{flexShrink:0,background:copiedIdx===i?`${GREEN}18`:"rgba(212,175,55,0.12)",border:copiedIdx===i?`1px solid ${GREEN}40`:`1px solid ${GOLD}30`,borderRadius:20,padding:"3px 10px",color:copiedIdx===i?GREEN:GOLD,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",transition:"all 0.2s"}}>{copiedIdx===i?"✓ Copiado":"Copiar link"}</button>
+                    <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>🔗 josephpay.com/checkout.html?p={p.id}</span>
+                    <button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${p.id}`).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});}} style={{flexShrink:0,background:copiedIdx===i?`${GREEN}18`:"rgba(212,175,55,0.12)",border:copiedIdx===i?`1px solid ${GREEN}40`:`1px solid ${GOLD}30`,borderRadius:20,padding:"3px 10px",color:copiedIdx===i?GREEN:GOLD,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",transition:"all 0.2s"}}>{copiedIdx===i?"✓ Copiado":"Copiar link"}</button>
                   </div>
               </div>
             </div>
