@@ -482,9 +482,9 @@ function ChatIA({productName, onBack}){
         messages:newMsgs.map(m=>({role:m.role==='ai'?'assistant':m.role,content:m.text})),
         productContext:productName
       })});
-      setMsgs(p=>[...p,{role:"ai",text:data.reply||"Erro ao processar resposta."}]);
+      setMsgs(p=>[...p,{role:"ai",text:data.reply||"Em breve — assistente IA em configuração."}]);
     }catch(e){
-      setMsgs(p=>[...p,{role:"ai",text:"Erro de conexão. Verifique sua internet e tente novamente."}]);
+      setMsgs(p=>[...p,{role:"ai",text:"Em breve — assistente IA em configuração."}]);
     }
     setSending(false);
   };
@@ -1130,7 +1130,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
     apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     if(_sb){
       _sb.from('sales').select('amount,producer_amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
-      _sb.from('customers').select('id',{count:'exact',head:true}).then(({count})=>{if(count!==null)setTotalClientes(count);});
+      _sb.from('customers').select('id',{count:'exact',head:true}).is('deleted_at',null).then(({count})=>{if(count!==null)setTotalClientes(count);});
       _sb.auth.getSession().then(({data:sd})=>{
         if(sd?.session){
           const t=new Date();t.setHours(0,0,0,0);
@@ -1663,7 +1663,6 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
     ...(isRecurrent?[{id:"assinaturas", label:"Assinaturas", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuAxh5OLk2w6hgrUUSFyr_QXYJSdoHSBuMilbkZaj9nsTgO_u1HiY1Ijn0EQOusHuPn1EVAiiLpV6q_GhxGcl-IhRhuChQmXZFTMaanH6l61YhfjJ1YvpJiKC3cKSYqrpO49dHJgjDQXeLYeYdHsnYCZoZJLTYVnhiLpecYUJbtykT0s_wJ8x0T-As_FLsbjzsZf3KA6hki12KulV1m1mqtptH3rZHl-l_QG9g0n-42yqDKLRHqS_NaOroHpHVdPHLIZvhVI_wU0w4g"}]:[]),
     {id:"afiliados", label:"Afiliados", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuA3E80x53g2UjTg5zt_bloK6G8ydx3xV_6wLbUXCQHoHhenlKMMkjd5tguuq9zIbawappmALMBQBpjBfqp3uiLpkKaRkb41CVyacl8EaN60HpovHpWHR6rx3Cc91p6ga8lneU6wG06RSx9hYwcNYvQrOrNTxJiRmIEAs1zHHFrhc5gktrt1Mfir-cX7f9nEufikt_IRN5_4DbDZwpi9flQxndPhO_DZ85uDjgMJ2-Hwhb_SD6lOq1TqtIS6u41KD80FXJh2EciQ4VA", comingSoon:true},
     {id:"coproducao", label:"Coprodução", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuCh2qlJ6n9z6dNQtynkppsjCpRvd3CwMwAJaYRokRhRolunRsXQD63Qrclg-UaZJoSNJJXDobg6xVkzDpOMhOMmfUU3pjaE56JpXxFUO3PwYS-AelFfqvvz5jY7nPQ_hh066Ld_O8q5Lh0vs9Izx7ukBLhjdzj1noSysUuRPhgpQRCCT-agmZ7gxN7whArUmUsMnB0eReex0rZnkPyAfbrvmk2l409w8XG1rDQFO3wDZxX5_yIdA7zhicf4dMJIafpJS6TKX11INks", comingSoon:true},
-    {id:"saque", label:"Saque", img:"https://lh3.googleusercontent.com/aida-public/AB6AXuCuZ_p6XSf1uPm-R1aQQsYyjWjaq4-_sF_1tba9Q78fPdieeJejqTR9qEqNrBTI_XwIf7AnKCw1D19ucEXPWoPrTTMx-SU1IL3V7kHObKXOG-_wxOKR4Xy2bNGtTx2CF3oBgKaVgq23FMh-nRTQPPWWA54GxszAv1fE04OKIyR3UJYv32A3EN3XbxGgw7O51XHJjTc6Hfnn6nkmuqdwgCMZCbRydP84er7HMfSTOBLFk2BG7JaqJQTgwAyYiOsuDYe4w9v8ko7V_F0"}
   ];
 
   const content={vendas:<Vendas accent={accent} isDeise={isDeise}/>,assinaturas:<Assinaturas/>,afiliados:<Afiliados isAdmin={false}/>,coproducao:<CoproducaoView/>,saque:<Sacar/>};
@@ -2498,9 +2497,19 @@ function MaquinaTab(){
     })();
   },[]);
 
-  const srcColors={"instagram":GOLD,"google":"#4A90D9","whatsapp":"#22c55e","facebook":"#6B7EDB","direto":"rgba(212,175,55,0.5)","referral":"rgba(255,255,255,0.3)"};
-  const srcLabel={"instagram":"Instagram","google":"Google","whatsapp":"WhatsApp","facebook":"Facebook","direto":"Direto","referral":"Referência"};
-  const hasSources=analytics?.sources?.length>0;
+  const srcColors={"instagram":GOLD,"ig":GOLD,"insta":GOLD,"google":"#4A90D9","whatsapp":"#22c55e","wa":"#22c55e","wpp":"#22c55e","facebook":"#6B7EDB","fb":"#6B7EDB","direto":"rgba(212,175,55,0.5)","referral":"rgba(255,255,255,0.3)"};
+  const srcLabel={"instagram":"Instagram","ig":"Instagram","insta":"Instagram","google":"Google","gg":"Google","whatsapp":"WhatsApp","wa":"WhatsApp","wpp":"WhatsApp","facebook":"Facebook","fb":"Facebook","direto":"Direto","referral":"Referência"};
+  const mergedSources=(()=>{
+    if(!analytics?.sources) return [];
+    const map={};
+    analytics.sources.forEach(s=>{
+      const key=srcLabel[s.source]||s.source;
+      if(map[key]) map[key]+=s.pct;
+      else map[key]=s.pct;
+    });
+    return Object.entries(map).map(([label,pct])=>({label,pct,source:Object.keys(srcLabel).find(k=>srcLabel[k]===label)||label})).sort((a,b)=>b.pct-a.pct);
+  })();
+  const hasSources=mergedSources.length>0;
 
   const sensorSnippet=`<script>
 (function(){
@@ -2525,10 +2534,10 @@ function MaquinaTab(){
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
           {hasSources&&<span style={{color:MUTED,fontSize:11}}>{analytics.total} visitas</span>}
         </div>
-        {hasSources?analytics.sources.map(s=>(
-          <div key={s.source} style={{marginBottom:12}}>
+        {hasSources?mergedSources.map(s=>(
+          <div key={s.label} style={{marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{color:MUTED,fontSize:13}}>{srcLabel[s.source]||s.source}</span>
+              <span style={{color:MUTED,fontSize:13}}>{s.label}</span>
               <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{s.pct}%</span>
             </div>
             <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}>

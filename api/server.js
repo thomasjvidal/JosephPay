@@ -1440,12 +1440,21 @@ app.post("/api/track/visit", (req, res, next) => {
     const { data: profile } = await supabase
       .from("profiles").select("id").eq("id", user_id).maybeSingle();
     if (!profile?.id) return;
+    const normalizeSource = s => {
+      if (!s) return "direto";
+      const l = s.toLowerCase();
+      if (["ig","insta","instagram","i.instagram.com"].includes(l)) return "instagram";
+      if (["fb","facebook","fb.com"].includes(l)) return "facebook";
+      if (["gg","goog","google"].includes(l)) return "google";
+      if (["wa","wpp","whatsapp"].includes(l)) return "whatsapp";
+      return l;
+    };
     await supabase.from("visits").insert({
       owner_id: user_id,
       site_url: domain  || "",
       page:     page    || "/",
       referrer: referrer|| "",
-      source:   source  || "direto",
+      source:   normalizeSource(source),
       device:   device  || "unknown",
     }).then(null, e => console.warn("[track/visit]", e.message));
   } catch(e) { console.error("[track/visit]", e.message); }
