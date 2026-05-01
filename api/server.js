@@ -38,7 +38,7 @@ const supabase = createClient(
 );
 
 // ── Resend (e-mail transacional) ───────────────────────────────────────────
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL = "JosephPay <noreply@josephpay.com>";
 
 function emailCustomer({ customerName, productTitle, grossAmount, paymentMethod, producerName }) {
