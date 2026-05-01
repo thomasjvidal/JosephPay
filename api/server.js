@@ -11,6 +11,7 @@ const express    = require("express");
 const cors       = require("cors");
 const axios      = require("axios");
 const { createClient } = require("@supabase/supabase-js");
+const { Resend }       = require("resend");
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +36,97 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// ── Resend (e-mail transacional) ───────────────────────────────────────────
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = "JosephPay <noreply@josephpay.com>";
+
+function emailCustomer({ customerName, productTitle, grossAmount, paymentMethod, producerName }) {
+  const valor = `R$ ${Number(grossAmount).toFixed(2).replace(".", ",")}`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0D0D0D;padding:32px 16px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#0D0D0D;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
+<tr><td style="background:linear-gradient(135deg,#D4AF37,#B8962E);padding:28px 40px;text-align:center;">
+  <div style="font-size:26px;font-weight:900;color:#0D0D0D;">JosephPay</div>
+  <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:3px;letter-spacing:1px;font-weight:600;">PAGAMENTOS INTELIGENTES</div>
+</td></tr>
+<tr><td style="padding:32px 40px 0;text-align:center;">
+  <div style="width:56px;height:56px;background:linear-gradient(135deg,#D4AF37,#B8962E);border-radius:50%;display:inline-block;line-height:56px;font-size:26px;color:#0D0D0D;font-weight:900;">✓</div>
+  <h1 style="color:#fff;font-size:22px;font-weight:800;margin:16px 0 8px;">Compra Confirmada!</h1>
+  <p style="color:#888;font-size:14px;margin:0;">Olá, <strong style="color:#D4AF37;">${customerName}</strong> — seu pedido foi processado com sucesso.</p>
+</td></tr>
+<tr><td style="padding:24px 40px;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:12px;border:1px solid #2a2a2a;overflow:hidden;">
+    <tr><td style="padding:16px 20px;border-bottom:1px solid #2a2a2a;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Produto</div>
+      <div style="color:#fff;font-size:14px;font-weight:700;">${productTitle}</div>
+    </td></tr>
+    <tr><td style="padding:16px 20px;border-bottom:1px solid #2a2a2a;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td><div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Valor pago</div><div style="color:#D4AF37;font-size:20px;font-weight:900;">${valor}</div></td>
+          <td style="text-align:right;"><div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Método</div><div style="color:#fff;font-size:14px;font-weight:700;">${paymentMethod}</div></td>
+        </tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:16px 20px;">
+      <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Vendedor</div>
+      <div style="color:#fff;font-size:14px;font-weight:700;">${producerName}</div>
+    </td></tr>
+  </table>
+</td></tr>
+<tr><td style="padding:0 40px 24px;">
+  <div style="background:#111;border-left:3px solid #D4AF37;border-radius:0 8px 8px 0;padding:14px 18px;">
+    <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">Em caso de dúvidas, entre em contato diretamente com o vendedor. Este e-mail é uma confirmação automática da plataforma JosephPay.</p>
+  </div>
+</td></tr>
+<tr><td style="background:#0A0A0A;padding:18px 40px;text-align:center;border-top:1px solid #1a1a1a;">
+  <p style="color:#444;font-size:11px;margin:0;">© 2025 JosephPay · <a href="https://josephpay.com" style="color:#D4AF37;text-decoration:none;">josephpay.com</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+function emailProducer({ producerName, productTitle, baseProductPrice, customerName, customerEmail, paymentMethod, paymentDate }) {
+  const valor = `R$ ${Number(baseProductPrice).toFixed(2).replace(".", ",")}`;
+  const dataFmt = paymentDate ? new Date(paymentDate).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0D0D0D;padding:32px 16px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#0D0D0D;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
+<tr><td style="background:linear-gradient(135deg,#D4AF37,#B8962E);padding:28px 40px;text-align:center;">
+  <div style="font-size:26px;font-weight:900;color:#0D0D0D;">JosephPay</div>
+  <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:3px;letter-spacing:1px;font-weight:600;">PAGAMENTOS INTELIGENTES</div>
+</td></tr>
+<tr><td style="padding:32px 40px 0;text-align:center;">
+  <div style="font-size:44px;line-height:1;">💰</div>
+  <h1 style="color:#fff;font-size:22px;font-weight:800;margin:14px 0 8px;">Nova venda realizada!</h1>
+  <p style="color:#888;font-size:14px;margin:0;">Parabéns, <strong style="color:#D4AF37;">${producerName}</strong> — você acabou de fechar mais uma venda.</p>
+</td></tr>
+<tr><td style="padding:24px 40px 0;">
+  <div style="background:linear-gradient(135deg,#1a1500,#1a1200);border:1px solid #3a2e00;border-radius:12px;padding:22px;text-align:center;">
+    <div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Valor recebido</div>
+    <div style="color:#D4AF37;font-size:36px;font-weight:900;letter-spacing:-1px;">${valor}</div>
+  </div>
+</td></tr>
+<tr><td style="padding:16px 40px 28px;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:12px;border:1px solid #2a2a2a;overflow:hidden;">
+    <tr><td style="padding:14px 20px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;">Produto</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${productTitle}</td></tr></table></td></tr>
+    <tr><td style="padding:14px 20px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;">Cliente</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${customerName}</td></tr></table></td></tr>
+    <tr><td style="padding:14px 20px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;">E-mail do cliente</td><td style="color:#D4AF37;font-size:13px;font-weight:700;text-align:right;">${customerEmail}</td></tr></table></td></tr>
+    <tr><td style="padding:14px 20px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;">Método</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${paymentMethod}</td></tr></table></td></tr>
+    ${dataFmt ? `<tr><td style="padding:14px 20px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;">Data / Hora</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${dataFmt}</td></tr></table></td></tr>` : ""}
+  </table>
+</td></tr>
+<tr><td style="background:#0A0A0A;padding:18px 40px;text-align:center;border-top:1px solid #1a1a1a;">
+  <p style="color:#444;font-size:11px;margin:0;">© 2025 JosephPay · <a href="https://josephpay.com" style="color:#D4AF37;text-decoration:none;">josephpay.com</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
 
 // ── Mercado Pago client ────────────────────────────────────────────────────
 const mp = axios.create({
@@ -463,7 +555,7 @@ app.post("/api/mp/webhook", async (req, res) => {
       // Busca preço base do produto para garantir que produtor recebe 100%
       // (taxas MP e plataforma são sempre do comprador — já embutidas no clientTotal)
       const { data: prod } = await supabase.from("products")
-        .select("price").eq("id", targetSale.product_id).maybeSingle();
+        .select("price, title").eq("id", targetSale.product_id).maybeSingle();
       const baseProductPrice = prod?.price ?? grossAmount;
 
       // Atualiza sale existente (criada no checkout)
@@ -479,6 +571,35 @@ app.post("/api/mp/webhook", async (req, res) => {
       }).eq("id", targetSale.id);
       console.log(`[mp/webhook] sale ${targetSale.id} paga | produtor=R$${baseProductPrice} | mp_fee=R$${mpFee} | customer=${targetSale.customer_id}`);
       await updateCustomerStats(targetSale.customer_id);
+
+      // ── E-mails de notificação (fire-and-forget — falha nunca afeta o webhook) ──
+      (async () => {
+        try {
+          if (!process.env.RESEND_API_KEY) return;
+          const paymentMethodLabel = billingType.includes("CREDIT") ? "Cartão de Crédito" : billingType.includes("DEBIT") ? "Cartão de Débito" : "PIX";
+          const productTitle = prod?.title || "Produto";
+          const customerEmail = payment.payer?.email;
+          const customerName  = [payment.payer?.first_name, payment.payer?.last_name].filter(Boolean).join(" ") || "Cliente";
+          const { data: { user: producerUser } } = await supabase.auth.admin.getUserById(targetSale.owner_id);
+          const producerEmail = producerUser?.email;
+          const producerName  = producerUser?.user_metadata?.name || producerUser?.email?.split("@")[0] || "Produtor";
+          await Promise.all([
+            customerEmail ? resend.emails.send({
+              from:    FROM_EMAIL,
+              to:      customerEmail,
+              subject: `Compra confirmada — ${productTitle}`,
+              html:    emailCustomer({ customerName, productTitle, grossAmount, paymentMethod: paymentMethodLabel, producerName }),
+            }) : null,
+            producerEmail ? resend.emails.send({
+              from:    FROM_EMAIL,
+              to:      producerEmail,
+              subject: `💰 Nova venda — ${productTitle} · R$ ${Number(baseProductPrice).toFixed(2).replace(".", ",")}`,
+              html:    emailProducer({ producerName, productTitle, baseProductPrice, customerName, customerEmail: customerEmail || "—", paymentMethod: paymentMethodLabel, paymentDate }),
+            }) : null,
+          ].filter(Boolean));
+          console.log(`[email] enviados para cliente=${customerEmail} e produtor=${producerEmail}`);
+        } catch(e) { console.warn("[email] erro:", e.message); }
+      })();
 
     } else if (payment.status === "refunded" || payment.status === "cancelled") {
       if (targetSale) {
@@ -507,6 +628,30 @@ app.get("/api/asaas/balance", requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Teste de e-mail (não toca em nada crítico — dados fictícios via Resend real) ──
+app.get("/api/test-email", async (req, res) => {
+  const to = req.query.to;
+  if (!to) return res.status(400).json({ error: "Passe ?to=seuemail@gmail.com" });
+  if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: "RESEND_API_KEY não configurada" });
+  try {
+    const [r1, r2] = await Promise.all([
+      resend.emails.send({
+        from:    FROM_EMAIL,
+        to,
+        subject: "[TESTE] Compra confirmada — Consultoria Premium",
+        html:    emailCustomer({ customerName: "João Silva", productTitle: "Consultoria Premium 1:1", grossAmount: 330, paymentMethod: "PIX", producerName: "Luís Henrique" }),
+      }),
+      resend.emails.send({
+        from:    FROM_EMAIL,
+        to,
+        subject: "[TESTE] 💰 Nova venda — Consultoria Premium · R$ 300,00",
+        html:    emailProducer({ producerName: "Luís Henrique", productTitle: "Consultoria Premium 1:1", baseProductPrice: 300, customerName: "João Silva", customerEmail: "joao@gmail.com", paymentMethod: "PIX", paymentDate: new Date().toISOString() }),
+      }),
+    ]);
+    res.json({ ok: true, cliente: r1, produtor: r2 });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1407,9 +1552,17 @@ app.get("/api/whatsapp/pairing-code", requireAuth, async (req, res) => {
   if (!phone) return res.status(400).json({ error: "Telefone obrigatório" });
   try {
     const inst = await getUserInst(req.user.id);
-    const { data } = await evo.get(`/instance/connect/${inst}`, { params: { phoneNumber: phone } });
-    res.json({ pairingCode: data.pairingCode, code: data.code });
+    // Logout + delete para limpar instância em modo QR, depois recria em modo pairing
+    await evo.delete(`/instance/logout/${inst}`).catch(() => {});
+    await evo.delete(`/instance/delete/${inst}`).catch(() => {});
+    await new Promise(r => setTimeout(r, 2000));
+    await evo.post(`/instance/create`, { instanceName: inst, qrcode: false, integration: "WHATSAPP-BAILEYS" });
+    await setupEvolutionWebhook(inst);
+    await new Promise(r => setTimeout(r, 1000));
+    const { data } = await evo.get(`/instance/connect/${inst}`, { params: { number: phone } });
+    res.json({ pairingCode: data.pairingCode || null });
   } catch (err) {
+    console.error("[pairing-code]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 });
@@ -1443,10 +1596,10 @@ app.post("/api/track/visit", (req, res, next) => {
     const normalizeSource = s => {
       if (!s) return "direto";
       const l = s.toLowerCase();
-      if (["ig","insta","instagram","i.instagram.com"].includes(l)) return "instagram";
-      if (["fb","facebook","fb.com"].includes(l)) return "facebook";
-      if (["gg","goog","google"].includes(l)) return "google";
-      if (["wa","wpp","whatsapp"].includes(l)) return "whatsapp";
+      if (["ig","insta","instagram","i.instagram.com"].includes(l) || l.includes("instagram")) return "instagram";
+      if (["fb","facebook","fb.com"].includes(l) || l.includes("facebook")) return "facebook";
+      if (["gg","goog","google"].includes(l) || l.includes("google")) return "google";
+      if (["wa","wpp","whatsapp"].includes(l) || l.includes("whatsapp")) return "whatsapp";
       return l;
     };
     await supabase.from("visits").insert({

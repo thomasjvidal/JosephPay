@@ -234,7 +234,7 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
 // ────────────────────────────────────────────────────────────────────────────
 
 // ── Railway + helpers ────────────────────────────────────────────────────────
-const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))?'http://localhost:3001':'https://josephpay-production.up.railway.app';
+const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))?'':'https://josephpay-production.up.railway.app';
 const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});return await res.json();}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
@@ -1361,9 +1361,9 @@ function Topbar({title,sub,onLogout,initial,onOpenPerfil,wapConnected,avatarUrl}
           <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:26,letterSpacing:"-0.01em",lineHeight:1.1}}>{title}</div>
           {sub&&<div style={{color:MUTED,fontSize:12,marginTop:4,fontFamily:F}}>{sub}</div>}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
+        <div onClick={onOpenPerfil} style={{display:"flex",alignItems:"center",gap:10,marginTop:4,cursor:"pointer"}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:dotColor,flexShrink:0}}/>
-          <button onClick={onOpenPerfil} style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0,overflow:"hidden",padding:0}}>
+          <button style={{width:34,height:34,borderRadius:"50%",background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:TEXT,fontFamily:F,border:`1px solid ${BDR}`,cursor:"pointer",flexShrink:0,overflow:"hidden",padding:0}}>
             {avatarUrl?<img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initial}
           </button>
         </div>
@@ -1415,7 +1415,7 @@ function CropModal({src,onConfirm,onCancel}){
     </div>
   );
 }
-function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onSaved}){
+function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onSaved,onNavigate}){
   const [senhaMsg,setSenhaMsg]=useState("");
   const [editing,setEditing]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -1425,9 +1425,9 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   const [croppedBlob,setCroppedBlob]=useState(null);
   const [cropSrc,setCropSrc]=useState(null);
   const statusItems=[
-    {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED},
-    {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED},
-    {label:"Automações",val:"desligadas",c:MUTED},
+    {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED,action:wapConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
+    {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED,action:!siteActive?()=>{onNavigate&&onNavigate("maquina");}:null},
+    {label:"Automações",val:"desligadas",c:MUTED,action:()=>{onNavigate&&onNavigate("clientes",3);}},
   ];
   const handleSenha=async()=>{
     if(!email||email==="—")return;
@@ -1506,10 +1506,11 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
           {statusItems.map((s,i,arr)=>(
-            <div key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none"}}>
+            <div key={s.label} onClick={s.action||undefined} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:s.action?"pointer":"default"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:s.c,flexShrink:0}}/>
               <span style={{color:MUTED,fontSize:13,flex:1}}>{s.label}</span>
               <span style={{color:s.c,fontWeight:700,fontSize:13}}>{s.val}</span>
+              {s.action&&<span style={{color:GOLD,fontSize:15,marginLeft:4,lineHeight:1}}>›</span>}
             </div>
           ))}
         </div>
@@ -1561,7 +1562,8 @@ function AdminPanel({onLogout}){
 function ClientPanel({clientName,userEmail,onLogout}){
   const [tab,setTab]=useState("dashboard");
   const [navCustomerId,setNavCustomerId]=useState(null);
-  const onNav=(t,cid=null)=>{setTab(t);setNavCustomerId(cid);};
+  const [navSubTab,setNavSubTab]=useState(null);
+  const onNav=(t,cid=null,subTab=null)=>{setTab(t);setNavCustomerId(cid);setNavSubTab(subTab);};
   React.useLayoutEffect(()=>{if(tab==="chat")window.scrollTo(0,0);},[tab]);
   const [showPerfil,setShowPerfil]=useState(false);
   const [wapConnected,setWapConnected]=useState(null);
@@ -1596,7 +1598,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
   const VIEWS={
     dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
-    clientes:<ClientesTab targetCustomerId={navCustomerId} onWapChange={v=>setWapConnected(v)}/>,
+    clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab} onWapChange={v=>setWapConnected(v)}/>,
     maquina:<MaquinaTab/>,
     chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
@@ -1610,7 +1612,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
-      {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile}/>}
+      {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} onNavigate={(t,subTab=null)=>{setShowPerfil(false);onNav(t,null,subTab);}}/>}
     </>
   );
 }
@@ -1893,7 +1895,7 @@ function ProdutosTab({accent,isDeise}){
   );
 }
 
-function ClientesTab({targetCustomerId,onWapChange}){
+function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
   const [tab,setTab]=useState(0);
   const [clientes,setClientes]=useState(null);
   const [msgs,setMsgs]=useState([]);
@@ -1914,6 +1916,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
   const [qrCode,setQrCode]=useState(null);
   const [qrLoading,setQrLoading]=useState(false);
   const [pairingPhone,setPairingPhone]=useState('');
+  const [pairingCountry,setPairingCountry]=useState('55');
   const [pairingCode,setPairingCode]=useState(null);
   const [pairingMode,setPairingMode]=useState(false);
   const [showDisp,setShowDisp]=useState(false);
@@ -1968,11 +1971,25 @@ function ClientesTab({targetCustomerId,onWapChange}){
     return()=>clearInterval(iv);
   },[qrCode]);
   useEffect(()=>{
+    if(!pairingCode)return;
+    const iv=setInterval(async()=>{
+      const d=await apiCall('/api/whatsapp/status').catch(()=>null);
+      if(d?.connected){
+        setWapStatus('conectado');
+        onWapChange&&onWapChange(true);
+        setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');setPairingCountry('55');
+        clearInterval(iv);
+      }
+    },3000);
+    return()=>clearInterval(iv);
+  },[pairingCode]);
+  useEffect(()=>{
     if(targetCustomerId&&clientes){
       const idx=clientes.findIndex(c=>c.id===targetCustomerId);
       if(idx!==-1){setSel(idx);setTab(0);}
     }
   },[targetCustomerId,clientes]);
+  useEffect(()=>{if(navSubTab!==null)setTab(navSubTab);},[navSubTab]);
   useEffect(()=>{
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
@@ -2455,7 +2472,7 @@ function ClientesTab({targetCustomerId,onWapChange}){
       {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(2);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
       {showAdd&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Adicionar contato</div><div className="sh-s">Preencha os dados</div>{[{k:'name',l:'Nome completo',p:'Nome',t:'text'},{k:'phone',l:'Telefone (WhatsApp)',p:'(XX) XXXXX-XXXX',t:'tel'},{k:'email',l:'E-mail',p:'email@email.com',t:'email'},{k:'birthday',l:'Data de nascimento',p:'',t:'date'}].map(f=><div key={f.k} className="shf"><div className="shl">{f.l}</div><input className="shin" type={f.t} placeholder={f.p} value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}/></div>)}<button className="shbtn" onClick={salvarCliente} disabled={saving||!form.name.trim()}>{saving?'Salvando…':'Salvar'}</button></div></div>}
 
-      {(qrCode||pairingMode)&&<div className="ov" onClick={()=>{setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');}}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div>
+      {(qrCode||pairingMode)&&<div className="ov" onClick={()=>{setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');setPairingCountry('55');}}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div>
         {!pairingMode?(
           <>
             <div className="sh-s">Escaneie com o celular</div>
@@ -2466,9 +2483,25 @@ function ClientesTab({targetCustomerId,onWapChange}){
         ):(
           <>
             <div className="sh-s">Digite seu número para receber o código</div>
-            <div className="shf" style={{marginTop:12}}><div className="shl">Número (com DDD)</div><input className="shin" type="tel" placeholder="(11) 99999-9999" value={pairingPhone} onChange={e=>setPairingPhone(e.target.value)}/></div>
-            {pairingCode&&<div style={{textAlign:'center',margin:'16px 0',padding:'16px',background:'var(--c2)',borderRadius:12,border:'1px solid var(--ln)'}}><div style={{fontSize:12,color:'var(--t2)',marginBottom:6}}>Código — digite no WhatsApp</div><div style={{fontSize:32,fontWeight:800,letterSpacing:8,color:'var(--gd)'}}>{pairingCode}</div></div>}
-            <button onClick={async()=>{if(!pairingPhone.trim())return;setQrLoading(true);try{const d=await apiCall(`/api/whatsapp/pairing-code?phone=${encodeURIComponent(pairingPhone)}`);if(d?.pairingCode)setPairingCode(d.pairingCode);}catch(e){}setQrLoading(false);}} disabled={qrLoading||!pairingPhone.trim()} style={{width:'100%',background:'var(--gd)',border:'none',borderRadius:12,padding:'12px',color:'#000',fontSize:14,fontWeight:700,cursor:'pointer',marginTop:8,opacity:qrLoading?0.6:1}}>{qrLoading?'Aguarde…':'Obter código'}</button>
+            <div className="shf" style={{marginTop:12}}>
+              <div className="shl">País e número</div>
+              <div style={{display:'flex',gap:8}}>
+                <select value={pairingCountry} onChange={e=>setPairingCountry(e.target.value)} style={{background:'var(--c2)',border:'1px solid var(--ln)',borderRadius:10,padding:'10px 8px',color:'var(--t1)',fontSize:15,cursor:'pointer',flexShrink:0}}>
+                  <option value="55">🇧🇷 +55</option>
+                  <option value="1">🇺🇸 +1</option>
+                  <option value="351">🇵🇹 +351</option>
+                </select>
+                <input className="shin" type="tel" placeholder={pairingCountry==='1'?'(555) 123-4567':'(11) 99999-9999'} value={pairingPhone} onChange={e=>setPairingPhone(e.target.value)} style={{flex:1}}/>
+              </div>
+            </div>
+            {pairingCode&&<div style={{textAlign:'center',margin:'16px 0',padding:'16px',background:'var(--c2)',borderRadius:12,border:'1px solid var(--ln)'}}><div style={{fontSize:12,color:'var(--t2)',marginBottom:6}}>Código — digite no WhatsApp</div><div style={{fontSize:28,fontWeight:800,letterSpacing:6,color:'var(--gd)'}}>{pairingCode}</div></div>}
+            <button onClick={async()=>{
+              const num=pairingPhone.replace(/\D/g,'');
+              if(!num)return;
+              setQrLoading(true);
+              try{const d=await apiCall(`/api/whatsapp/pairing-code?phone=${encodeURIComponent(pairingCountry+num)}`);if(d?.pairingCode)setPairingCode(d.pairingCode);}catch(e){}
+              setQrLoading(false);
+            }} disabled={qrLoading||!pairingPhone.replace(/\D/g,'')} style={{width:'100%',background:'var(--gd)',border:'none',borderRadius:12,padding:'12px',color:'#000',fontSize:14,fontWeight:700,cursor:'pointer',marginTop:8,opacity:qrLoading?0.6:1}}>{qrLoading?'Aguarde…':'Obter código'}</button>
             <button onClick={()=>setPairingMode(false)} style={{width:'100%',background:'transparent',border:'none',color:'var(--t2)',fontSize:12,cursor:'pointer',marginTop:8,padding:8}}>← Voltar para QR Code</button>
           </>
         )}
@@ -2507,7 +2540,7 @@ function MaquinaTab(){
       if(map[key]) map[key]+=s.pct;
       else map[key]=s.pct;
     });
-    return Object.entries(map).map(([label,pct])=>({label,pct,source:Object.keys(srcLabel).find(k=>srcLabel[k]===label)||label})).sort((a,b)=>b.pct-a.pct);
+    return Object.entries(map).map(([label,pct])=>({label,pct,source:Object.keys(srcLabel).find(k=>srcLabel[k]===label)||label})).filter(s=>s.pct>0).sort((a,b)=>b.pct-a.pct);
   })();
   const hasSources=mergedSources.length>0;
 
@@ -2518,7 +2551,7 @@ function MaquinaTab(){
   var p=window.location.pathname;
   var ref=document.referrer;
   var q=new URLSearchParams(window.location.search);
-  var src=q.get("utm_source")||(ref.includes("instagram")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")?"whatsapp":ref?"referral":"direto");
+  var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
   var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
   fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
 })();
