@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Joseph Pay — Visão Geral do Negócio</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,wght@0,400;0,600;1,400&display=swap');
+
+    :root {
+      --gold: #D4AF37;
+      --gold-light: #F2CA50;
+      --gold-pale: #FDF6DC;
+      --black: #0A0A0A;
+      --dark: #111111;
+      --dark2: #1A1A1A;
+      --dark3: #222222;
+      --text: #E8E8E8;
+      --text-muted: #999999;
+      --border: #2A2A2A;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #fff;
+      color: #1a1a1a;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    /* ── CAPA ── */
+    .cover {
+      background: var(--dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 80px 40px;
+      page-break-after: always;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(212,175,55,0.12) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .cover::after {
+      content: '';
+      position: absolute;
+      bottom: -200px; right: -200px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(212,175,55,0.08) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .cover-logo {
+      font-family: 'Newsreader', serif;
+      font-size: 52px;
+      font-weight: 600;
+      color: var(--gold);
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cover-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cover-title {
+      font-size: 38px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.2;
+      max-width: 700px;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cover-title span { color: var(--gold); }
+
+    .cover-desc {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 560px;
+      line-height: 1.7;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cover-line {
+      width: 60px;
+      height: 2px;
+      background: var(--gold);
+      margin: 40px auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cover-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── ESTRUTURA ── */
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 60px 40px;
+    }
+
+    .part-header {
+      background: var(--dark);
+      color: #fff;
+      padding: 60px 40px;
+      page-break-before: always;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .part-header::before {
+      content: '';
+      position: absolute;
+      top: -100px; right: -100px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(212,175,55,0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .part-label {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .part-title {
+      font-family: 'Newsreader', serif;
+      font-size: 36px;
+      color: #fff;
+      line-height: 1.2;
+      max-width: 600px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .part-title span { color: var(--gold); }
+
+    /* ── SEÇÕES ── */
+    .section {
+      margin-bottom: 56px;
+      page-break-inside: avoid;
+    }
+
+    .section-number {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--black);
+      margin-bottom: 20px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--black);
+      margin: 24px 0 12px;
+    }
+
+    p { margin-bottom: 14px; color: #333; }
+
+    strong { color: var(--black); font-weight: 600; }
+
+    /* ── CALLOUT ── */
+    .callout {
+      background: var(--dark);
+      border-left: 3px solid var(--gold);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin: 24px 0;
+      color: #fff;
+    }
+
+    .callout .callout-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .callout p {
+      color: #ddd;
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .callout strong { color: var(--gold-light); }
+
+    /* ── HIGHLIGHT BOX ── */
+    .highlight {
+      background: var(--gold-pale);
+      border: 1px solid var(--gold);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .highlight p { color: #4a3800; margin: 0; }
+
+    /* ── LISTA ── */
+    ul, ol {
+      padding-left: 20px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    li strong { color: var(--black); }
+
+    /* ── TABELA ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+
+    th {
+      background: var(--dark);
+      color: var(--gold);
+      font-weight: 600;
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #eee;
+      color: #333;
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #fafafa; }
+
+    /* ── CARD GRID ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .card {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card-icon {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--black);
+      margin-bottom: 6px;
+    }
+
+    .card-desc { font-size: 13px; color: #555; margin: 0; }
+
+    /* ── PUSH STEPS ── */
+    .push-step {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 32px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid #eee;
+      page-break-inside: avoid;
+    }
+
+    .push-step:last-child { border-bottom: none; }
+
+    .push-letter {
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      background: var(--dark);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Newsreader', serif;
+      font-size: 22px;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .push-content { flex: 1; }
+
+    .push-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--black);
+      margin-bottom: 6px;
+    }
+
+    .push-sub {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .push-gap {
+      background: #fff8e1;
+      border: 1px solid var(--gold);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .push-gap .gap-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--gold);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    /* ── DIFERENCIAL CARDS ── */
+    .dif-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid #f0f0f0;
+      align-items: flex-start;
+    }
+
+    .dif-item:last-child { border-bottom: none; }
+
+    .dif-number {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--gold);
+      background: #111;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+    }
+
+    .dif-text strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .dif-text span { font-size: 13px; color: #555; }
+
+    /* ── DOR CARDS ── */
+    .dor-item {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-left: 3px solid var(--gold);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+
+    .dor-problema {
+      font-size: 13px;
+      font-style: italic;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    .dor-solucao {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--black);
+    }
+
+    .dor-solucao::before {
+      content: '→ ';
+      color: var(--gold);
+    }
+
+    /* ── VERSÕES FINAIS ── */
+    .pitch-card {
+      background: var(--dark);
+      border-radius: 12px;
+      padding: 28px;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+
+    .pitch-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .pitch-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #ddd;
+    }
+
+    .pitch-text strong { color: var(--gold-light); }
+
+    /* ── DIVISOR ── */
+    .divider {
+      border: none;
+      border-top: 1px solid #eee;
+      margin: 40px 0;
+    }
+
+    .gold-divider {
+      border: none;
+      border-top: 2px solid var(--gold);
+      margin: 32px 0;
+      opacity: 0.3;
+    }
+
+    /* ── PRINT ── */
+    @media print {
+      body { font-size: 13px; }
+      .cover { min-height: auto; padding: 60px 40px; }
+      .page { padding: 40px; }
+      .part-header { padding: 40px; }
+      .push-step, .dor-item, .section { page-break-inside: avoid; }
+      @page { margin: 0; size: A4; }
+    }
+
+    /* ── PROMESSA CENTRAL ── */
+    .promessa {
+      background: linear-gradient(135deg, var(--dark) 0%, #1a1200 100%);
+      border: 1px solid var(--gold);
+      border-radius: 12px;
+      padding: 36px;
+      text-align: center;
+      margin: 32px 0;
+    }
+
+    .promessa p {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .promessa p span { color: var(--gold); }
+
+    /* ── FUNIL ── */
+    .funil {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      margin: 24px auto;
+      max-width: 420px;
+    }
+
+    .funil-step {
+      background: var(--dark);
+      color: #fff;
+      text-align: center;
+      padding: 14px 24px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      position: relative;
+      width: 100%;
+    }
+
+    .funil-step .f-label { font-size: 13px; font-weight: 600; }
+    .funil-step .f-sub { font-size: 11px; color: var(--gold); margin-top: 2px; }
+
+    .funil-arrow {
+      color: var(--gold);
+      font-size: 18px;
+      margin: 2px 0;
+      line-height: 1;
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      background: var(--dark);
+      color: var(--text-muted);
+      text-align: center;
+      padding: 40px;
+      font-size: 12px;
+      letter-spacing: 1px;
+      margin-top: 80px;
+      page-break-before: always;
+    }
+
+    .footer strong { color: var(--gold); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     CAPA
+══════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">Joseph Pay</div>
+  <div class="cover-sub">Documento Interno · Visão Estratégica</div>
+
+  <div class="cover-title">
+    O que somos, para quem somos<br>e <span>como transformamos</span><br>o mercado
+  </div>
+
+  <div class="cover-line"></div>
+
+  <div class="cover-desc">
+    Este documento explica a Joseph Pay de forma completa — do leigo ao investidor —
+    incluindo nossa proposta de valor, diferenciais, metodologia de vendas
+    e os pulos do gato que nenhum concorrente entrega.
+  </div>
+
+  <div class="cover-line"></div>
+  <div class="cover-date">Maio de 2026 · Uso Interno</div>
+</div>
+
+
+<!-- ══════════════════════════════════════
+     PARTE 1 — PARA LEIGOS
+══════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-label">Parte 1</div>
+  <div class="part-title">Explicação Completa<br><span>para Leigos</span></div>
+</div>
+
+<div class="page">
+
+  <!-- 1. O que somos -->
+  <div class="section">
+    <div class="section-number">01 — O que é a Joseph Pay</div>
+    <h2>Em uma frase</h2>
+
+    <div class="promessa">
+      <p>A Joseph Pay é a primeira plataforma brasileira que transforma<br>
+      <span>qualquer vendedor em um negócio que vende todos os dias</span><br>
+      — com ou sem ele.</p>
+    </div>
+
+    <p>
+      Pensa assim: você é professor de culinária e quer vender um curso online.
+      Você é médica e quer vender consultas. Você é artesã e quer vender doces.
+      Antes da Joseph Pay, você precisaria de:
+    </p>
+
+    <ul>
+      <li>Uma ferramenta para cobrar (Mercado Pago, banco, PIX manual)</li>
+      <li>Uma planilha para organizar quem comprou</li>
+      <li>Um celular para mandar mensagem no WhatsApp um por um</li>
+      <li>Lembrança na cabeça de quem não respondeu, quem sumiu, quem é aniversariante</li>
+    </ul>
+
+    <div class="highlight">
+      <p>Com a Joseph Pay, você entra em um painel e faz tudo isso de um lugar só —
+      pagamento, clientes, conversas, inteligência. <strong>Não importa o que você vende:
+      curso, cirurgia, avião, caixa de doces.</strong> Se tem algo a vender e precisa cobrar,
+      a Joseph Pay funciona.</p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- 2. Clientes -->
+  <div class="section">
+    <div class="section-number">02 — Quem são nossos clientes</div>
+    <h2>Qualquer pessoa com algo a vender</h2>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🏭</div>
+        <div class="card-title">Produtor / Empresário</div>
+        <p class="card-desc">
+          Qualquer pessoa que cria e vende algo — curso, serviço, produto físico, assinatura, consultoria, cirurgia.
+          Ele define o preço, gera o link e recebe o dinheiro.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤝</div>
+        <div class="card-title">Afiliado</div>
+        <p class="card-desc">
+          Não criou nada — só divulga. Ganha comissão por cada venda que trouxe.
+          O sistema rastreia e calcula tudo automaticamente.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔗</div>
+        <div class="card-title">Coprodutor</div>
+        <p class="card-desc">
+          Dois ou mais produtores que criam um produto juntos e dividem a receita por percentual. A divisão é automática.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-icon">👤</div>
+        <div class="card-title">O que todos têm em comum</div>
+        <p class="card-desc">
+          Precisam <strong>cobrar</strong>, <strong>organizar quem comprou</strong>
+          e <strong>manter o contato</strong> para vender de novo.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Exemplo real</div>
+      <p>
+        Ana é nutricionista (produtora). João é personal trainer (afiliado).
+        João divulga o programa de Ana e ganha 30% de cada venda.
+        Na Joseph Pay, <strong>ambos enxergam tudo no painel deles</strong> — sem precisar combinar nada manualmente.
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- 3. Hotmart -->
+  <div class="section">
+    <div class="section-number">03 — A Hotmart e por que estamos além dela</div>
+    <h2>O mercado de referência — e onde falhamos em ir além</h2>
+
+    <p>
+      A Hotmart é a plataforma de referência no mercado de produtos digitais.
+      Ela faz duas coisas: cobra o cliente e entrega o acesso ao produto.
+      Só isso. O problema é que a Hotmart <strong>fica no meio entre o produtor e o cliente</strong>.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>O que a Hotmart entrega</th>
+          <th>O que a Hotmart NÃO entrega</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Processamento de pagamento</td>
+          <td>Contato direto com o cliente</td>
+        </tr>
+        <tr>
+          <td>Entrega de acesso ao produto</td>
+          <td>Histórico real de comportamento do comprador</td>
+        </tr>
+        <tr>
+          <td>Página de vendas básica</td>
+          <td>Comunicação em massa ou individual</td>
+        </tr>
+        <tr>
+          <td>Relatório básico de vendas</td>
+          <td>Reativação de clientes antigos</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      A Hotmart cobra em torno de <strong>9,9% + taxas do gateway</strong> em cada venda.
+      A Joseph Pay cobra <strong>1,5% de taxa</strong>.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Conta simples</div>
+      <p>
+        Produtor vendendo <strong>R$50.000/mês</strong>:<br>
+        Hotmart → R$5.000 de taxa por mês<br>
+        Joseph Pay → R$750 de taxa por mês<br>
+        <strong>Diferença: R$4.250 todo mês no bolso do produtor.</strong>
+        Essa conta sozinha já justifica a troca.
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- 4. Conversas -->
+  <div class="section">
+    <div class="section-number">04 — O que são as "Conversas" (antes chamadas de Disparos)</div>
+    <h2>Falar com muitas pessoas como se fosse uma só</h2>
+
+    <p>
+      Uma conversa em escala é mandar uma mensagem para muitas pessoas ao mesmo tempo pelo WhatsApp
+      — mas de forma que pareça pessoal. Não é spam. É a mesma técnica que funciona nas listas de transmissão,
+      só que automática, com o nome de cada pessoa, com o contexto certo.
+    </p>
+
+    <p>
+      O segredo está na <strong>segmentação</strong>. A Joseph Pay já sabe quem é quem na base:
+    </p>
+
+    <ul>
+      <li><strong>Leads</strong> (interessados que não compraram) → mensagem de oferta ou conteúdo de valor</li>
+      <li><strong>Clientes</strong> (já compraram uma vez) → mensagem de novo produto ou recompra</li>
+      <li><strong>Assinantes</strong> (pagam mensalmente) → mensagem de retenção ou upgrade</li>
+      <li><strong>Alunos de um produto específico</strong> → mensagem exclusiva para esse grupo</li>
+    </ul>
+
+    <div class="highlight">
+      <p>
+        <strong>Conversa certa, com a pessoa certa, no momento certo.</strong>
+        É por isso que converte — e parece pessoal, não propaganda.
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- 5. Máquina -->
+  <div class="section">
+    <div class="section-number">05 — A Máquina de Venda Contínua</div>
+    <h2>O sistema que trabalha enquanto você não está</h2>
+
+    <p>
+      Imagina uma loja física. Tem a vitrine, tem a vendedora que aborda, tem o caixa.
+      A Máquina de Venda Contínua é exatamente isso —
+      só que funciona <strong>24 horas por dia, 7 dias por semana, sem você precisar estar lá.</strong>
+    </p>
+
+    <p>Alguém entrou no site às 2 da manhã. O MiniChat capturou o contato. O sistema registrou como lead.
+    No dia seguinte você já tem um interessado esperando — sem ter feito nada.</p>
+
+    <div class="funil">
+      <div class="funil-step">
+        <div class="f-label">Site / Vitrine</div>
+        <div class="f-sub">100 pessoas chegam</div>
+      </div>
+      <div class="funil-arrow">▼</div>
+      <div class="funil-step">
+        <div class="f-label">MiniChat</div>
+        <div class="f-sub">60 conversam e deixam contato</div>
+      </div>
+      <div class="funil-arrow">▼</div>
+      <div class="funil-step">
+        <div class="f-label">Checkout</div>
+        <div class="f-sub">8 chegam ao pagamento</div>
+      </div>
+      <div class="funil-arrow">▼</div>
+      <div class="funil-step" style="background: #2a1a00; border: 1px solid #D4AF37;">
+        <div class="f-label" style="color: #D4AF37;">Venda confirmada</div>
+        <div class="f-sub">3 compram — dinheiro na conta</div>
+      </div>
+      <div class="funil-arrow">▼</div>
+      <div class="funil-step">
+        <div class="f-label">Base de Leads</div>
+        <div class="f-sub">57 ficam para o próximo contato</div>
+      </div>
+    </div>
+
+    <p>
+      As 57 que não compraram não somem — ficam na base para receber uma conversa depois.
+      <strong>A máquina captura quem a Hotmart descartaria.</strong>
+    </p>
+
+    <p>
+      E o diagnóstico é automático: se de 100 pessoas só 3 compraram,
+      a IA aponta onde está o gargalo. "Poucas pessoas chegam ao checkout —
+      o problema está na abordagem inicial." Isso é informação que nenhum concorrente entrega.
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- 6. Chat IA -->
+  <div class="section">
+    <div class="section-number">06 — O Chat IA: seu consultor que sabe tudo do negócio</div>
+    <h2>Inteligência artificial com contexto real</h2>
+
+    <p>
+      Imagina que você pudesse ligar para alguém que sabe
+      <strong>tudo sobre o seu negócio</strong> — quantos clientes você tem,
+      quanto vendeu hoje, qual produto vende mais, qual cliente gastou mais —
+      e fazer qualquer pergunta a essa pessoa, a qualquer hora, de graça.
+    </p>
+
+    <p>O Chat IA da Joseph Pay faz isso.</p>
+
+    <p>
+      A diferença para um ChatGPT qualquer: antes de responder, o sistema envia
+      o contexto real do negócio do produtor para a IA — clientes, vendas, produtos, KPIs.
+      A IA não chuta. Ela sabe.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">Exemplos de perguntas reais</div>
+      <p>
+        "Quantas vendas fiz essa semana?"<br>
+        "Quais clientes não compram há mais de 60 dias?"<br>
+        "Escreve uma mensagem de reativação para quem parou de comprar."<br>
+        "Qual foi meu melhor dia do mês e por quê?"
+      </p>
+    </div>
+
+    <p>
+      É como ter um analista de negócio e um copywriter disponíveis 24 horas,
+      dentro do próprio painel, falando português.
+    </p>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════
+     PARTE 2 — VISÃO DEFINITIVA
+══════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-label">Parte 2</div>
+  <div class="part-title">O que a Joseph Pay é<br><span>Versão Definitiva</span></div>
+</div>
+
+<div class="page">
+
+  <!-- A descoberta -->
+  <div class="section">
+    <div class="section-number">07 — A descoberta que ninguém havia nomeado</div>
+    <h2>Não somos CRM. Não somos gateway. Somos outra coisa.</h2>
+
+    <div class="promessa">
+      <p>
+        <span>"A Joseph Pay é a primeira plataforma brasileira</span><br>
+        que transforma qualquer vendedor em um negócio<br>
+        que vende todos os dias — <span>com ou sem ele."</span>
+      </p>
+    </div>
+
+    <p>
+      <strong>"Com ou sem ele"</strong> é o diferencial real.
+      Não é ferramenta. Não é CRM. É o negócio funcionando enquanto o dono dorme,
+      viaja, atende outros clientes, ou simplesmente descansa.
+    </p>
+
+    <p>
+      A Hotmart só vende quando o produtor manda tráfego.
+      O Mercado Pago só cobra quando a pessoa aparece.
+      <strong>A Joseph Pay ativa a base existente automaticamente — e cobra sem precisar do produtor lá.</strong>
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Receita adormecida -->
+  <div class="section">
+    <div class="section-number">08 — O maior ativo que todo vendedor ignora</div>
+    <h2>A receita adormecida na base de clientes</h2>
+
+    <p>
+      Todo vendedor tem um <strong>depósito de dinheiro que ele ignora</strong>:
+      a base de quem já comprou. Essas pessoas já confiam nele.
+      Já pagaram uma vez. O custo de vender para elas é perto de zero —
+      sem anúncio, sem novo tráfego, sem nada.
+    </p>
+
+    <p>
+      Só que esse dinheiro está dormindo.
+      Porque o vendedor não tem sistema de reativação.
+      Não tem follow-up. Não tem forma de falar com todo mundo de uma vez de forma inteligente.
+    </p>
+
+    <div class="callout">
+      <div class="callout-label">A Joseph Pay é a chave que abre esse cofre</div>
+      <p>
+        Em vez de viver correndo atrás de clientes novos — que são caros, incertos e levam tempo —
+        o produtor fala com quem já confia nele e vende de novo.
+        <strong>Isso é previsibilidade de receita.</strong>
+        É o que diferencia um negócio estável de um negócio que vive no aperto.
+      </p>
+    </div>
+
+    <h3>Como isso aparece na tela</h3>
+    <p>
+      Na aba de início, a Joseph Pay mostra um número que não existe em nenhuma plataforma:
+      <strong>"Você tem R$X de receita adormecida na sua base."</strong>
+    </p>
+    <p>
+      Embaixo: um botão. "Ativar agora." Um clique.
+      A máquina manda uma mensagem personalizada para cada cliente que parou de comprar —
+      com o nome deles, com o produto certo, no horário certo.
+      A receita adormecida acorda.
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Diferenciais -->
+  <div class="section">
+    <div class="section-number">09 — Os maiores diferenciais</div>
+    <h2>O que nos separa de tudo que existe</h2>
+
+    <div class="dif-item">
+      <div class="dif-number">1</div>
+      <div class="dif-text">
+        <strong>Taxa de 1,5% — a mais baixa do mercado</strong>
+        <span>Para quem vende R$30k/mês, são R$2.500 economizados todo mês vs. Hotmart.
+        Para R$50k/mês, são R$4.250. Para R$100k/mês, são R$8.500 — na conta do produtor, não da plataforma.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">2</div>
+      <div class="dif-text">
+        <strong>Vende qualquer coisa</strong>
+        <span>Não é só curso digital. É consulta, cirurgia, produto físico, assinatura, serviço de alto ticket, avião,
+        caixa de doces. Se tem preço, a Joseph Pay cobra.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">3</div>
+      <div class="dif-text">
+        <strong>WhatsApp nativo — onde o Brasil compra</strong>
+        <span>Brasil tem mais de 2 celulares por pessoa. Todo mundo vende pelo WhatsApp.
+        A Joseph Pay é a única plataforma que une pagamento + CRM + WhatsApp no mesmo lugar.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">4</div>
+      <div class="dif-text">
+        <strong>O relacionamento pertence ao produtor — não à plataforma</strong>
+        <span>Na Hotmart, o cliente é da Hotmart. Na Joseph Pay, é do produtor — com nome, telefone, histórico,
+        LTV, status. Para sempre.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">5</div>
+      <div class="dif-text">
+        <strong>IA com contexto real do negócio</strong>
+        <span>Não é IA genérica. É IA que sabe quantos clientes você tem, o que cada um comprou,
+        qual produto performa mais, e o que fazer hoje para vender mais.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">6</div>
+      <div class="dif-text">
+        <strong>A máquina trabalha dormindo</strong>
+        <span>Aniversário, cashback, pós-compra, reativação — automações que rodam sozinhas,
+        sem o produtor precisar lembrar ou apertar botão.</span>
+      </div>
+    </div>
+
+    <div class="dif-item">
+      <div class="dif-number">7</div>
+      <div class="dif-text">
+        <strong>Joseph e Iaco — o atendente IA no WhatsApp</strong>
+        <span>Lead manda mensagem às 11 da noite. O Joseph e Iaco responde, qualifica, envia o link de pagamento.
+        O produtor acorda com a venda feita. Isso não existe em nenhuma plataforma brasileira.</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Concorrentes -->
+  <div class="section">
+    <div class="section-number">10 — Concorrentes e a categoria nova</div>
+    <h2>Por que estamos criando algo que não existia</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Empresa</th>
+          <th>O que faz</th>
+          <th>O que não faz</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Hotmart</strong></td>
+          <td>Vende produto digital, processa pagamento</td>
+          <td>Não tem WhatsApp, não tem CRM real, cobra 9,9%</td>
+        </tr>
+        <tr>
+          <td><strong>Mercado Pago</strong></td>
+          <td>Processa pagamento com segurança</td>
+          <td>Não tem CRM, não tem conversas, não tem IA</td>
+        </tr>
+        <tr>
+          <td><strong>Shopify</strong></td>
+          <td>E-commerce completo para lojas</td>
+          <td>Complexo, caro, não é para quem vende por WhatsApp</td>
+        </tr>
+        <tr>
+          <td><strong>HubSpot</strong></td>
+          <td>CRM completo e robusto</td>
+          <td>Não tem gateway, não tem WhatsApp nativo, caro demais</td>
+        </tr>
+        <tr>
+          <td><strong>ManyChat</strong></td>
+          <td>Automação de WhatsApp e Instagram</td>
+          <td>Não tem gateway, não tem CRM financeiro</td>
+        </tr>
+        <tr>
+          <td><strong>Joseph Pay</strong></td>
+          <td><strong>Tudo acima junto</strong></td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">A nova categoria que estamos criando</div>
+      <p>
+        <strong>Sistema operacional de vendas para quem vende pelo celular no Brasil.</strong><br>
+        Cobrar + organizar + conversar + entender — para qualquer vendedor,
+        com um celular, em menos de 10 minutos para começar.
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Dores -->
+  <div class="section">
+    <div class="section-number">11 — As dores reais de quem usa a Joseph Pay</div>
+    <h2>O que as pessoas sentem — e o que a gente resolve</h2>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Perco clientes porque não sei quem quase comprou e não comprou."</div>
+      <div class="dor-solucao">MiniChat captura o contato antes de a pessoa ir embora</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Gasto horas mandando mensagem uma por uma no WhatsApp."</div>
+      <div class="dor-solucao">Conversas em escala com nome e contexto de cada pessoa</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Não sei quanto realmente ganho depois de todas as taxas."</div>
+      <div class="dor-solucao">Dashboard mostra o valor exato que cai na sua conta, separado de cada taxa</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Estou pagando 10% na Hotmart e estou com raiva disso."</div>
+      <div class="dor-solucao">Taxa de 1,5% — a mais baixa do mercado</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Não sei de onde vêm meus clientes — Instagram? Google? Indicação?"</div>
+      <div class="dor-solucao">Analytics de origem mostra exatamente por onde cada pessoa chegou</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Tenho clientes antigos que sumiram e não sei como falar com eles."</div>
+      <div class="dor-solucao">Reativação automática — cashback, mensagem personalizada, um clique</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Quero parceiro para criar produto mas dividir comissão é complicado."</div>
+      <div class="dor-solucao">Coprodução com divisão automática por percentual</div>
+    </div>
+
+    <div class="dor-item">
+      <div class="dor-problema">"Não entendo tecnologia mas preciso vender online."</div>
+      <div class="dor-solucao">Checkout em 3 cliques, painel simples, IA que explica tudo em português</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════
+     PARTE 3 — METODOLOGIA PUSH
+══════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-label">Parte 3</div>
+  <div class="part-title">Metodologia PUSH<br><span>Os Pulos do Gato</span></div>
+</div>
+
+<div class="page">
+
+  <div class="section">
+    <div class="section-number">12 — A metodologia do CEO da Cimed aplicada à Joseph Pay</div>
+    <h2>6 etapas. 6 pulos do gato. Nenhuma venda perdida.</h2>
+
+    <p>
+      João Adibe, CEO da Cimed, estrutura todas as vendas em 6 etapas — da preparação ao pós-venda.
+      A Joseph Pay não só cobre cada uma dessas etapas como entrega o que nenhuma outra plataforma entrega:
+      o pulo do gato que transforma cada etapa de boa em imbatível.
+    </p>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">P</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 1</div>
+      <div class="push-title">Planejamento</div>
+      <p>Na Cimed: o vendedor planeja antes de ir ao cliente. Sem planejamento, vai na sorte.</p>
+      <p>
+        Na Joseph Pay: o dashboard mostra os KPIs do mês em tempo real —
+        receita bruta, líquida, vendas hoje, assinaturas ativas, leads novos.
+      </p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        A IA faz o planejamento <strong>ativo</strong>, não passivo. Em vez de só mostrar números,
+        ela diz o que fazer: "Você tem 5 leads que visitaram há 48h e não compraram.
+        Quer que eu escreva uma mensagem para eles agora?" O produtor clica em sim.
+        O plano do dia está feito em 30 segundos.
+      </div>
+    </div>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">U</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 2</div>
+      <div class="push-title">Aproximação — entender o cliente</div>
+      <p>Na Cimed: conhecer o perfil e a realidade do cliente antes de falar. Nunca abordar às cegas.</p>
+      <p>
+        Na Joseph Pay: antes de qualquer contato, o sistema já sabe tudo —
+        o que a pessoa comprou, quando, quanto gastou, se tem aniversário chegando.
+      </p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        A IA prepara um briefing humano antes da conversa:
+        <em>"Maria comprou seu curso há 3 meses. Gastou R$297. Não voltou desde então.
+        Aniversário dela é daqui a 5 dias. Quer que eu escreva uma mensagem para ela agora?"</em>
+        O produtor lê em 10 segundos, clica em sim, revisa, envia. Aproximação feita.
+      </div>
+    </div>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">S</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 3</div>
+      <div class="push-title">Verificação — analisar o campo</div>
+      <p>Na Cimed: estudar o ponto de venda e o concorrente enquanto aguarda atendimento.</p>
+      <p>
+        Na Joseph Pay: saber de onde vêm os clientes, qual produto converte mais,
+        em qual dia da semana as vendas sobem.
+      </p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        O funil visual na aba Máquina mostra o gargalo com precisão:
+        "100 pessoas visitaram, 60 abriram o chat, 8 chegaram ao checkout, 3 compraram.
+        O problema está na etapa 2 — poucas pessoas chegam ao pagamento."
+        Isso é inteligência de funil que a Hotmart nunca entrega.
+      </div>
+    </div>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">H</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 4</div>
+      <div class="push-title">Hit — negociação estratégica</div>
+      <p>Na Cimed: colocar o time para jogar estrategicamente. A oferta certa para a pessoa certa.</p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        Conversas segmentadas por grupo — leads recebem oferta de entrada,
+        clientes recebem upsell, assinantes recebem retenção, alunos de um produto específico
+        recebem mensagem exclusiva daquele produto.
+        A mensagem parece pessoal porque usa nome, produto e contexto reais.
+        Não é spam — é conversa inteligente em escala.
+      </div>
+    </div>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">—</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 5</div>
+      <div class="push-title">Fechamento — sem fricção</div>
+      <p>Na Cimed: identificar o momento exato de fechar sem ser invasivo.</p>
+      <p>
+        Na Joseph Pay: o produtor vai na aba de Produtos, copia o link do produto,
+        manda para a pessoa. Ela acessa, insere os dados, escolhe PIX / cartão / boleto.
+        O sistema registra tudo.
+      </p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        Dentro da própria conversa, o produtor clica em "Enviar Link de Pagamento",
+        escolhe o produto, e o link vai direto no WhatsApp da pessoa.
+        Ela clica, paga o PIX em 30 segundos, o dinheiro cai.
+        O produtor nunca saiu da tela de conversa.
+        A venda fecha onde a negociação aconteceu.
+      </div>
+    </div>
+  </div>
+
+  <div class="push-step">
+    <div class="push-letter">—</div>
+    <div class="push-content">
+      <div class="push-sub">Etapa 6</div>
+      <div class="push-title">Pós-venda — a cultura que fideliza</div>
+      <p>Na Cimed: Adibe faz lives às 6:30 da manhã, 3x por semana, para manter a equipe alinhada e a cultura viva.</p>
+      <div class="push-gap">
+        <div class="gap-label">Pulo do gato</div>
+        As automações de pós-venda fazem o trabalho das lives — mas para cada cliente,
+        individualmente, no horário certo, sem o produtor precisar lembrar:
+        <br><br>
+        • <strong>Aniversário:</strong> mensagem automática no dia<br>
+        • <strong>Cashback:</strong> oferta 30 dias após a compra<br>
+        • <strong>Pós-compra:</strong> boas-vindas e onboarding automático<br>
+        • <strong>Reativação:</strong> cliente sumido recebe mensagem personalizada<br>
+        <br>
+        O produtor ativa uma vez. A partir daí, a máquina trabalha enquanto ele dorme.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ══════════════════════════════════════
+     PARTE 4 — PROMESSA E FUTURO
+══════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-label">Parte 4</div>
+  <div class="part-title">A Promessa Central<br><span>e o Futuro</span></div>
+</div>
+
+<div class="page">
+
+  <div class="section">
+    <div class="section-number">13 — A promessa que une tudo</div>
+    <h2>Não "nós temos X". Mas "você nunca mais vai Y".</h2>
+
+    <div class="promessa">
+      <p>
+        <span>"Você nunca mais vai perder uma venda</span><br>
+        por falta de follow-up."
+      </p>
+    </div>
+
+    <p>Cada funcionalidade existe em serviço dessa promessa:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Funcionalidade</th>
+          <th>O que entrega</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Checkout</strong></td>
+          <td>Venda feita, dinheiro na conta, sem fricção</td>
+        </tr>
+        <tr>
+          <td><strong>MiniChat</strong></td>
+          <td>Lead capturado antes de ir embora — nunca mais perdido</td>
+        </tr>
+        <tr>
+          <td><strong>Conversas automáticas</strong></td>
+          <td>Follow-up feito sem trabalho manual</td>
+        </tr>
+        <tr>
+          <td><strong>Receita adormecida</strong></td>
+          <td>Cliente antigo reativado, dinheiro que estava dormindo acorda</td>
+        </tr>
+        <tr>
+          <td><strong>Joseph e Iaco</strong></td>
+          <td>Venda fechada às 11 da noite, sem o produtor estar acordado</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <div class="section-number">14 — O que a Joseph Pay é em 3 versões</div>
+    <h2>Para qualquer conversa, em qualquer contexto</h2>
+
+    <div class="pitch-card">
+      <div class="pitch-label">Para qualquer pessoa — 10 segundos</div>
+      <div class="pitch-text">
+        "É o sistema que faz seu negócio <strong>vender todo dia</strong>,
+        mesmo quando você não está trabalhando."
+      </div>
+    </div>
+
+    <div class="pitch-card">
+      <div class="pitch-label">Para um produtor — 30 segundos</div>
+      <div class="pitch-text">
+        "Você cobra, organiza seus clientes, fala com eles na hora certa
+        e entende o que está funcionando — <strong>tudo em um lugar</strong>.
+        E paga <strong>1,5% de taxa</strong>, não 10%."
+      </div>
+    </div>
+
+    <div class="pitch-card">
+      <div class="pitch-label">Para um investidor — 2 minutos</div>
+      <div class="pitch-text">
+        "A Joseph Pay é a infraestrutura de vendas para a economia informal e semi-formal do Brasil,
+        que roda inteiramente no WhatsApp. Qualquer pessoa com algo a vender —
+        produto digital, físico, serviço, assinatura — tem em um único painel:
+        gateway de pagamento com a menor taxa do mercado,
+        CRM com histórico completo de cada cliente,
+        comunicação automatizada em escala personalizada,
+        e inteligência artificial que <strong>planeja o dia de vendas</strong>
+        e atende clientes autonomamente."
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section">
+    <div class="section-number">15 — O que está construído e o que vem a seguir</div>
+    <h2>Status real — sem enfeite</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Funcionalidade</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Checkout (PIX, cartão, boleto, parcelamento)</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>Dashboard com KPIs e gráficos</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>CRM de clientes com LTV</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>Chat IA com contexto real do negócio</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>Afiliados e coprodução</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>Email de confirmação para produtor e cliente</td>
+          <td>✅ Funcionando</td>
+        </tr>
+        <tr>
+          <td>Conversas WhatsApp segmentadas</td>
+          <td>⚙️ Estrutura pronta, falta configurar servidor</td>
+        </tr>
+        <tr>
+          <td>Automações (aniversário, cashback, pós-compra)</td>
+          <td>⚙️ Estrutura pronta, falta ativar</td>
+        </tr>
+        <tr>
+          <td>MiniChat capturando leads no site</td>
+          <td>🔜 A implementar</td>
+        </tr>
+        <tr>
+          <td>Funil visual na aba Máquina</td>
+          <td>🔜 A implementar</td>
+        </tr>
+        <tr>
+          <td>Receita adormecida (cálculo e botão de ativar)</td>
+          <td>🔜 A implementar</td>
+        </tr>
+        <tr>
+          <td>Joseph e Iaco — atendente IA no WhatsApp</td>
+          <td>🔜 Próxima grande feature</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <strong>Joseph Pay</strong> · Documento Interno · Maio 2026<br>
+  Uso restrito à equipe. Não distribuir externamente sem autorização.
+</div>
+
+</body>
+</html>
