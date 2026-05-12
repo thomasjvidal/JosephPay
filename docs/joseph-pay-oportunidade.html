@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Joseph Pay — O que é e como fazer parte</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --gold: #D4AF37;
+    --gold2: #F2CA50;
+    --gold-dim: rgba(212,175,55,0.15);
+    --gold-border: rgba(212,175,55,0.2);
+    --bg: #0A0A09;
+    --bg2: #131312;
+    --bg3: #1a1a18;
+    --bg4: #222220;
+    --text: #E8E4DF;
+    --muted: rgba(232,228,223,0.5);
+    --faint: rgba(232,228,223,0.2);
+    --white: #ffffff;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  /* ── CAPA ── */
+  .cover {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 80px 40px;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140%;
+    height: 80%;
+    background: radial-gradient(ellipse at center, rgba(212,175,55,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cover-eagle {
+    font-size: 52px;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+    filter: sepia(1) saturate(3) hue-rotate(5deg) brightness(0.85);
+  }
+
+  .cover-brand {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 52px;
+    font-weight: 300;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 8px;
+  }
+
+  .cover-tagline {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    position: relative;
+    z-index: 1;
+    margin-bottom: 64px;
+  }
+
+  .cover-divider {
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--gold), transparent);
+    margin: 0 auto 64px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cover-title {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 38px;
+    font-weight: 400;
+    line-height: 1.25;
+    color: var(--text);
+    max-width: 600px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 20px;
+  }
+
+  .cover-title em {
+    color: var(--gold2);
+    font-style: italic;
+  }
+
+  .cover-subtitle {
+    font-size: 15px;
+    color: var(--muted);
+    max-width: 480px;
+    line-height: 1.7;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cover-footer {
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* ── CONTEÚDO ── */
+  .content {
+    padding: 72px 56px;
+  }
+
+  .section {
+    margin-bottom: 64px;
+    page-break-inside: avoid;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 30px;
+    font-weight: 400;
+    line-height: 1.25;
+    color: var(--text);
+    margin-bottom: 24px;
+  }
+
+  .section-title em {
+    color: var(--gold2);
+    font-style: italic;
+  }
+
+  p {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.8;
+    margin-bottom: 16px;
+  }
+
+  p strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ── BLOCO DESTACADO ── */
+  .highlight-block {
+    background: var(--bg3);
+    border: 1px solid var(--gold-border);
+    border-radius: 18px;
+    padding: 28px 30px;
+    margin: 28px 0;
+  }
+
+  .highlight-block p {
+    margin-bottom: 0;
+  }
+
+  /* ── LISTA SIMPLES ── */
+  .clean-list {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+  }
+
+  .clean-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--faint);
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .clean-list li:last-child {
+    border-bottom: none;
+  }
+
+  .clean-list li::before {
+    content: '◆';
+    color: var(--gold);
+    font-size: 8px;
+    flex-shrink: 0;
+    margin-top: 7px;
+  }
+
+  .clean-list li strong {
+    color: var(--text);
+  }
+
+  /* ── APPS GRID ── */
+  .apps-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 24px 0;
+    background: var(--faint);
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .app-row {
+    background: var(--bg3);
+    padding: 18px 22px;
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .app-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--gold);
+    flex-shrink: 0;
+    font-weight: 700;
+  }
+
+  .app-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .app-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* ── DIVISOR DE SEÇÃO ── */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 56px 0;
+  }
+
+  .divider-line {
+    flex: 1;
+    height: 1px;
+    background: var(--faint);
+  }
+
+  .divider-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    opacity: 0.5;
+  }
+
+  /* ── VAGAS ── */
+  .vaga-card {
+    background: var(--bg3);
+    border: 1px solid var(--gold-border);
+    border-radius: 22px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    page-break-inside: avoid;
+  }
+
+  .vaga-header {
+    background: linear-gradient(135deg, rgba(212,175,55,0.12) 0%, rgba(212,175,55,0.04) 100%);
+    border-bottom: 1px solid var(--gold-border);
+    padding: 28px 30px 24px;
+  }
+
+  .vaga-numero {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+
+  .vaga-titulo {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 26px;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+
+  .vaga-resumo {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.65;
+    margin: 0;
+  }
+
+  .vaga-body {
+    padding: 24px 30px;
+  }
+
+  .vaga-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 14px;
+    margin-top: 22px;
+  }
+
+  .vaga-section-title:first-child {
+    margin-top: 0;
+  }
+
+  .vaga-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px;
+  }
+
+  .vaga-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .vaga-list li:last-child {
+    border-bottom: none;
+  }
+
+  .vaga-list li::before {
+    content: '→';
+    color: var(--gold);
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-size: 13px;
+  }
+
+  .vaga-list li strong {
+    color: var(--text);
+  }
+
+  /* ── GANHOS ── */
+  .ganhos-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+    background: var(--faint);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 14px 0;
+  }
+
+  .ganho-item {
+    background: var(--bg4);
+    padding: 16px 14px;
+    text-align: center;
+  }
+
+  .ganho-val {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--gold2);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .ganho-lbl {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ── MISSÃO ── */
+  .missao-block {
+    background: linear-gradient(135deg, rgba(212,175,55,0.06) 0%, transparent 100%);
+    border: 1px solid var(--gold-border);
+    border-radius: 22px;
+    padding: 40px 36px;
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  .missao-symbol {
+    font-size: 28px;
+    color: var(--gold);
+    margin-bottom: 20px;
+    opacity: 0.7;
+  }
+
+  .missao-text {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.5;
+    max-width: 540px;
+    margin: 0 auto 20px;
+  }
+
+  .missao-sub {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.75;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  /* ── RODAPÉ ── */
+  .footer {
+    border-top: 1px solid var(--faint);
+    padding: 40px 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 18px;
+    font-weight: 300;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+
+  .footer-info {
+    font-size: 11px;
+    color: var(--faint);
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    html, body { background: #0A0A09 !important; }
+    .cover { min-height: 100vh; }
+    .page-break { page-break-before: always; }
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- CAPA -->
+  <div class="cover">
+    <div class="cover-eagle">🦅</div>
+    <div class="cover-brand">Joseph Pay</div>
+    <div class="cover-tagline">Sistema de vendas para quem vende de verdade</div>
+    <div class="cover-divider"></div>
+    <div class="cover-title">O que é,<br>como funciona<br>e como <em>fazer parte</em></div>
+    <p class="cover-subtitle" style="position:relative;z-index:1;">Este documento explica o que é a Joseph Pay de forma simples e apresenta duas oportunidades reais de trabalho e renda.</p>
+    <div class="cover-footer">
+      <span>Documento de apresentação</span>
+      <span style="opacity:0.3">·</span>
+      <span>2026</span>
+    </div>
+  </div>
+
+  <!-- CONTEÚDO -->
+  <div class="content">
+
+    <!-- O PROBLEMA -->
+    <div class="section">
+      <div class="section-label">O ponto de partida</div>
+      <div class="section-title">Todo mundo que vende<br>enfrenta os <em>mesmos três problemas</em></div>
+
+      <ul class="clean-list">
+        <li><strong>Cobrar é trabalhoso.</strong> Tem que mandar PIX na conversa, confirmar pagamento, mandar comprovante. Tudo manual.</li>
+        <li><strong>Organizar clientes é impossível.</strong> Estão espalhados no WhatsApp, no Instagram, no bloco de notas.</li>
+        <li><strong>Manter contato dá trabalho demais.</strong> Lembrar de aniversário, mandar mensagem de retorno, avisar de oferta — tudo no braço.</li>
+      </ul>
+
+      <div class="highlight-block">
+        <p>A Joseph Pay resolve os três ao mesmo tempo, num único lugar. Para qualquer pessoa que vende qualquer coisa — não importa o produto, não importa o nicho. Pode ser uma bala. Pode ser um avião.</p>
+      </div>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- PARA QUEM -->
+    <div class="section">
+      <div class="section-label">Para quem é</div>
+      <div class="section-title">Qualquer pessoa que<br><em>vende alguma coisa</em></div>
+
+      <p>Não importa o que você vende. Pode ser um curso, uma consulta, um bolo, um serviço de reforma, uma assinatura. Se tem preço, a Joseph Pay cobra, organiza e mantém o relacionamento com quem comprou.</p>
+
+      <ul class="clean-list">
+        <li>Médica que vende consultas e cirurgias</li>
+        <li>Nutricionista que vende planos de alimentação</li>
+        <li>Empresário que vende serviços e projetos</li>
+        <li>Quem vende cursos, mentorias e conteúdo digital</li>
+        <li>Quem vende produtos físicos, assinaturas ou pacotes</li>
+      </ul>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- COMO COMEÇA -->
+    <div class="section">
+      <div class="section-label">O começo de tudo</div>
+      <div class="section-title">Tudo começa com<br>o <em>site do profissional</em></div>
+
+      <p>Quando alguém entra na Joseph Pay, recebe um site profissional. Esse site já vem com duas coisas instaladas que a maioria das pessoas nunca teria acesso:</p>
+
+      <ul class="clean-list">
+        <li><strong>O sensor de visitas</strong> — um código invisível que registra de onde cada visitante veio. Do Instagram? Do Google? Do WhatsApp? A plataforma sabe, e mostra.</li>
+        <li><strong>O MiniChat</strong> — uma janelinha de conversa que aparece quando alguém visita o site. Se a pessoa digitar qualquer coisa ali, o nome e o contato dela vão direto para a lista de clientes do dono do negócio. Ela estava quase indo embora sem comprar. Com o MiniChat, o contato foi salvo antes de ir embora.</li>
+      </ul>
+
+      <div class="highlight-block">
+        <p>A maioria dos visitantes de um site vai embora e some para sempre. Com o MiniChat, pelo menos o contato fica registrado — e o dono do negócio pode entrar em contato depois.</p>
+      </div>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- O QUE ACONTECE DEPOIS -->
+    <div class="section">
+      <div class="section-label">O fluxo de vendas</div>
+      <div class="section-title">Do primeiro contato<br>ao <em>dinheiro na conta</em></div>
+
+      <p>O produtor cria seu produto dentro da plataforma — pode ser uma consulta, um curso, um serviço, o que for. A plataforma gera um link de pagamento automático.</p>
+      <p>Esse link vai pro WhatsApp, pro Instagram, pra bio, pra onde quiser. Quem clicar vai para uma página de pagamento profissional — com o nome do produto, o valor, e opção de pagar no PIX, boleto ou cartão em até 12 vezes.</p>
+      <p><strong>O cliente paga. O dinheiro vai para a conta. O cliente entra para a lista de clientes automaticamente.</strong></p>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- O APLICATIVO -->
+    <div class="section">
+      <div class="section-label">Dentro do aplicativo</div>
+      <div class="section-title">Cinco áreas,<br>cada uma com sua <em>função</em></div>
+
+      <div class="apps-grid">
+        <div class="app-row">
+          <div class="app-icon">⌂</div>
+          <div>
+            <div class="app-name">Início</div>
+            <div class="app-desc">A tela principal. Mostra quanto entrou no mês, quantas vendas foram feitas, o gráfico de receita ao longo do tempo e o botão para sacar. Tudo em tempo real.</div>
+          </div>
+        </div>
+        <div class="app-row">
+          <div class="app-icon">◈</div>
+          <div>
+            <div class="app-name">Produtos</div>
+            <div class="app-desc">Onde o produtor cria e gerencia o que vende. Cada produto tem seu próprio link de pagamento. Um clique copia o link. Um clique mostra quantas vendas aquele produto fez no mês.</div>
+          </div>
+        </div>
+        <div class="app-row">
+          <div class="app-icon">◻</div>
+          <div>
+            <div class="app-name">Clientes</div>
+            <div class="app-desc">O coração do sistema. Aqui ficam todos — os que compraram, os que demonstraram interesse, os assinantes. Histórico de cada um, mensagens em grupo, automações de aniversário e pós-compra. O sistema manda as mensagens sozinho, no horário certo, com o nome de cada pessoa.</div>
+          </div>
+        </div>
+        <div class="app-row">
+          <div class="app-icon">⚙</div>
+          <div>
+            <div class="app-name">Máquina</div>
+            <div class="app-desc">Mostra de onde vêm os visitantes do site — Instagram, Google, WhatsApp, direto. O produtor vê onde estão as pessoas que chegam até ele e quanto cada canal está trazendo.</div>
+          </div>
+        </div>
+        <div class="app-row">
+          <div class="app-icon">✧</div>
+          <div>
+            <div class="app-name">Chat IA</div>
+            <div class="app-desc">Um assistente de inteligência artificial que o dono do negócio usa para tirar dúvidas sobre o próprio negócio. "Quantas vendas tive essa semana?" "Como configuro o checkout?" Responde em português, com base nos dados reais da conta.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- VAGAS -->
+    <div class="section">
+      <div class="section-label">Como fazer parte</div>
+      <div class="section-title">Duas oportunidades<br>para quem quer<br><em>crescer com a gente</em></div>
+
+      <p>A Joseph Pay está crescendo. Para escalar a operação, estamos abrindo duas posições para pessoas de confiança. Não é emprego com salário fixo. É comissão por resultado — e os números são reais.</p>
+    </div>
+
+    <!-- VAGA 1 -->
+    <div class="vaga-card">
+      <div class="vaga-header">
+        <div class="vaga-numero">Oportunidade 01</div>
+        <div class="vaga-titulo">Gerador de Sites</div>
+        <p class="vaga-resumo">Você recebe os perfis dos clientes e monta o site profissional de cada um — usando uma ferramenta que já faz a maior parte do trabalho. Sem precisar saber programar.</p>
+      </div>
+      <div class="vaga-body">
+
+        <div class="vaga-section-title">O que você faz</div>
+        <ul class="vaga-list">
+          <li>Recebe por mensagem o nome, a especialidade e o Instagram do profissional</li>
+          <li>Abre o gerador de sites, insere as informações e a ferramenta monta o site automaticamente</li>
+          <li>Salva as fotos do Instagram público da pessoa e coloca no site</li>
+          <li>Entrega o site pronto — profissional, com sensor e MiniChat já instalados</li>
+        </ul>
+
+        <div class="vaga-section-title">O que você ganha</div>
+        <p style="font-size:14px; margin-bottom:14px;">R$ 30 por cada site cujo cliente ativar a Joseph Pay. O pagamento é por resultado, não por site produzido.</p>
+        <div class="ganhos-grid">
+          <div class="ganho-item">
+            <div class="ganho-val">R$150</div>
+            <div class="ganho-lbl">Por dia<br>(5 fechamentos)</div>
+          </div>
+          <div class="ganho-item">
+            <div class="ganho-val">R$3.000</div>
+            <div class="ganho-lbl">Por mês<br>(20 dias úteis)</div>
+          </div>
+          <div class="ganho-item">
+            <div class="ganho-val">R$6.000</div>
+            <div class="ganho-lbl">Por mês<br>(10 fechamentos/dia)</div>
+          </div>
+        </div>
+
+        <div class="vaga-section-title">O que você precisa ter</div>
+        <ul class="vaga-list">
+          <li>Um computador (não funciona só no celular)</li>
+          <li>Organização para seguir um processo passo a passo</li>
+          <li><strong>Não precisa saber de tecnologia.</strong> A ferramenta faz o trabalho pesado.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- VAGA 2 -->
+    <div class="vaga-card">
+      <div class="vaga-header">
+        <div class="vaga-numero">Oportunidade 02</div>
+        <div class="vaga-titulo">Representante de Vendas</div>
+        <p class="vaga-resumo">Você apresenta a Joseph Pay para profissionais da sua rede, mostra o site pronto e acompanha até a ativação. É uma conversa, não uma venda forçada — e o produto se vende sozinho.</p>
+      </div>
+      <div class="vaga-body">
+
+        <div class="vaga-section-title">O que você faz</div>
+        <ul class="vaga-list">
+          <li>Recebe o site pronto do profissional (feito pelo Gerador de Sites)</li>
+          <li>Engaja com o perfil da pessoa no Instagram por um ou dois dias</li>
+          <li>Manda uma mensagem direta apresentando o site — a pessoa já vê o próprio nome, foto e serviço</li>
+          <li>Responde as dúvidas e acompanha o processo até a ativação</li>
+        </ul>
+
+        <div class="vaga-section-title">O que você ganha</div>
+        <p style="font-size:14px; margin-bottom:14px;">R$ 30 por cada ativação fechada. <strong>Quem faz os dois papéis — site e venda — fica com R$ 60 por ativação.</strong></p>
+        <div class="ganhos-grid">
+          <div class="ganho-item">
+            <div class="ganho-val">R$60</div>
+            <div class="ganho-lbl">Por ativação<br>(site + venda)</div>
+          </div>
+          <div class="ganho-item">
+            <div class="ganho-val">R$1.200</div>
+            <div class="ganho-lbl">Por mês<br>(2 fechamentos/dia)</div>
+          </div>
+          <div class="ganho-item">
+            <div class="ganho-val">R$3.000</div>
+            <div class="ganho-lbl">Por mês<br>(5 fechamentos/dia)</div>
+          </div>
+        </div>
+
+        <div class="vaga-section-title">O que você precisa ter</div>
+        <ul class="vaga-list">
+          <li>Saber usar o Instagram no dia a dia</li>
+          <li>Ser comunicativo — a conversa é natural, não é script robótico</li>
+          <li><strong>Não precisa conhecer a plataforma por dentro.</strong> O site já apresenta tudo.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-dot"></div>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- MISSÃO -->
+    <div class="section">
+      <div class="section-label">Por que isso importa</div>
+      <div class="section-title">Uma empresa construída<br>para <em>durar</em></div>
+
+      <p>O Brasil tem milhões de pessoas que vendem pelo celular. Médico, professora, manicure, coach, consultor. Nenhum deles tem o sistema que uma grande empresa tem — cobrador, cadastro de clientes, comunicação automática. Eles fazem tudo no braço, perdem vendas, perdem contatos, perdem dinheiro.</p>
+      <p>A Joseph Pay é essa estrutura — acessível, simples, no celular, em português. Para qualquer pessoa que vende qualquer coisa, do menor produto ao maior contrato.</p>
+
+      <div class="missao-block">
+        <div class="missao-symbol">🦅</div>
+        <div class="missao-text">"Não é um produto que vai durar um ano. É a infraestrutura que esse mercado precisa e que ninguém ofereceu ainda."</div>
+        <div class="missao-sub">Quem entra agora não é funcionário. É parte do crescimento. Cada cliente ativado hoje ainda vai estar ativo daqui a dois anos. A empresa está começando, e quem está do lado desde o início cresce com ela.</div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- RODAPÉ -->
+  <div class="footer">
+    <div class="footer-brand">Joseph Pay</div>
+    <div class="footer-info">
+      josephpay.com<br>
+      Documento confidencial · 2026
+    </div>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>
