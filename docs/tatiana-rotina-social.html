@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Joseph Pay — Rotina da Social Media</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --gold: #D4AF37; --gold2: #F2CA50;
+    --gold-dim: rgba(212,175,55,0.12);
+    --gold-border: rgba(212,175,55,0.2);
+    --bg: #0A0A09; --bg2: #131312; --bg3: #1a1a18; --bg4: #222220;
+    --text: #E8E4DF; --muted: rgba(232,228,223,0.52);
+    --faint: rgba(232,228,223,0.15);
+    --green: #22c55e; --green-dim: rgba(34,197,94,0.1);
+    --red: #ef4444; --red-dim: rgba(239,68,68,0.1);
+  }
+  html, body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.7;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { max-width: 820px; margin: 0 auto; }
+
+  /* CAPA */
+  .cover {
+    min-height: 100vh; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    padding: 80px 40px; position: relative; overflow: hidden;
+    page-break-after: always;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: -40%; left: 50%;
+    transform: translateX(-50%); width: 140%; height: 80%;
+    background: radial-gradient(ellipse at center, rgba(212,175,55,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cover-eagle { font-size: 48px; margin-bottom: 28px; position: relative; z-index: 1; }
+  .cover-brand {
+    font-family: 'Newsreader', serif; font-size: 48px; font-weight: 300;
+    letter-spacing: 0.12em; color: var(--gold); text-transform: uppercase;
+    position: relative; z-index: 1; margin-bottom: 6px;
+  }
+  .cover-tagline {
+    font-size: 11px; font-weight: 500; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--muted);
+    position: relative; z-index: 1; margin-bottom: 56px;
+  }
+  .cover-divider {
+    width: 50px; height: 1px;
+    background: linear-gradient(to right, transparent, var(--gold), transparent);
+    margin: 0 auto 56px; position: relative; z-index: 1;
+  }
+  .cover-title {
+    font-family: 'Newsreader', serif; font-size: 36px; font-weight: 400;
+    line-height: 1.25; color: var(--text); max-width: 560px;
+    position: relative; z-index: 1; margin-bottom: 20px;
+  }
+  .cover-title em { color: var(--gold2); font-style: italic; }
+  .cover-sub {
+    font-size: 14px; color: var(--muted); max-width: 420px;
+    line-height: 1.7; position: relative; z-index: 1;
+  }
+  .cover-footer {
+    position: absolute; bottom: 36px; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; font-size: 11px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  /* CONTEÚDO */
+  .content { padding: 64px 52px; }
+  .section { margin-bottom: 60px; page-break-inside: avoid; }
+  .section-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.28em;
+    text-transform: uppercase; color: var(--gold); margin-bottom: 14px;
+  }
+  .section-title {
+    font-family: 'Newsreader', serif; font-size: 28px; font-weight: 400;
+    line-height: 1.25; color: var(--text); margin-bottom: 22px;
+  }
+  .section-title em { color: var(--gold2); font-style: italic; }
+  p { color: var(--muted); font-size: 15px; line-height: 1.8; margin-bottom: 14px; }
+  p strong { color: var(--text); font-weight: 600; }
+
+  /* DIVIDER */
+  .divider { display: flex; align-items: center; gap: 16px; margin: 52px 0; }
+  .divider-line { flex: 1; height: 1px; background: var(--faint); }
+  .divider-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); opacity: 0.45; }
+
+  /* RESUMO DO PAPEL */
+  .role-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+    background: var(--faint); border-radius: 16px; overflow: hidden; margin: 20px 0;
+  }
+  .role-item { background: var(--bg3); padding: 18px 20px; }
+  .role-icon { font-size: 18px; margin-bottom: 10px; }
+  .role-name { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+  .role-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .role-item.sim { border-top: 2px solid var(--green); }
+  .role-item.nao { border-top: 2px solid rgba(239,68,68,0.4); }
+
+  /* PASSOS */
+  .steps { display: flex; flex-direction: column; gap: 2px; margin: 20px 0; }
+  .step {
+    display: flex; gap: 18px; align-items: flex-start;
+    background: var(--bg3); padding: 18px 20px;
+    border-radius: 0;
+  }
+  .steps .step:first-child { border-radius: 14px 14px 0 0; }
+  .steps .step:last-child { border-radius: 0 0 14px 14px; }
+  .steps .step:only-child { border-radius: 14px; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--gold-dim); border: 1px solid var(--gold-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: var(--gold);
+    margin-top: 2px;
+  }
+  .step-body {}
+  .step-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+  .step-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .step-desc strong { color: var(--text); }
+
+  /* AVISO */
+  .aviso {
+    border-radius: 14px; padding: 18px 20px; margin: 20px 0;
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .aviso.verde { background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); }
+  .aviso.vermelho { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.2); }
+  .aviso.dourado { background: var(--gold-dim); border: 1px solid var(--gold-border); }
+  .aviso-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+  .aviso-text { font-size: 13px; line-height: 1.65; }
+  .aviso.verde .aviso-text { color: rgba(134,239,172,0.9); }
+  .aviso.vermelho .aviso-text { color: rgba(252,165,165,0.9); }
+  .aviso.dourado .aviso-text { color: rgba(242,202,80,0.9); }
+  .aviso-text strong { font-weight: 700; }
+
+  /* REGRAS SIM/NÃO */
+  .rules { display: flex; flex-direction: column; gap: 1px; margin: 16px 0; background: var(--faint); border-radius: 14px; overflow: hidden; }
+  .rule { display: flex; gap: 14px; align-items: flex-start; padding: 14px 18px; background: var(--bg3); }
+  .rule-badge {
+    font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+    padding: 3px 10px; border-radius: 20px; flex-shrink: 0; margin-top: 2px;
+  }
+  .rule-badge.sim { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
+  .rule-badge.nao { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+  .rule-text { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .rule-text strong { color: var(--text); }
+
+  /* CALENDÁRIO SEMANAL */
+  .week { display: flex; flex-direction: column; gap: 2px; margin: 20px 0; background: var(--faint); border-radius: 16px; overflow: hidden; }
+  .week-row { background: var(--bg3); padding: 14px 20px; display: flex; gap: 16px; align-items: flex-start; }
+  .week-day { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); min-width: 70px; flex-shrink: 0; margin-top: 3px; }
+  .week-body {}
+  .week-task { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .week-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .week-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+  .week-badge.thomas { background: rgba(212,175,55,0.15); color: var(--gold); border: 1px solid var(--gold-border); }
+  .week-badge.tatiana { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+
+  /* MENSAGEM EXEMPLO */
+  .msg-bubble {
+    background: var(--bg3); border: 1px solid var(--gold-border);
+    border-radius: 18px; border-top-left-radius: 4px;
+    padding: 16px 20px; margin: 16px 0; max-width: 85%;
+  }
+  .msg-label { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; }
+  .msg-text { font-size: 14px; color: var(--text); line-height: 1.7; }
+  .msg-text em { color: var(--gold2); font-style: normal; font-weight: 700; }
+
+  /* CHECKLIST DIÁRIO */
+  .checklist { display: flex; flex-direction: column; gap: 1px; margin: 16px 0; background: var(--faint); border-radius: 14px; overflow: hidden; }
+  .check-item { background: var(--bg3); padding: 14px 18px; display: flex; gap: 14px; align-items: center; }
+  .check-box { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--gold-border); flex-shrink: 0; }
+  .check-text { font-size: 14px; color: var(--muted); }
+  .check-text strong { color: var(--text); }
+
+  /* BLOCO DESTAQUE */
+  .highlight {
+    background: linear-gradient(135deg, rgba(212,175,55,0.07) 0%, transparent 100%);
+    border: 1px solid var(--gold-border); border-radius: 18px;
+    padding: 28px 28px; margin: 20px 0;
+  }
+  .highlight p { margin: 0; }
+
+  /* MISSÃO FINAL */
+  .missao {
+    background: linear-gradient(135deg, rgba(212,175,55,0.07) 0%, transparent 100%);
+    border: 1px solid var(--gold-border); border-radius: 22px;
+    padding: 40px 36px; text-align: center;
+  }
+  .missao-symbol { font-size: 26px; color: var(--gold); margin-bottom: 18px; opacity: 0.7; }
+  .missao-text { font-family: 'Newsreader', serif; font-size: 21px; font-weight: 400; font-style: italic; color: var(--text); line-height: 1.5; max-width: 500px; margin: 0 auto 16px; }
+  .missao-sub { font-size: 13px; color: var(--muted); line-height: 1.75; max-width: 460px; margin: 0 auto; }
+
+  /* RODAPÉ */
+  .footer { border-top: 1px solid var(--faint); padding: 36px 52px; display: flex; align-items: center; justify-content: space-between; }
+  .footer-brand { font-family: 'Newsreader', serif; font-size: 17px; font-weight: 300; letter-spacing: 0.12em; color: var(--gold); text-transform: uppercase; }
+  .footer-info { font-size: 11px; color: var(--faint); text-align: right; line-height: 1.6; }
+
+  @media print {
+    html, body { background: #0A0A09 !important; }
+    .cover { min-height: 100vh; }
+    .page-break { page-break-before: always; }
+  }
+  @page { size: A4; margin: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- CAPA -->
+<div class="cover">
+  <div class="cover-eagle">🦅</div>
+  <div class="cover-brand">Joseph Pay</div>
+  <div class="cover-tagline">Social Media · Prospecção · Conteúdo</div>
+  <div class="cover-divider"></div>
+  <div class="cover-title">Rotina completa<br>para a <em>Social Media</em></div>
+  <p class="cover-sub">O que fazer, quando fazer e como fazer — passo a passo, sem deixar dúvida.</p>
+  <div class="cover-footer">
+    <span>Documento interno</span>
+    <span style="opacity:0.3">·</span>
+    <span>2026</span>
+  </div>
+</div>
+
+<!-- CONTEÚDO -->
+<div class="content">
+
+  <!-- PAPEL -->
+  <div class="section">
+    <div class="section-label">O papel</div>
+    <div class="section-title">O que é o <em>seu trabalho</em></div>
+    <p>Você é a ponte entre a Joseph Pay e os profissionais que ainda não nos conhecem. Seu trabalho tem dois lados: <strong>aparecer todos os dias nas redes</strong> — para construir confiança — e <strong>encontrar pessoas certas e abrir a conversa</strong> com elas.</p>
+    <p>Você não precisa fechar venda. Quando alguém demonstrar interesse, você avisa e o Thomas assume.</p>
+
+    <div class="role-grid">
+      <div class="role-item sim">
+        <div class="role-icon">✓</div>
+        <div class="role-name">Você faz</div>
+        <div class="role-desc">Postar Stories todo dia, publicar Reels e posts (que o Thomas entrega), seguir perfis, engajar, abordar quem seguiu de volta, reportar interessados</div>
+      </div>
+      <div class="role-item nao">
+        <div class="role-icon">✕</div>
+        <div class="role-name">Você não faz</div>
+        <div class="role-desc">Criar Reels ou posts do feed, fechar venda, negociar preço, dar suporte técnico, criar conteúdo do zero</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- PROSPECÇÃO -->
+  <div class="section">
+    <div class="section-label">Parte 1 — Prospecção</div>
+    <div class="section-title">Como encontrar<br>as <em>pessoas certas</em></div>
+    <p>A estratégia começa pelos clientes que a Joseph Pay já tem. Médicos, nutricionistas, psicólogos, coaches — eles convivem com outros profissionais iguais a eles. Esse é o ponto de entrada.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Entre no perfil de um cliente da Joseph Pay</div>
+          <div class="step-desc">Exemplos: Dra. Daisy, Renato, Luiz. Vá nas pessoas que <strong>eles seguem</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Pesquise pelas especialidades no campo de busca</div>
+          <div class="step-desc">Digite: <strong>Nutri, Doutor(a), Psicóloga, Coach, Consultor(a), Personal</strong>. Siga todos os perfis que aparecerem e que sejam profissionais sérios.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Aguarde quem seguir de volta</div>
+          <div class="step-desc">Você vai receber notificações de novos seguidores. <strong>Só essas notificações importam</strong> — veja o passo seguinte.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Filtre as notificações</div>
+          <div class="step-desc">Nas notificações do Instagram, <strong>apague tudo exceto os que seguiram de volta</strong> ("fulano começou a te seguir"). Curtidas, comentários e tudo mais: apaga. O foco é só em quem seguiu.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Quem não seguiu de volta — para de seguir</div>
+          <div class="step-desc">Depois de alguns dias sem retorno, deixe de seguir. Não adianta engajar com quem nem te viu. <strong>Foco em quem respondeu</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">O círculo infinito — pulo do gato</div>
+          <div class="step-desc">Quando alguém seguir de volta, <strong>entre no perfil dessa pessoa e siga quem ela segue</strong>. Profissionais da mesma área convivem entre si. Isso multiplica os contatos sem precisar procurar do zero toda vez.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- ENGAJAMENTO -->
+  <div class="section">
+    <div class="section-label">Parte 2 — Engajamento</div>
+    <div class="section-title">Como se tornar<br><em>familiar</em> antes de falar</div>
+    <p>Ninguém responde bem para estranhos. O engajamento é o que faz você deixar de ser um desconhecido para ser alguém que a pessoa já "conhece" de vista. Isso muda completamente a resposta quando a mensagem chegar.</p>
+
+    <div class="aviso dourado">
+      <div class="aviso-icon">◆</div>
+      <div class="aviso-text"><strong>Regra principal:</strong> Engaje pelo menos uma vez por dia com cada pessoa que seguiu de volta. Não precisa ser muito — uma curtida no Story já conta.</div>
+    </div>
+
+    <div class="rules">
+      <div class="rule">
+        <div class="rule-badge sim">PODE</div>
+        <div class="rule-text">Curtir os <strong>Stories</strong> delas</div>
+      </div>
+      <div class="rule">
+        <div class="rule-badge sim">PODE</div>
+        <div class="rule-text">Responder <strong>enquetes</strong> nos Stories (sim/não, votações)</div>
+      </div>
+      <div class="rule">
+        <div class="rule-badge sim">PODE</div>
+        <div class="rule-text">Curtir <strong>posts no feed</strong> quando aparecerem</div>
+      </div>
+      <div class="rule">
+        <div class="rule-badge sim">PODE</div>
+        <div class="rule-text">Comentar algo <strong>curto e genuíno</strong> em posts do feed ("Que trabalho lindo!", "Incrível isso!")</div>
+      </div>
+      <div class="rule">
+        <div class="rule-badge nao">NUNCA</div>
+        <div class="rule-text"><strong>Mandar DM</strong> durante essa fase. A mensagem só vai depois de pelo menos 3 dias de engajamento.</div>
+      </div>
+      <div class="rule">
+        <div class="rule-badge nao">NUNCA</div>
+        <div class="rule-text">Comentar coisas sobre a Joseph Pay nos posts delas — <strong>isso espanta</strong>. O engajamento é natural, não é propaganda.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- ABORDAGEM -->
+  <div class="section">
+    <div class="section-label">Parte 3 — Abordagem</div>
+    <div class="section-title">A <em>primeira mensagem</em><br>que abre a porta</div>
+    <p>Após 3 dias engajando com a pessoa, é hora de mandar a primeira mensagem. O objetivo não é vender — é gerar curiosidade. Você já tem o site dela pronto. A mensagem anuncia isso.</p>
+
+    <div class="aviso verde">
+      <div class="aviso-icon">✓</div>
+      <div class="aviso-text"><strong>Só mande mensagem para quem seguiu de volta.</strong> Nunca para quem não te segue — é spam. Quem seguiu já demonstrou que te viu.</div>
+    </div>
+
+    <p style="margin-top:20px;">Exemplos de primeira mensagem:</p>
+
+    <div class="msg-bubble">
+      <div class="msg-label">Modelo 1 — Curiosidade</div>
+      <div class="msg-text">Oi, <em>[Nome]</em>! Tenho acompanhado seu trabalho aqui e montei algo especialmente pro seu perfil. Posso te mostrar?</div>
+    </div>
+
+    <div class="msg-bubble">
+      <div class="msg-label">Modelo 2 — Direto ao ponto</div>
+      <div class="msg-text">Oi, <em>[Nome]</em>! Criei uma página profissional pra você de graça. Posso te mandar o link?</div>
+    </div>
+
+    <div class="msg-bubble">
+      <div class="msg-label">Modelo 3 — Levinho</div>
+      <div class="msg-text">Oi, <em>[Nome]</em>! Vi que você é <em>[especialidade]</em>. Fiz uma surpresa pra você — posso mostrar?</div>
+    </div>
+
+    <div class="aviso dourado" style="margin-top:20px;">
+      <div class="aviso-icon">◆</div>
+      <div class="aviso-text"><strong>Se a pessoa responder com interesse</strong> — qualquer coisa do tipo "Que é isso?", "Oi, pode!", "Que surpresa?" — <strong>avise o Thomas imediatamente.</strong> Ele assume a conversa a partir daí.</div>
+    </div>
+
+    <div class="aviso vermelho" style="margin-top:12px;">
+      <div class="aviso-icon">✕</div>
+      <div class="aviso-text">Se a pessoa não responder ou responder negativamente, <strong>não insista.</strong> Passe para o próximo perfil. O processo é volume — de cada 10 mensagens, em média 9 respondem.</div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- CONTEÚDO -->
+  <div class="section">
+    <div class="section-label">Parte 4 — Conteúdo</div>
+    <div class="section-title">O que postar<br>e <em>quando</em></div>
+    <p>O conteúdo do perfil da Joseph Pay serve para que, quando alguém receber sua mensagem e for checar o perfil, veja uma marca séria, consistente e confiável. É a vitrine. Não precisa ser perfeito — precisa ser constante.</p>
+
+    <div class="week">
+      <div class="week-row">
+        <div class="week-day">Segunda</div>
+        <div class="week-body">
+          <div class="week-task">Post de provocação ou educacional <span class="week-badge thomas">Thomas entrega</span></div>
+          <div class="week-note">Carrossel ou Reel. Você só publica.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Terça</div>
+        <div class="week-body">
+          <div class="week-task">Post educacional aprofundado <span class="week-badge thomas">Thomas entrega</span></div>
+          <div class="week-note">Carrossel com dica para salvar. Você só publica.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Quarta</div>
+        <div class="week-body">
+          <div class="week-task">Prova social ou bastidores <span class="week-badge thomas">Thomas entrega</span></div>
+          <div class="week-note">Resultado real de cliente. Você só publica.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Quinta</div>
+        <div class="week-body">
+          <div class="week-task">Comparação ou lifestyle <span class="week-badge thomas">Thomas entrega</span></div>
+          <div class="week-note">Pode ser Reel ou imagem. Você só publica.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Sexta</div>
+        <div class="week-body">
+          <div class="week-task">Quick win + enquete nos Stories <span class="week-badge tatiana">Você faz</span></div>
+          <div class="week-note">Uma dica rápida no Story + uma pergunta de enquete. Exemplos abaixo.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Sábado</div>
+        <div class="week-body">
+          <div class="week-task">Stories leves <span class="week-badge tatiana">Você faz</span></div>
+          <div class="week-note">Bastidor rápido, repost de um cliente, frase motivacional.</div>
+        </div>
+      </div>
+      <div class="week-row">
+        <div class="week-day">Domingo</div>
+        <div class="week-body">
+          <div class="week-task">Story opcional <span class="week-badge tatiana">Você faz</span></div>
+          <div class="week-note">Pode ser só uma frase ou um repost. Ou descanso total — tudo bem.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="aviso dourado" style="margin-top:4px;">
+      <div class="aviso-icon">◆</div>
+      <div class="aviso-text"><strong>Stories: todo dia.</strong> Mínimo 1, ideal 3. Não precisa ser elaborado. Uma frase com fundo dourado já conta. O importante é aparecer todos os dias.</div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- STORIES -->
+  <div class="section">
+    <div class="section-label">Parte 5 — Stories do dia a dia</div>
+    <div class="section-title">O que você pode<br>postar <em>por conta própria</em></div>
+    <p>Você não precisa esperar o Thomas para postar Story. Há quatro tipos de Stories que você pode criar sozinha, a qualquer momento, com os templates disponíveis.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">A</div>
+        <div class="step-body">
+          <div class="step-title">Dica rápida</div>
+          <div class="step-desc">Uma frase curta com uma verdade sobre vendas ou negócios. Exemplos: <strong>"Você sabia que 9 de cada 10 leads vai embora sem comprar na primeira visita?"</strong> — <strong>"Lista de transmissão no WhatsApp ainda funciona. Poucos usam certo."</strong></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">B</div>
+        <div class="step-body">
+          <div class="step-title">Enquete</div>
+          <div class="step-desc">Uma pergunta com duas opções para o seguidor responder. Exemplos: <strong>"Você já perdeu venda por não ter feito follow-up? Sim / Não"</strong> — <strong>"Você sabe quantos clientes ativos você tem agora? Sei / Não sei"</strong></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">C</div>
+        <div class="step-body">
+          <div class="step-title">Repost de cliente</div>
+          <div class="step-desc">Quando um cliente da Joseph Pay postar algo bom no Instagram, reposte nos Stories. Sempre que possível, marque o cliente. <strong>Isso mostra que a plataforma tem usuários reais e satisfeitos.</strong></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">D</div>
+        <div class="step-body">
+          <div class="step-title">Ideias para conteúdo</div>
+          <div class="step-desc">Se você tiver uma ideia de post ou Reel — pode mandar pro Thomas. <strong>Não é obrigação, mas é bem-vindo.</strong> Uma observação do dia a dia às vezes vira um post excelente.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- CHECKLIST DIÁRIO -->
+  <div class="section">
+    <div class="section-label">Resumo</div>
+    <div class="section-title">Checklist do<br><em>dia a dia</em></div>
+    <p>Toda manhã, antes de começar, percorra essa lista. São menos de 30 minutos para fazer tudo.</p>
+
+    <div class="checklist">
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Verifique as notificações — <strong>identifique quem seguiu de volta</strong></div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text"><strong>Apague as notificações irrelevantes</strong> (curtidas, comentários) — deixe só os novos seguidores</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Curta os Stories de quem está na sua lista de engajamento</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Siga novos perfis nos nichos certos (médicos, nutris, coaches, psicólogos)</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Pare de seguir quem já faz 5+ dias sem seguir de volta</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Mande a primeira mensagem para quem está há 3+ dias na lista de engajamento</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Poste pelo menos 1 Story (dica, enquete ou repost)</div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Se alguém respondeu com interesse — <strong>avise o Thomas imediatamente</strong></div>
+      </div>
+      <div class="check-item">
+        <div class="check-box"></div>
+        <div class="check-text">Publique o post do feed ou Reel se o Thomas enviou algum</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div></div>
+
+  <!-- MISSÃO -->
+  <div class="section">
+    <div class="section-label">Por que isso importa</div>
+    <div class="missao">
+      <div class="missao-symbol">🦅</div>
+      <div class="missao-text">"Você não está vendendo um app. Você está ajudando um profissional a ter o que sempre mereceu."</div>
+      <div class="missao-sub">Cada médico, nutricionista ou coach que você encontra hoje tem clientes que estão sendo mal atendidos — não por falta de vontade, mas por falta de sistema. Você é a pessoa que vai mudar isso.</div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- RODAPÉ -->
+<div class="footer">
+  <div class="footer-brand">Joseph Pay</div>
+  <div class="footer-info">josephpay.com<br>Documento interno · 2026</div>
+</div>
+
+</div><!-- /page -->
+</body>
+</html>
