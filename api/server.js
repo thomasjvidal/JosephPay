@@ -1654,7 +1654,7 @@ app.get("/api/funnel", requireAuth, async (req, res) => {
       supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from),
       supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%minichat%"),
       supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%checkout%"),
-      supabase.from("customers").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("source","minichat").gte("created_at",from),
+      supabase.from("customers").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("source","minichat").gte("created_at",from).is("deleted_at",null),
       supabase.from("sales").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("status","pago").gte("created_at",from),
       supabase.from("sales").select("producer_amount,amount,customers!customer_id(source)").eq("owner_id",uid).eq("status","pago").gte("created_at",from),
     ]);

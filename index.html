@@ -2025,7 +2025,7 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
       if(idx!==-1){setSel(idx);setTab(0);}
     }
   },[targetCustomerId,clientes]);
-  useEffect(()=>{if(navSubTab!==null)setTab(navSubTab);},[navSubTab]);
+  useEffect(()=>{if(navSubTab!==null){setTab(navSubTab);if(navSubTab===1)setGroup("Interessados");}},[navSubTab]);
   useEffect(()=>{
     if(sel===null||!clientes||!_sb){setSelSales(null);return;}
     const c=clientes[sel];if(!c)return;
@@ -2641,6 +2641,17 @@ function MaquinaTab({onNav}){
             )):<div style={{textAlign:"center",color:MUTED,fontSize:12}}>Aguardando primeiras visitas</div>}
           </div>
         )}
+        {analytics?.devices?.length>0&&(
+          <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${BDR}`,display:"flex",gap:10}}>
+            {analytics.devices.map(d=>(
+              <div key={d.device} style={{flex:1,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{d.device==="mobile"?"📱 Mobile":"💻 Desktop"}</div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:20}}>{d.pct}%</div>
+                <div style={{color:MUTED,fontSize:10,marginTop:2}}>{d.count} visita{d.count!==1?"s":""}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Funil de conversão — últimos 30 dias */}
@@ -2769,9 +2780,9 @@ function MaquinaTab({onNav}){
             "Olá {nome}! Ainda está pensando? Posso tirar suas dúvidas agora mesmo.",
             "{nome}, notei que você chegou até o nosso chat. Quando é um bom momento pra conversar?"
           ].map((msg,i)=>(
-            <div key={i} onClick={()=>{setAlertMsg(msg);if(onNav)onNav("clientes",null,3);}} style={{background:alertMsg===msg?`${GOLD}12`:"rgba(255,255,255,0.03)",border:`1px solid ${alertMsg===msg?GOLD+"40":BDR}`,borderRadius:12,padding:"10px 14px",marginBottom:8,cursor:"pointer",fontSize:12,color:TEXT,lineHeight:1.6,transition:"all 0.2s"}}>{msg}</div>
+            <div key={i} onClick={()=>{setAlertMsg(msg);if(onNav)onNav("clientes",null,1);}} style={{background:alertMsg===msg?`${GOLD}12`:"rgba(255,255,255,0.03)",border:`1px solid ${alertMsg===msg?GOLD+"40":BDR}`,borderRadius:12,padding:"10px 14px",marginBottom:8,cursor:"pointer",fontSize:12,color:TEXT,lineHeight:1.6,transition:"all 0.2s"}}>{msg}</div>
           ))}
-          <button onClick={()=>{if(onNav)onNav("clientes",null,3);}} style={{width:"100%",marginTop:2,background:GOLD,border:"none",borderRadius:12,padding:"10px",color:"#000",fontWeight:700,fontSize:13,cursor:"pointer"}}>Ir para mensagens →</button>
+          <button onClick={()=>{if(onNav)onNav("clientes",null,1);}} style={{width:"100%",marginTop:2,background:GOLD,border:"none",borderRadius:12,padding:"10px",color:"#000",fontWeight:700,fontSize:13,cursor:"pointer"}}>Ir para mensagens →</button>
         </div>
       )}
 
