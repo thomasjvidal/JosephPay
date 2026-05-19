@@ -49,6 +49,8 @@ textarea{resize:none}
 .jp-gold-text{background:linear-gradient(135deg,#F2CA50 0%,#D4AF37 60%,#F2CA50 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .jp-promo-card{background:#1C1C1A;border-radius:24px;overflow:hidden;position:relative;min-height:140px}
 @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+.sk{background:rgba(255,255,255,0.07);border-radius:8px;overflow:hidden;position:relative;flex-shrink:0}
+.sk::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);animation:shimmer 1.6s infinite}
 /* ── CRM v9 ─────────────────────────────────────────────────────────────── */
 .crm-v9{--bg:#131312;--c1:#1a1a19;--c2:#222220;--c3:#2a2a28;--ln:rgba(255,255,255,0.055);--ln2:rgba(255,255,255,0.1);--gd:#D4AF37;--gd2:rgba(212,175,55,0.12);--tx:#E5E2E0;--t2:rgba(229,226,224,0.55);--t3:rgba(229,226,224,0.25);--gr:#34c759;--rd:#ff3b30;--wa:#142219;--wa2:#1c2f22}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -354,7 +356,7 @@ function AdvancedChart({accent=GOLD,vis=true,endpoint}){
           <button key={p} onClick={()=>setPeriod(p)} style={{padding:"4px 11px",borderRadius:100,border:`1px solid ${p===period?accent+"50":BDR}`,background:p===period?`${accent}15`:"transparent",color:p===period?accent:MUTED,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",flexShrink:0}}>{p}</button>
         ))}
       </div>
-      {apiSales===undefined&&<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:12}}>Carregando…</div>}
+      {apiSales===undefined&&<div style={{height:100,display:"flex",alignItems:"flex-end",gap:3,padding:"4px 0"}}>{[35,50,25,65,40,80,30,55,45,70,35,60,45,30,55].map((h,i)=>(<div key={i} className="sk" style={{flex:1,height:`${h}%`,borderRadius:"3px 3px 0 0"}}/>))}</div>}
       {apiSales!==undefined&&<div style={{height:100}}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{top:4,right:4,left:-32,bottom:0}}>
@@ -432,7 +434,10 @@ function VisitorChart({analytics,loadingAnalytics}){
       ):(
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
           <span style={{color:GOLD,fontSize:13,fontWeight:600}}>{saved}</span>
-          <button onClick={()=>setEditing(true)} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,padding:"4px 10px",color:MUTED,fontSize:12,cursor:"pointer"}}>Editar</button>
+          <div style={{display:"flex",gap:5}}>
+            <button onClick={()=>navigator.clipboard?.writeText(saved||"")} title="Copiar link" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:14,cursor:"pointer"}}>⎘</button>
+            <button onClick={()=>setEditing(true)} title="Editar site" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer"}}>✎</button>
+          </div>
         </div>
       )}
       {hasData?(
@@ -455,7 +460,7 @@ function VisitorChart({analytics,loadingAnalytics}){
         </>
       ):(
         <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
-          <div style={{color:MUTED,fontSize:12}}>{loadingAnalytics?"Carregando dados…":saved?"Aguardando visitas — instale o sensor no site":"Configure o site acima para começar"}</div>
+          {loadingAnalytics?<div style={{display:"flex",alignItems:"flex-end",gap:3,height:50}}>{[40,25,60,35,55,30,75,20,50,45,65,30,45,25,55].map((h,i)=>(<div key={i} className="sk" style={{flex:1,height:`${h}%`,borderRadius:"3px 3px 0 0"}}/>))}</div>:<div style={{color:MUTED,fontSize:12}}>{saved?"Aguardando primeiras visitas":"Configure o site acima para começar"}</div>}
         </div>
       )}
     </div>
@@ -575,7 +580,7 @@ function Afiliados({isAdmin}){
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Todos os afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
-            {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+            {list===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div className="sk" style={{height:12,width:56,borderRadius:6,marginLeft:"auto"}}/></div>))}
             {list!==null&&list.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado cadastrado ainda.</div>}
             {(list||[]).map(renderItem)}
           </div>
@@ -591,7 +596,7 @@ function Afiliados({isAdmin}){
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Meus afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
             </div>
-            {list===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+            {list===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div className="sk" style={{height:12,width:56,borderRadius:6,marginLeft:"auto"}}/></div>))}
             {list!==null&&list.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado ainda. Convide alguém!</div>}
             {(list||[]).map(renderItem)}
           </div>
@@ -631,7 +636,7 @@ function Assinaturas(){
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Assinaturas</span></div>
-        {subs===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {subs===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {subs!==null&&subs.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma assinatura registrada ainda.</div>}
         {(subs||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
@@ -684,7 +689,7 @@ function Sacar(){
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.3,pointerEvents:"none"}}/>
         <div style={{marginBottom:32}}>
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",marginBottom:8}}>Disponível para saque</div>
-          <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>{balance!==null?fmtBRL(balance):"Carregando…"}</div>
+          <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>{balance!==null?fmtBRL(balance):<div className="sk" style={{height:38,width:140,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>}</div>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
           <div style={{color:"rgba(12,12,12,0.45)",fontFamily:"monospace",fontSize:13,letterSpacing:"0.14em"}}>•••• •••• •••• 3421</div>
@@ -842,7 +847,7 @@ function DashAdmin({onNav}){
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
-        {recentSales===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {recentSales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {recentSales!==null&&recentSales.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
         {(recentSales||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
@@ -868,7 +873,7 @@ function DashAdmin({onNav}){
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Clientes</span>
           <button onClick={()=>onNav("clientes")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todos →</button>
         </div>
-        {clients===null&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {clients===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"50%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"32%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {(clients||[]).map((c,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(clients.length-1)?`1px solid ${BDR}`:"none"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
@@ -893,7 +898,15 @@ function ClientePerfilAdmin({c,onBack}){
   if(!c) return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
-      <div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando perfil…</div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+            <div className="sk" style={{width:44,height:44,borderRadius:14,flexShrink:0}}/>
+            <div style={{flex:1}}><div className="sk" style={{height:14,width:"45%",borderRadius:6,marginBottom:7}}/><div className="sk" style={{height:10,width:"60%",borderRadius:5}}/></div>
+          </div>
+          {[1,2,3,4].map(i=>(<div key={i} style={{display:"flex",gap:8,marginBottom:8}}><div className="sk" style={{height:46,flex:1,borderRadius:12}}/><div className="sk" style={{height:46,flex:1,borderRadius:12}}/></div>))}
+        </div>
+      </div>
     </div>
   );
   const nome=c.name||"—";
@@ -926,7 +939,7 @@ function ClientePerfilAdmin({c,onBack}){
       <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
-        {sales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
         {(sales||[]).map((s,i)=>{
           const nome2=s.customers?.name||"Cliente";
@@ -975,7 +988,7 @@ function ClientesAdmin(){
           <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Todos os seus produtores em um só lugar</div>
         </div>
       </div>
-      {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+      {clients===null&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><div className="sk" style={{width:44,height:44,borderRadius:14,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:13,width:"40%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"55%",borderRadius:5}}/></div><div className="sk" style={{height:22,width:60,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div className="sk" style={{height:52,borderRadius:12}}/><div className="sk" style={{height:52,borderRadius:12}}/></div></div>))}
       {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
       {(clients||[]).map((c,i)=>(
         <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
@@ -1043,10 +1056,10 @@ function VendasAdmin(){
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{allSales===null?"Carregando…":filtered.length+" transações"}</span>
+          {allSales===null?<div className="sk" style={{height:14,width:100,borderRadius:6}}/>:<span style={{color:TEXT,fontWeight:700,fontSize:14}}>{filtered.length+" transações"}</span>}
           <span style={{color:MUTED,fontSize:12}}>{filtro==="todos"?"Todas as contas":filtro}</span>
         </div>
-        {allSales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {allSales===null&&[1,2,3,4,5].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {allSales!==null&&filtered.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
         {filtered.map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
@@ -1087,7 +1100,7 @@ function SiteAdmin(){
         <KPICard label="Taxas totais" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.taxa||0),0)):"—"} accent={GOLD} icon="⟳"/>
       </div>
       <VisitorChart/>
-      {clients===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando produtores…</div>}
+      {clients===null&&[1,2].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:13,width:"45%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"60%",borderRadius:5}}/></div></div><div className="sk" style={{height:4,borderRadius:2,width:"100%"}}/></div>))}
       {(clients||[]).map((c,i)=>(
         <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -1127,16 +1140,24 @@ function DashClient({accent=GOLD,isDeise,onNav}){
   const [syncResult,setSyncResult]=useState(null);
   const [msgsHoje,setMsgsHoje]=useState(null);
   const refreshData=()=>{
-    apiCall('/api/dashboard/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
+    apiCall('/api/dashboard/kpis').then(d=>{
+      if(d&&!d.error)setKpis(d);
+      else setKpis({vendasHoje:0,assinaturasAtivas:0,receitaMes:0,receitaLiquidaMes:0});
+    });
     if(_sb){
-      _sb.from('sales').select('amount,producer_amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data})=>{if(data)setLastSales(data);});
-      _sb.from('customers').select('id',{count:'exact',head:true}).is('deleted_at',null).then(({count})=>{if(count!==null)setTotalClientes(count);});
+      _sb.from('sales').select('amount,producer_amount,status,created_at,customer_id,customers(name)').order('created_at',{ascending:false}).limit(3).then(({data,error})=>{setLastSales(data||[]);});
+      _sb.from('customers').select('id',{count:'exact',head:true}).is('deleted_at',null).then(({count})=>{setTotalClientes(count||0);});
       _sb.auth.getSession().then(({data:sd})=>{
         if(sd?.session){
           const t=new Date();t.setHours(0,0,0,0);
-          _sb.from('messages').select('id',{count:'exact',head:true}).eq('owner_id',sd.session.user.id).neq('status','inbound').gte('created_at',t.toISOString()).then(({count})=>{if(count!==null)setMsgsHoje(count);});
-        }
+          _sb.from('messages').select('id',{count:'exact',head:true}).eq('owner_id',sd.session.user.id).neq('status','inbound').gte('created_at',t.toISOString()).then(({count})=>{setMsgsHoje(count||0);});
+        } else { setMsgsHoje(0); }
       });
+    } else {
+      setKpis(v=>v||{vendasHoje:0,assinaturasAtivas:0,receitaMes:0,receitaLiquidaMes:0});
+      setLastSales(v=>v||[]);
+      setTotalClientes(v=>v||0);
+      setMsgsHoje(v=>v||0);
     }
   };
   const syncHistory=async()=>{
@@ -1161,15 +1182,22 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
           <button onClick={()=>{const nv=!vis;setVis(nv);localStorage.setItem('jp_vis',String(nv));}} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"4px 10px",color:"rgba(12,12,12,0.55)",cursor:"pointer",display:"flex",alignItems:"center"}}>{vis?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:44,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):"R$ —"):"R$ ••••••"}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:44,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):<div className="sk" style={{height:44,width:160,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>):"R$ ••••••"}</div>
       </div>
       <button onClick={()=>onNav("saque")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Vendas hoje" value={kpis?String(kpis.vendasHoje):"—"} accent={GOLD} icon="↑" vis={vis}/>
-          <KPICard label="Assinaturas ativas" value={kpis?String(kpis.assinaturasAtivas):"—"} accent={GOLD} icon="⟳" vis={vis}/>
-          <KPICard label="Total de clientes" value={totalClientes!==null?String(totalClientes):"—"} accent={GOLD} icon="◻" vis={vis}/>
-          <KPICard label="Mensagens hoje" value={msgsHoje!==null?String(msgsHoje):"—"} accent={GOLD} icon="✉" vis={vis}/>
+          {kpis===null?[0,1,2,3].map(i=>(
+            <div key={i} style={{background:CARD2,borderRadius:16,padding:"16px 14px",display:"flex",flexDirection:"column",gap:10}}>
+              <div className="sk" style={{height:10,width:"65%",borderRadius:6}}/>
+              <div className="sk" style={{height:26,width:"42%",borderRadius:6}}/>
+            </div>
+          )):<>
+            <KPICard label="Vendas hoje" value={String(kpis.vendasHoje)} accent={GOLD} icon="↑" vis={vis}/>
+            <KPICard label="Assinaturas ativas" value={String(kpis.assinaturasAtivas)} accent={GOLD} icon="⟳" vis={vis}/>
+            <KPICard label="Total de clientes" value={totalClientes!==null?String(totalClientes):"—"} accent={GOLD} icon="◻" vis={vis}/>
+            <KPICard label="Mensagens hoje" value={msgsHoje!==null?String(msgsHoje):"—"} accent={GOLD} icon="✉" vis={vis}/>
+          </>}
         </div>
       </div>
       <AdvancedChart accent={accent} vis={vis} endpoint="/api/dashboard/chart"/>
@@ -1194,7 +1222,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           </div>
         </div>
         {syncResult&&<div style={{padding:"10px 18px",background:syncResult.startsWith("✓")?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)",color:syncResult.startsWith("✓")?GREEN:RED,fontSize:12,fontWeight:600,borderBottom:`1px solid ${BDR}`}}>{syncResult}</div>}
-        {lastSales===null&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {lastSales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {lastSales!==null&&lastSales.length===0&&<div style={{padding:"18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda. Clique em ⟳ Sync para importar vendas do Asaas.</div>}
         {(lastSales||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
@@ -1228,7 +1256,7 @@ function Vendas({accent=GOLD,isDeise}){
         <Pill label="Receita" value={sales?fmtBRL(receita):"—"} accent={GOLD}/>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        {sales===null&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Carregando…</div>}
+        {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda registrada ainda.</div>}
         {(sales||[]).map((s,i)=>{
           const nome=s.customers?.name||"Cliente";
@@ -1599,7 +1627,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
     dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
     clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab} onWapChange={v=>setWapConnected(v)}/>,
-    maquina:<MaquinaTab/>,
+    maquina:<MaquinaTab onNav={onNav}/>,
     chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
     vendas:<Vendas accent={accent} isDeise={false}/>,
@@ -1854,7 +1882,15 @@ function ProdutosTab({accent,isDeise}){
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:2}}>
         <button onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
-      {produtos===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando…</div>}
+      {produtos===null&&[1,2,3].map(i=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div className="sk" style={{height:90,borderRadius:0}}/>
+          <div style={{padding:"20px",display:"flex",flexDirection:"column",gap:10}}>
+            <div className="sk" style={{height:13,width:"55%",borderRadius:6}}/>
+            <div className="sk" style={{height:10,width:"38%",borderRadius:6}}/>
+          </div>
+        </div>
+      ))}
       {produtos!==null&&produtos.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum produto ainda. Crie o seu primeiro! →</div>}
       {(produtos||[]).map((p,i)=>(
         <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
@@ -2421,7 +2457,15 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
             ))}
           </div>
           <div className="clist">
-            {clientes===null&&<div style={{padding:'20px',textAlign:'center',color:'var(--t2)',fontSize:13}}>Carregando…</div>}
+            {clientes===null&&[1,2,3,4,5].map(i=>(
+              <div key={i} className="ci" style={{pointerEvents:"none"}}>
+                <div className="sk cav"/>
+                <div className="ci-i" style={{flex:1}}>
+                  <div className="sk" style={{height:13,width:"52%",borderRadius:6,marginBottom:6}}/>
+                  <div className="sk" style={{height:10,width:"36%",borderRadius:6}}/>
+                </div>
+              </div>
+            ))}
             {clientes!==null&&listaFiltrada.length===0&&<div style={{padding:'20px',textAlign:'center',color:'var(--t2)',fontSize:13}}>Nenhum cliente neste grupo.</div>}
             {listaFiltrada.map((c,i)=>{
               const ls2=c.sales?.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
@@ -2511,51 +2555,58 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
   );
 }
 
-function MaquinaTab(){
+function MaquinaTab({onNav}){
   const [analytics,setAnalytics]=React.useState(null);
   const [loadingAnalytics,setLoadingAnalytics]=React.useState(true);
+  const [funnel,setFunnel]=React.useState(null);
+  const [loadingFunnel,setLoadingFunnel]=React.useState(true);
+  const [products,setProducts]=React.useState(null);
   const [showSensor,setShowSensor]=React.useState(false);
   const [userId,setUserId]=React.useState("");
+  const [alertMsg,setAlertMsg]=React.useState(null);
   React.useEffect(()=>{
     (async()=>{
       try{
         const session=(await _sb?.auth?.getSession())?.data?.session;
         const tok=session?.access_token||"";
         if(session?.user?.id) setUserId(session.user.id);
-        const r=await fetch(`${RAILWAY}/api/analytics/visits?days=30`,{headers:{Authorization:`Bearer ${tok}`}});
-        const d=await r.json();
-        setAnalytics(d);
-      }catch{}
-      setLoadingAnalytics(false);
+        const h={Authorization:`Bearer ${tok}`};
+        await Promise.allSettled([
+          fetch(`${RAILWAY}/api/analytics/visits?days=30`,{headers:h})
+            .then(r=>r.json()).then(setAnalytics).catch(()=>null)
+            .finally(()=>setLoadingAnalytics(false)),
+          fetch(`${RAILWAY}/api/funnel`,{headers:h})
+            .then(r=>r.json()).then(setFunnel).catch(()=>null)
+            .finally(()=>setLoadingFunnel(false)),
+          fetch(`${RAILWAY}/api/products`,{headers:h})
+            .then(r=>r.json()).then(d=>setProducts(Array.isArray(d)?d:d?.products||d?.data||[])).catch(()=>setProducts([])),
+        ]);
+      }catch{
+        setLoadingAnalytics(false);
+        setLoadingFunnel(false);
+        setProducts([]);
+      }
     })();
   },[]);
 
   const srcColors={"instagram":GOLD,"ig":GOLD,"insta":GOLD,"google":"#4A90D9","whatsapp":"#22c55e","wa":"#22c55e","wpp":"#22c55e","facebook":"#6B7EDB","fb":"#6B7EDB","direto":"rgba(212,175,55,0.5)","referral":"rgba(255,255,255,0.3)"};
-  const srcLabel={"instagram":"Instagram","ig":"Instagram","insta":"Instagram","google":"Google","gg":"Google","whatsapp":"WhatsApp","wa":"WhatsApp","wpp":"WhatsApp","facebook":"Facebook","fb":"Facebook","direto":"Direto","referral":"Referência"};
+  const srcLabel={"instagram":"Instagram","ig":"Instagram","insta":"Instagram","google":"Google","gg":"Google","whatsapp":"WhatsApp","wa":"WhatsApp","wpp":"WhatsApp","facebook":"Facebook","fb":"Facebook","direto":"Acesso direto","referral":"Outro site"};
+  const MAIN_SOURCES=[{src:"instagram",label:"Instagram"},{src:"google",label:"Google"},{src:"whatsapp",label:"WhatsApp"},{src:"direto",label:"Acesso direto"}];
   const mergedSources=(()=>{
-    if(!analytics?.sources) return [];
     const map={};
-    analytics.sources.forEach(s=>{
-      const key=srcLabel[s.source]||s.source;
-      if(map[key]) map[key]+=s.pct;
-      else map[key]=s.pct;
-    });
-    return Object.entries(map).map(([label,pct])=>({label,pct,source:Object.keys(srcLabel).find(k=>srcLabel[k]===label)||label})).filter(s=>s.pct>0).sort((a,b)=>b.pct-a.pct);
+    MAIN_SOURCES.forEach(({src,label})=>{map[label]={pct:0,source:src};});
+    if(analytics?.sources){
+      analytics.sources.forEach(s=>{
+        const key=srcLabel[s.source]||s.source;
+        if(map[key]) map[key].pct+=s.pct;
+        else map[key]={pct:s.pct,source:s.source};
+      });
+    }
+    return Object.entries(map).map(([label,{pct,source}])=>({label,pct,source})).sort((a,b)=>b.pct-a.pct);
   })();
-  const hasSources=mergedSources.length>0;
+  const hasSources=!loadingAnalytics&&analytics!==null;
 
-  const sensorSnippet=`<script>
-(function(){
-  var JP="${RAILWAY}";
-  var uid="${userId}";
-  var p=window.location.pathname;
-  var ref=document.referrer;
-  var q=new URLSearchParams(window.location.search);
-  var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
-  var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
-  fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
-})();
-<\/script>`;
+  const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${userId}"><\/script>`;
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -2565,7 +2616,7 @@ function MaquinaTab(){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
-          {hasSources&&<span style={{color:MUTED,fontSize:11}}>{analytics.total} visitas</span>}
+          {hasSources&&analytics?.total>0&&<span style={{color:MUTED,fontSize:11}}>{analytics.total} visitas</span>}
         </div>
         {hasSources?mergedSources.map(s=>(
           <div key={s.label} style={{marginBottom:12}}>
@@ -2578,18 +2629,167 @@ function MaquinaTab(){
             </div>
           </div>
         )):(
-          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
-            <div style={{color:MUTED,fontSize:12}}>{loadingAnalytics?"Carregando…":"Aguardando visitas — instale o sensor abaixo"}</div>
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12}}>
+            {loadingAnalytics?[1,2,3].map(i=>(
+              <div key={i} style={{marginBottom:i<3?12:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                  <div className="sk" style={{height:12,width:"42%",borderRadius:6}}/>
+                  <div className="sk" style={{height:12,width:"14%",borderRadius:6}}/>
+                </div>
+                <div className="sk" style={{height:4,borderRadius:2,width:"100%"}}/>
+              </div>
+            )):<div style={{textAlign:"center",color:MUTED,fontSize:12}}>Aguardando primeiras visitas</div>}
           </div>
         )}
       </div>
 
-      {/* Origem de vendas — em breve */}
+      {/* Funil de conversão — últimos 30 dias */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px 18px 14px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Funil de conversão</div>
+          <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
+        </div>
+        {loadingFunnel?[1,2,3,4,5].map(i=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<5?9:0}}>
+            <div className="sk" style={{height:11,width:110,borderRadius:5,flexShrink:0}}/>
+            <div className="sk" style={{height:4,flex:1,borderRadius:2}}/>
+            <div className="sk" style={{height:11,width:28,borderRadius:5}}/>
+            <div className="sk" style={{height:11,width:28,borderRadius:5}}/>
+          </div>
+        )):(()=>{
+          const steps=[
+            {label:"Visitaram o site",value:funnel?.visitors||0,color:GOLD},
+            {label:"MiniChat",value:funnel?.chat||0,color:"rgba(212,175,55,0.75)"},
+            {label:"Interessados",value:funnel?.leads||0,color:"rgba(212,175,55,0.55)"},
+            {label:"Link de pagamento",value:funnel?.checkout||0,color:"rgba(212,175,55,0.4)"},
+            {label:"Viraram clientes",value:funnel?.sales||0,color:"#22c55e"},
+          ];
+          const base=Math.max(...steps.map(s=>s.value),1);
+          return steps.map((step,i)=>{
+            const pct=Math.min(Math.round(step.value/base*100),100);
+            return(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<4?9:0}}>
+                <span style={{color:MUTED,fontSize:12,width:112,flexShrink:0}}>{step.label}</span>
+                <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}>
+                  <div style={{height:"100%",borderRadius:2,background:step.color,width:pct>0?`${pct}%`:"0%",transition:"width 0.5s"}}/>
+                </div>
+                <span style={{color:TEXT,fontWeight:700,fontSize:12,minWidth:22,textAlign:"right"}}>{step.value}</span>
+                <span style={{color:MUTED,fontSize:11,minWidth:30,textAlign:"right"}}>{i>0?`${pct}%`:""}</span>
+              </div>
+            );
+          });
+        })()}
+      </div>
+
+      {/* Origem de vendas */}
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:12}}>Origem de vendas</div>
-        <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
-          <div style={{color:MUTED,fontSize:12}}>Em breve — cruzamento de visitas com pagamentos</div>
+        {loadingFunnel?[1,2,3].map(i=>(
+          <div key={i} style={{marginBottom:i<3?12:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <div className="sk" style={{height:12,width:"40%",borderRadius:6}}/>
+              <div className="sk" style={{height:12,width:"24%",borderRadius:6}}/>
+            </div>
+            <div className="sk" style={{height:4,borderRadius:2,width:"100%"}}/>
+          </div>
+        )):(funnel?.salesBySource?.length>0?funnel.salesBySource.map((s,i)=>{
+          const totalRev=funnel.salesBySource.reduce((a,b)=>a+b.revenue,0);
+          const pct=totalRev>0?Math.round(s.revenue/totalRev*100):0;
+          const label=srcLabel[s.source]||s.source;
+          const color=srcColors[s.source]||GOLD;
+          return(
+            <div key={i} style={{marginBottom:i<funnel.salesBySource.length-1?12:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:MUTED,fontSize:13}}>{label}</span>
+                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <span style={{color:MUTED,fontSize:11}}>{s.count} venda{s.count!==1?"s":""}</span>
+                  <span style={{color:TEXT,fontWeight:700,fontSize:13}}>R$ {Number(s.revenue).toFixed(2).replace(".",",")}</span>
+                </div>
+              </div>
+              <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}>
+                <div style={{height:"100%",borderRadius:2,background:color,width:`${Math.max(pct,1)}%`}}/>
+              </div>
+            </div>
+          );
+        }):(
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+            <div style={{color:MUTED,fontSize:12}}>Nenhuma venda registrada nos últimos 30 dias</div>
+          </div>
+        ))}
+      </div>
+
+      {/* MiniChat — métricas reais */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14}}>MiniChat</div>
+          <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
         </div>
+        {loadingFunnel?[1,2].map(i=>(
+          <div key={i} style={{display:"flex",gap:10,marginBottom:i<2?10:0}}>
+            {[1,2,3].map(j=>(<div key={j} style={{flex:1,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px"}}><div className="sk" style={{height:10,width:"60%",borderRadius:5,marginBottom:8}}/><div className="sk" style={{height:22,width:"40%",borderRadius:6}}/></div>))}
+          </div>
+        )):(()=>{
+          const miniLeads=funnel?.leads||0;
+          const miniSrc=funnel?.salesBySource?.find(s=>s.source==='minichat');
+          const miniSales=miniSrc?.count||0;
+          const miniRev=miniSrc?.revenue||0;
+          const chatOpens=funnel?.chat||0;
+          return(
+            <div>
+              <div style={{display:"flex",gap:10,marginBottom:miniRev>0||miniLeads===0?10:0}}>
+                {[{label:"Chat",val:chatOpens},{label:"Interessados",val:miniLeads},{label:"Compraram",val:miniSales,gold:true}].map((m,i)=>(
+                  <div key={i} style={{flex:1,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 10px"}}>
+                    <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>{m.label}</div>
+                    <div style={{color:m.gold?GOLD:TEXT,fontWeight:700,fontSize:24}}>{m.val}</div>
+                  </div>
+                ))}
+              </div>
+              {miniRev>0&&(
+                <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}25`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:15}}>💰</span>
+                  <span style={{color:TEXT,fontSize:12}}>R$ {Number(miniRev).toFixed(2).replace(".",",")} gerados pelo MiniChat</span>
+                </div>
+              )}
+              {miniLeads===0&&chatOpens===0&&<div style={{textAlign:"center",color:MUTED,fontSize:12,paddingTop:4}}>Nenhum lead capturado ainda — o MiniChat já está ativo</div>}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Alerta — leads sem mensagem */}
+      {!loadingFunnel&&(funnel?.leads||0)>0&&(
+        <div style={{background:CARD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <span style={{fontSize:16}}>⚡</span>
+            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{funnel.leads} interessado{funnel.leads!==1?"s":""} ainda sem mensagem</div>
+          </div>
+          <div style={{color:MUTED,fontSize:12,marginBottom:12}}>Escolha um modelo e envie agora:</div>
+          {[
+            "Oi {nome}, vi que você se interessou no nosso acompanhamento. Posso te contar mais?",
+            "Olá {nome}! Ainda está pensando? Posso tirar suas dúvidas agora mesmo.",
+            "{nome}, notei que você chegou até o nosso chat. Quando é um bom momento pra conversar?"
+          ].map((msg,i)=>(
+            <div key={i} onClick={()=>{setAlertMsg(msg);if(onNav)onNav("clientes",null,3);}} style={{background:alertMsg===msg?`${GOLD}12`:"rgba(255,255,255,0.03)",border:`1px solid ${alertMsg===msg?GOLD+"40":BDR}`,borderRadius:12,padding:"10px 14px",marginBottom:8,cursor:"pointer",fontSize:12,color:TEXT,lineHeight:1.6,transition:"all 0.2s"}}>{msg}</div>
+          ))}
+          <button onClick={()=>{if(onNav)onNav("clientes",null,3);}} style={{width:"100%",marginTop:2,background:GOLD,border:"none",borderRadius:12,padding:"10px",color:"#000",fontWeight:700,fontSize:13,cursor:"pointer"}}>Ir para mensagens →</button>
+        </div>
+      )}
+
+      {/* Links de venda */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Links de venda</div>
+        {products===null?[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:i<3?`1px solid ${BDR}`:"none"}}><div className="sk" style={{height:12,width:"50%",borderRadius:6}}/><div className="sk" style={{height:26,width:80,borderRadius:8}}/></div>)):products.length===0?(<div style={{textAlign:"center",color:MUTED,fontSize:12,padding:"8px 0"}}>Nenhum produto cadastrado</div>):products.map((p,i)=>{
+          const link=`https://josephpay.com/checkout.html?p=${p.id}`;
+          return(
+            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:i<products.length-1?`1px solid ${BDR}`:"none"}}>
+              <div>
+                <div style={{color:TEXT,fontSize:13,fontWeight:600}}>{p.name}</div>
+                <div style={{color:MUTED,fontSize:11,marginTop:2}}>R$ {Number(p.price||0).toFixed(2).replace(".",",")}</div>
+              </div>
+              <button onClick={()=>navigator.clipboard?.writeText(link)} style={{background:`${GOLD}18`,border:`1px solid ${GOLD}35`,color:GOLD,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>⎘ Copiar</button>
+            </div>
+          );
+        })}
       </div>
 
       {/* Reputação — em breve */}

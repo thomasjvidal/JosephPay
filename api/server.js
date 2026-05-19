@@ -1384,7 +1384,18 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
 
 // ── CRM: entrada de lead via MiniChat (protegido por X-Owner-Key) ─────────────
 const leadsRateMap = new Map();
-app.post("/api/leads/create", async (req, res) => {
+// CORS aberto — chamado de domínios externos (sites dos produtores)
+app.options("/api/leads/create", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
+  res.header("Access-Control-Allow-Methods", "POST");
+  res.sendStatus(204);
+});
+app.post("/api/leads/create", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
+  next();
+}, async (req, res) => {
   const ownerKey = req.headers["x-owner-key"];
   if (!ownerKey) return res.status(401).json({ error: "X-Owner-Key ausente" });
 
@@ -1409,17 +1420,14 @@ app.post("/api/leads/create", async (req, res) => {
 
   const { data, error } = await supabase
     .from("customers")
-    .upsert(
-      {
-        owner_id: profile.id,
-        name: name.trim(),
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        source: "minichat",
-        status: "lead",
-      },
-      { onConflict: "owner_id,phone", ignoreDuplicates: false }
-    )
+    .insert({
+      owner_id: profile.id,
+      name: name.trim(),
+      phone: phone?.trim() || null,
+      email: email?.trim() || null,
+      source: "minichat",
+      status: "lead",
+    })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -1620,6 +1628,61 @@ app.options("/api/track/visit", (req, res) => {
   res.sendStatus(204);
 });
 
+// ── Sensor hospedado — uma linha no <head> substitui o bloco inteiro ──────────
+app.get("/sensor.js", (req, res) => {
+  const uid = (req.query.uid || "").replace(/[^a-zA-Z0-9\-]/g, "");
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Content-Type", "application/javascript");
+  res.header("Cache-Control", "public, max-age=3600");
+  if (!uid) return res.send("/* sensor.js: uid ausente */");
+  res.send(`(function(){
+var JP="${RAILWAY}";var uid="${uid}";
+var p=window.location.pathname;var ref=document.referrer;
+var q=new URLSearchParams(window.location.search);
+var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
+var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
+fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
+})();`);
+});
+
+// ── Funil de conversão ────────────────────────────────────────────────────────
+app.get("/api/funnel", requireAuth, async (req, res) => {
+  try {
+    const uid  = req.user.id;
+    const from = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [total, chatVisits, checkoutVisits, leads, salesRes, salesSrc] = await Promise.all([
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%minichat%"),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%checkout%"),
+      supabase.from("customers").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("source","minichat").gte("created_at",from),
+      supabase.from("sales").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("status","pago").gte("created_at",from),
+      supabase.from("sales").select("producer_amount,amount,customers!customer_id(source)").eq("owner_id",uid).eq("status","pago").gte("created_at",from),
+    ]);
+    // agrupa origem de vendas
+    const srcMap = {};
+    (salesSrc.data || []).forEach(s => {
+      const src = s.customers?.source || "direto";
+      if (!srcMap[src]) srcMap[src] = { count: 0, revenue: 0 };
+      srcMap[src].count++;
+      srcMap[src].revenue += Number(s.producer_amount || s.amount || 0);
+    });
+    const salesBySource = Object.entries(srcMap)
+      .map(([source, d]) => ({ source, ...d }))
+      .sort((a, b) => b.revenue - a.revenue);
+    res.json({
+      visitors:  total.count       || 0,
+      chat:      chatVisits.count  || 0,
+      leads:     leads.count       || 0,
+      checkout:  checkoutVisits.count || 0,
+      sales:     salesRes.count    || 0,
+      salesBySource,
+    });
+  } catch(err) {
+    console.error("[funnel]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Analytics: dados de visitas para a aba Máquina ───────────────────────────
 app.get("/api/analytics/visits", requireAuth, async (req, res) => {
   const days  = Math.min(parseInt(req.query.days) || 30, 30);
@@ -1650,7 +1713,13 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
     .map(([src, cnt]) => ({ source: src, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
     .sort((a, b) => b.count - a.count);
 
-  res.json({ total, daily, sources });
+  const byDevice = {};
+  rows.forEach(r => { byDevice[r.device||'unknown'] = (byDevice[r.device||'unknown']||0) + 1; });
+  const devices = Object.entries(byDevice)
+    .map(([device, cnt]) => ({ device, count: cnt, pct: total ? Math.round(cnt*100/total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  res.json({ total, daily, sources, devices });
 });
 
 // ── Perfil do produtor: ler e salvar nome/empresa/avatar ──────────────────────
