@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funil G9 — Joseph Pay × Renato</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080810;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    color: #fff;
+    min-width: 1400px;
+    padding: 0 0 80px 0;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1030 100%);
+    border-bottom: 1px solid #2a2040;
+    padding: 32px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-left h1 {
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #a78bfa, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+  .header-left p {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 4px;
+  }
+  .header-stats {
+    display: flex;
+    gap: 32px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #a78bfa;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── FASE LABELS ── */
+  .phases-bar {
+    display: flex;
+    padding: 0 48px;
+    background: #0d0d1a;
+    border-bottom: 1px solid #1a1a2e;
+    overflow-x: auto;
+  }
+  .phase-tab {
+    padding: 14px 24px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+  .phase-tab.p1 { color: #60a5fa; border-color: #60a5fa; }
+  .phase-tab.p2 { color: #f59e0b; border-color: #f59e0b; }
+  .phase-tab.p3 { color: #a78bfa; border-color: #a78bfa; }
+  .phase-tab.p4 { color: #34d399; border-color: #34d399; }
+  .phase-tab.p5 { color: #f87171; border-color: #f87171; }
+  .phase-tab.p6 { color: #fb923c; border-color: #fb923c; }
+
+  /* ── CANVAS ── */
+  .canvas {
+    padding: 40px 48px;
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+    overflow-x: auto;
+  }
+
+  /* ── COLUMN ── */
+  .col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    min-width: 200px;
+    flex: 1;
+    position: relative;
+  }
+  .col-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .col-title.p1 { background: #1e3a5f; color: #60a5fa; }
+  .col-title.p2 { background: #3d2a00; color: #f59e0b; }
+  .col-title.p3 { background: #2d1f5e; color: #a78bfa; }
+  .col-title.p4 { background: #0d3d2a; color: #34d399; }
+  .col-title.p5 { background: #3d1010; color: #f87171; }
+  .col-title.p6 { background: #3d2010; color: #fb923c; }
+
+  /* ── SCREEN CARD ── */
+  .screen {
+    background: #12121f;
+    border: 1px solid #2a2040;
+    border-radius: 16px;
+    width: 175px;
+    overflow: hidden;
+    position: relative;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .screen:hover {
+    transform: translateY(-3px);
+    border-color: #5a4080;
+  }
+  .screen-bar {
+    height: 6px;
+  }
+  .screen-bar.p1 { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+  .screen-bar.p2 { background: linear-gradient(90deg, #d97706, #fbbf24); }
+  .screen-bar.p3 { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+  .screen-bar.p4 { background: linear-gradient(90deg, #059669, #34d399); }
+  .screen-bar.p5 { background: linear-gradient(90deg, #dc2626, #f87171); }
+  .screen-bar.p6 { background: linear-gradient(90deg, #ea580c, #fb923c); }
+
+  .screen-header {
+    padding: 12px 14px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #1e1e30;
+  }
+  .screen-icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+  .screen-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #e2e8f0;
+    line-height: 1.2;
+  }
+  .screen-sub {
+    font-size: 9px;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+  .screen-body {
+    padding: 10px 14px 12px;
+  }
+  .screen-msg {
+    background: #1a1a2e;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 9.5px;
+    color: #94a3b8;
+    line-height: 1.5;
+    font-style: italic;
+    border-left: 2px solid #3b4060;
+    margin-bottom: 8px;
+  }
+  .screen-msg.audio {
+    border-left-color: #7c3aed;
+    background: #1e1a35;
+  }
+  .screen-msg.payment {
+    border-left-color: #059669;
+    background: #0d2018;
+  }
+  .screen-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 8.5px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    margin: 2px 2px 0 0;
+  }
+  .tag-ai { background: #2d1f5e; color: #a78bfa; }
+  .tag-audio { background: #1a0f35; color: #c084fc; }
+  .tag-pay { background: #0d2018; color: #34d399; }
+  .tag-auto { background: #1e2035; color: #60a5fa; }
+  .tag-warm { background: #3d2000; color: #f59e0b; }
+  .tag-urgent { background: #3d0808; color: #f87171; }
+  .tag-vip { background: #2d2000; color: #fbbf24; }
+
+  .screen-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #1e1e30;
+  }
+  .metric-label { font-size: 8.5px; color: #4b5563; }
+  .metric-value { font-size: 10px; font-weight: 700; color: #60a5fa; }
+
+  /* ── ARROW CONNECTOR ── */
+  .connector {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 56px;
+    width: 32px;
+    flex-shrink: 0;
+    justify-content: center;
+  }
+  .arrow-line {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, #2a2040, #3d3060, #2a2040);
+    position: relative;
+    top: 10px;
+  }
+  .arrow-line::after {
+    content: '▶';
+    font-size: 10px;
+    color: #5a4080;
+    position: absolute;
+    right: -5px;
+    top: -7px;
+  }
+
+  /* ── BRANCH ── */
+  .branch-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  .branch-label {
+    font-size: 8.5px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── STRATEGY STRIP ── */
+  .strategy-section {
+    padding: 0 48px;
+    margin-top: 8px;
+  }
+  .strategy-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4b5563;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .strategy-title::before,
+  .strategy-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #1e1e30;
+  }
+  .strategies-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .strategy-card {
+    background: #0f0f1e;
+    border: 1px solid #1e1e35;
+    border-radius: 14px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .strategy-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .strategy-card.s1::before { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+  .strategy-card.s2::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+  .strategy-card.s3::before { background: linear-gradient(90deg, #059669, #34d399); }
+  .strategy-card.s4::before { background: linear-gradient(90deg, #dc2626, #f87171); }
+  .strategy-card.s5::before { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+  .strategy-card.s6::before { background: linear-gradient(90deg, #9333ea, #e879f9); }
+  .strategy-card.s7::before { background: linear-gradient(90deg, #ea580c, #fdba74); }
+  .strategy-card.s8::before { background: linear-gradient(90deg, #0f766e, #2dd4bf); }
+
+  .strategy-num {
+    font-size: 10px;
+    font-weight: 800;
+    color: #4b5563;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .strategy-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .strategy-desc {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.6;
+  }
+  .strategy-example {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #1a1a2e;
+    border-radius: 8px;
+    font-size: 10px;
+    color: #94a3b8;
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .strategy-used-by {
+    margin-top: 8px;
+    font-size: 9.5px;
+    color: #4b5563;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ── REVENUE CALC ── */
+  .revenue-section {
+    padding: 0 48px;
+    margin-top: 40px;
+  }
+  .revenue-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .revenue-card {
+    background: #0f0f1e;
+    border: 1px solid #1e1e35;
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+  }
+  .revenue-scenario {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .revenue-scenario.conservative { color: #60a5fa; }
+  .revenue-scenario.moderate { color: #f59e0b; }
+  .revenue-scenario.aggressive { color: #34d399; }
+  .revenue-people {
+    font-size: 28px;
+    font-weight: 900;
+    color: #e2e8f0;
+    line-height: 1;
+  }
+  .revenue-people span {
+    font-size: 13px;
+    font-weight: 400;
+    color: #6b7280;
+  }
+  .revenue-divider {
+    height: 1px;
+    background: #1e1e35;
+    margin: 14px 0;
+  }
+  .revenue-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 6px;
+  }
+  .revenue-row strong {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+  .revenue-total {
+    background: #1a1a2e;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 20px;
+    font-weight: 800;
+    color: #a78bfa;
+  }
+  .revenue-total span {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 400;
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* ── COMMISSION TABLE ── */
+  .commission-card {
+    background: #0f0f1e;
+    border: 1px solid #1e1e35;
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 20px;
+  }
+  .commission-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+  .commission-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid #1a1a2e;
+  }
+  .commission-row:last-child { border-bottom: none; }
+  .commission-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .commission-name { font-size: 13px; font-weight: 600; flex: 1; }
+  .commission-role { font-size: 10px; color: #6b7280; }
+  .commission-pct {
+    font-size: 22px;
+    font-weight: 900;
+    min-width: 50px;
+    text-align: right;
+  }
+  .commission-value {
+    font-size: 11px;
+    color: #6b7280;
+    text-align: right;
+    min-width: 80px;
+  }
+
+  /* SEPARATOR */
+  .separator {
+    width: 100%;
+    height: 1px;
+    background: #1a1a2e;
+    margin: 32px 0;
+  }
+
+  /* FOOTER NOTE */
+  .footer-note {
+    padding: 0 48px;
+    margin-top: 16px;
+  }
+  .note-box {
+    background: #0f1a0f;
+    border: 1px solid #1a3020;
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 11.5px;
+    color: #6b8f6b;
+    line-height: 1.7;
+  }
+  .note-box strong { color: #34d399; }
+
+  /* LOOP BADGE */
+  .loop-badge {
+    background: #1a0f2e;
+    border: 1px dashed #4a1f8e;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 9.5px;
+    color: #7c3aed;
+    text-align: center;
+    width: 175px;
+    line-height: 1.5;
+  }
+
+  /* DECISION DIAMOND */
+  .decision {
+    background: #1a1510;
+    border: 2px solid #d97706;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 10px;
+    color: #f59e0b;
+    text-align: center;
+    width: 160px;
+    line-height: 1.4;
+    font-weight: 600;
+    position: relative;
+  }
+  .decision::before {
+    content: '⬦';
+    display: block;
+    font-size: 8px;
+    color: #d97706;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>Protocolo G9 — Funil de Lançamento</h1>
+    <p>Joseph Pay × Renato × Ortype · Mapa completo de disparo + estratégias</p>
+  </div>
+  <div class="header-stats">
+    <div class="stat">
+      <div class="stat-value">6.000</div>
+      <div class="stat-label">Contatos na base</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">R$180</div>
+      <div class="stat-label">Ticket trimestral</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">7 dias</div>
+      <div class="stat-label">Duração do lançamento</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">R$1,08M</div>
+      <div class="stat-label">Potencial máximo</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASE LABELS -->
+<div class="phases-bar">
+  <div class="phase-tab p1">01 · Segmentação</div>
+  <div class="phase-tab p2">02 · Aquecimento D-2</div>
+  <div class="phase-tab p3">03 · Reconexão D0</div>
+  <div class="phase-tab p3">04 · Engajamento D1–D2</div>
+  <div class="phase-tab p4">05 · Revelação D3</div>
+  <div class="phase-tab p5">06 · Conversão D4–D5</div>
+  <div class="phase-tab p6">07 · Pós-venda</div>
+</div>
+
+<!-- MAIN CANVAS -->
+<div class="canvas">
+
+  <!-- COL 1: SEGMENTAÇÃO -->
+  <div class="col">
+    <span class="col-title p1">Segmentação</span>
+
+    <div class="screen">
+      <div class="screen-bar p1"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🗄️</span>
+        <div>
+          <div class="screen-name">Base completa</div>
+          <div class="screen-sub">Joseph Pay</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">6.000 contatos importados da base do Renato (ex-alunos academia)</div>
+        <span class="screen-tag tag-auto">📂 CSV import</span>
+        <span class="screen-tag tag-auto">🔢 Variável [Nome]</span>
+        <div class="screen-metric">
+          <span class="metric-label">Base total</span>
+          <span class="metric-value">6.000</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:11px; color:#4b5563; text-align:center; padding: 4px 0;">▼ segmenta</div>
+
+    <div class="branch-container">
+      <div class="screen" style="width:155px; border-color: #fbbf24;">
+        <div class="screen-bar" style="background: #fbbf24;"></div>
+        <div class="screen-header">
+          <span class="screen-icon">👑</span>
+          <div>
+            <div class="screen-name">Lista VIP</div>
+            <div class="screen-sub">Mais próximos</div>
+          </div>
+        </div>
+        <div class="screen-body">
+          <div class="screen-msg">20–30 alunos com mais vínculo com o Renato. Compram primeiro.</div>
+          <span class="screen-tag tag-vip">⭐ D-2</span>
+          <div class="screen-metric">
+            <span class="metric-label">Tamanho</span>
+            <span class="metric-value" style="color:#fbbf24;">20–30</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" style="width:155px;">
+        <div class="screen-bar p4"></div>
+        <div class="screen-header">
+          <span class="screen-icon">🧪</span>
+          <div>
+            <div class="screen-name">Turma teste</div>
+            <div class="screen-sub">Validação do funil</div>
+          </div>
+        </div>
+        <div class="screen-body">
+          <div class="screen-msg">300 contatos pra testar Joseph IA, Ortype e funil sem sobrecarregar.</div>
+          <span class="screen-tag tag-auto">🔬 Fase 1</span>
+          <div class="screen-metric">
+            <span class="metric-label">Tamanho</span>
+            <span class="metric-value" style="color:#34d399;">300</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" style="width:155px; border-color: #4b5563; opacity: 0.6;">
+        <div class="screen-bar" style="background: #4b5563;"></div>
+        <div class="screen-header">
+          <span class="screen-icon">📦</span>
+          <div>
+            <div class="screen-name">Base full</div>
+            <div class="screen-sub">Após validação</div>
+          </div>
+        </div>
+        <div class="screen-body">
+          <div class="screen-msg">5.700 restantes disparam após validação. 90 dias depois, novo trimestre.</div>
+          <span class="screen-tag" style="background:#1a1a2e; color:#4b5563;">🔒 Fase 2</span>
+          <div class="screen-metric">
+            <span class="metric-label">Tamanho</span>
+            <span class="metric-value" style="color:#4b5563;">5.700</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 2: AQUECIMENTO D-2 -->
+  <div class="col">
+    <span class="col-title p2">Aquecimento · D-2</span>
+
+    <div class="screen">
+      <div class="screen-bar p2"></div>
+      <div class="screen-header">
+        <span class="screen-icon">👑</span>
+        <div>
+          <div class="screen-name">Mensagem VIP</div>
+          <div class="screen-sub">2 dias antes · Só para os 20-30</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"[Nome], quero te dar acesso antes de todo mundo. Posso te contar agora?"</div>
+        <span class="screen-tag tag-vip">👑 Exclusivo</span>
+        <span class="screen-tag tag-audio">🎙️ Áudio Renato</span>
+        <div class="screen-metric">
+          <span class="metric-label">Conversão esperada VIP</span>
+          <span class="metric-value" style="color:#fbbf24;">40–60%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p2"></div>
+      <div class="screen-header">
+        <span class="screen-icon">💳</span>
+        <div>
+          <div class="screen-name">Venda antecipada</div>
+          <div class="screen-sub">Joseph Pay · Link G9</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg payment">"Aqui o link, [Nome]. Você fecha agora antes de todo mundo. Só até amanhã."</div>
+        <span class="screen-tag tag-pay">💚 Checkout G9</span>
+        <span class="screen-tag tag-ai">🤖 Joseph IA</span>
+        <div class="screen-metric">
+          <span class="metric-label">Objetivo</span>
+          <span class="metric-value" style="color:#fbbf24;">10–15 vendas</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="loop-badge">
+      🏆 <strong>Prova social seed</strong><br/>
+      Esses compradores VIP viram screenshot de "já temos X alunos" nos próximos disparos
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 3: RECONEXÃO D0 -->
+  <div class="col">
+    <span class="col-title p3">Reconexão · D0</span>
+
+    <div class="screen">
+      <div class="screen-bar p3"></div>
+      <div class="screen-header">
+        <span class="screen-icon">💬</span>
+        <div>
+          <div class="screen-name">Disparo 1:1</div>
+          <div class="screen-sub">Joseph Pay · Texto + nome</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"Oi, [Nome]! Tudo bem com você? Sou o Renato. Faz tempo que a gente não se fala, mas lembrei de você hoje por um motivo específico..."</div>
+        <span class="screen-tag tag-warm">🔥 Reconexão</span>
+        <span class="screen-tag tag-auto">📛 Var. [Nome]</span>
+        <div class="screen-metric">
+          <span class="metric-label">Tom</span>
+          <span class="metric-value">Íntimo</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="decision">
+      Pessoa respondeu?
+      <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:9px; color:#6b7280;">
+        <span>✅ Sim</span>
+        <span>❌ Não</span>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p3"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🤖</span>
+        <div>
+          <div class="screen-name">Joseph IA responde</div>
+          <div class="screen-sub">Clone do Renato · Automático</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg audio">🎙️ Áudio 30s do Renato: "Que bom! Cara, tô animado pra te contar o que tô preparando..."</div>
+        <span class="screen-tag tag-ai">🤖 IA ativa</span>
+        <span class="screen-tag tag-audio">🎙️ Áudio</span>
+        <div class="screen-metric">
+          <span class="metric-label">Response rate esperado</span>
+          <span class="metric-value">35–50%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="loop-badge">
+      ⚡ Quem não responde em 6h recebe follow-up automático com áudio curto
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 4: ENGAJAMENTO D1-D2 -->
+  <div class="col">
+    <span class="col-title p3">Engajamento · D1–D2</span>
+
+    <div class="screen">
+      <div class="screen-bar p3"></div>
+      <div class="screen-header">
+        <span class="screen-icon">📖</span>
+        <div>
+          <div class="screen-name">A história do Renato</div>
+          <div class="screen-sub">Dia 1 · Storytelling</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"Depois de anos dando aula, vi um padrão em quem não conseguia manter resultado. Resolvi criar algo diferente..."</div>
+        <span class="screen-tag tag-warm">❤️ Conexão emocional</span>
+        <div class="screen-metric">
+          <span class="metric-label">Finaliza com</span>
+          <span class="metric-value" style="color:#a78bfa;">Pergunta</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p3"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🎯</span>
+        <div>
+          <div class="screen-name">O problema real</div>
+          <div class="screen-sub">Dia 1 · Continuação</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"O problema não é falta de força de vontade. É falta de acompanhamento real. [Nome], você já se viu assim?"</div>
+        <span class="screen-tag tag-auto">📛 [Nome]</span>
+        <span class="screen-tag tag-ai">🤖 IA responde</span>
+        <div class="screen-metric">
+          <span class="metric-label">Objetivo</span>
+          <span class="metric-value">Identificação</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p3"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🎙️</span>
+        <div>
+          <div class="screen-name">Bastidor em áudio</div>
+          <div class="screen-sub">Dia 2 · Curiosidade</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg audio">🎙️ "Tô aqui montando o protocolo de vocês. Olha o que vai ter..." [som de app abrindo]</div>
+        <span class="screen-tag tag-audio">🎙️ Bastidor real</span>
+        <span class="screen-tag tag-warm">👁️ Curiosidade</span>
+        <div class="screen-metric">
+          <span class="metric-label">Engajamento esperado</span>
+          <span class="metric-value">+25%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 5: REVELAÇÃO D3 -->
+  <div class="col">
+    <span class="col-title p4">Revelação · D3</span>
+
+    <div class="screen">
+      <div class="screen-bar p4"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🚀</span>
+        <div>
+          <div class="screen-name">Revela o G9</div>
+          <div class="screen-sub">Dia 3 · Para interessados</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"Vou te apresentar o Protocolo G9. 90 dias de acompanhamento real, treino no Ortype, eu ali com você..."</div>
+        <span class="screen-tag tag-ai">🤖 Joseph IA</span>
+        <span class="screen-tag tag-audio">🎙️ Áudio Renato</span>
+        <div class="screen-metric">
+          <span class="metric-label">Canal</span>
+          <span class="metric-value">Joseph Pay</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p4"></div>
+      <div class="screen-header">
+        <span class="screen-icon">📱</span>
+        <div>
+          <div class="screen-name">Demo do Ortype</div>
+          <div class="screen-sub">Dia 3 · Produto em ação</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg audio">🎙️ "Olha aqui o app..." [screen recording enviado] Avatar, scanner refeição, chat IA, humor, suplementos...</div>
+        <span class="screen-tag tag-ai">📱 Ortype demo</span>
+        <span class="screen-tag tag-warm">👀 Visualização</span>
+        <div class="screen-metric">
+          <span class="metric-label">Objetivo</span>
+          <span class="metric-value">Desejo</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p4"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🏆</span>
+        <div>
+          <div class="screen-name">Prova social</div>
+          <div class="screen-sub">Dia 3 · Depoimentos VIP</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"[Nome] do [Cidade] já entrou. Olha o que ele falou..." [áudio aluno VIP]</div>
+        <span class="screen-tag tag-audio">🎙️ Depoimento real</span>
+        <span class="screen-tag tag-warm">✅ Validação</span>
+        <div class="screen-metric">
+          <span class="metric-label">Seed compradores VIP</span>
+          <span class="metric-value" style="color:#34d399;">+vendas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 6: CONVERSÃO D4-D5 -->
+  <div class="col">
+    <span class="col-title p5">Conversão · D4–D5</span>
+
+    <div class="screen">
+      <div class="screen-bar p5"></div>
+      <div class="screen-header">
+        <span class="screen-icon">⏳</span>
+        <div>
+          <div class="screen-name">Urgência real</div>
+          <div class="screen-sub">Dia 4 · Vagas limitadas</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"Vou fechar em X vagas porque quero acompanhar todo mundo de perto. [Nome], você entra ou fico sem sua vaga?"</div>
+        <span class="screen-tag tag-urgent">⏰ Urgência</span>
+        <span class="screen-tag tag-auto">📛 [Nome]</span>
+        <div class="screen-metric">
+          <span class="metric-label">Vagas sugeridas</span>
+          <span class="metric-value" style="color:#f87171;">50–100</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p5"></div>
+      <div class="screen-header">
+        <span class="screen-icon">💳</span>
+        <div>
+          <div class="screen-name">Link no chat</div>
+          <div class="screen-sub">Joseph Pay · Checkout</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg payment">Joseph IA envia link G9 direto na conversa. Pagamento sem sair do WhatsApp. Comissão Joseph Pay automática.</div>
+        <span class="screen-tag tag-pay">💚 R$180</span>
+        <span class="screen-tag tag-ai">🤖 Auto</span>
+        <div class="screen-metric">
+          <span class="metric-label">Fricção no checkout</span>
+          <span class="metric-value" style="color:#34d399;">Mínima</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p5"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🔚</span>
+        <div>
+          <div class="screen-name">Último aviso</div>
+          <div class="screen-sub">Dia 5 · Fechamento</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg audio">🎙️ Áudio Renato 20s: "Vou fechar essa noite. Quero você lá, [Nome]. Último link aqui."</div>
+        <span class="screen-tag tag-urgent">🔴 Final</span>
+        <span class="screen-tag tag-audio">🎙️ Tom pessoal</span>
+        <div class="screen-metric">
+          <span class="metric-label">50% das vendas acontecem</span>
+          <span class="metric-value" style="color:#f87171;">nesse dia</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow-line"></div></div>
+
+  <!-- COL 7: PÓS-VENDA -->
+  <div class="col">
+    <span class="col-title p6">Pós-venda · Retenção</span>
+
+    <div class="screen">
+      <div class="screen-bar p6"></div>
+      <div class="screen-header">
+        <span class="screen-icon">📲</span>
+        <div>
+          <div class="screen-name">Onboarding Ortype</div>
+          <div class="screen-sub">Imediato após pagamento</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"[Nome], bem-vindo(a) ao G9! Aqui está o link do Ortype. Em 5 min você já tá dentro."</div>
+        <span class="screen-tag tag-ai">🤖 Auto Joseph IA</span>
+        <div class="screen-metric">
+          <span class="metric-label">Ativação no app</span>
+          <span class="metric-value">Meta: 80%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p6"></div>
+      <div class="screen-header">
+        <span class="screen-icon">💬</span>
+        <div>
+          <div class="screen-name">Grupo VIP</div>
+          <div class="screen-sub">Hard benefit</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg">"Você entra no grupo exclusivo dos alunos G9. Renato posta dicas toda semana. Só quem tá no protocolo."</div>
+        <span class="screen-tag tag-vip">👑 Exclusivo</span>
+        <span class="screen-tag tag-warm">🤝 Comunidade</span>
+        <div class="screen-metric">
+          <span class="metric-label">Retenção trimestral</span>
+          <span class="metric-value" style="color:#fb923c;">+40%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="screen-bar p6"></div>
+      <div class="screen-header">
+        <span class="screen-icon">🔁</span>
+        <div>
+          <div class="screen-name">Renovação D+75</div>
+          <div class="screen-sub">Joseph Pay · 15d antes</div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="screen-msg audio">🎙️ Joseph IA ativa renovação automática: "[Nome], seu protocolo tá acabando. Veja seus resultados..."</div>
+        <span class="screen-tag tag-pay">💚 R$180 recorrente</span>
+        <span class="screen-tag tag-auto">🔄 Auto</span>
+        <div class="screen-metric">
+          <span class="metric-label">Recorrência esperada</span>
+          <span class="metric-value" style="color:#fb923c;">50–70%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="loop-badge" style="border-color: #ea580c; color: #fb923c; background: #1a0f05;">
+      🔁 <strong>Ciclo trimestral</strong><br/>
+      Cada renovação = novo R$180<br/>
+      Ortype recebe R$19,90/mês por aluno ativo
+    </div>
+  </div>
+
+</div><!-- /canvas -->
+
+<!-- STRATEGIES SECTION -->
+<div class="strategy-section">
+  <div class="strategy-title">Estratégias Bilionárias Aplicadas</div>
+  <div class="strategies-grid">
+
+    <div class="strategy-card s1">
+      <div class="strategy-num">EST. 01</div>
+      <div class="strategy-name">Whisper Launch</div>
+      <div class="strategy-desc">Lançamento silencioso. Parece uma conversa privada entre dois amigos. A pessoa não sente que está recebendo marketing — sente que foi escolhida.</div>
+      <div class="strategy-example">"Lembrei de você hoje por um motivo específico..."</div>
+      <div class="strategy-used-by">🏆 Usado por: Ryan Deiss, Frank Kern, Iman Gadzhi</div>
+    </div>
+
+    <div class="strategy-card s2">
+      <div class="strategy-num">EST. 02</div>
+      <div class="strategy-name">VIP Seeding</div>
+      <div class="strategy-desc">Vende para 20-30 pessoas 48h antes do lançamento abrir. Quando o lançamento começa, você já tem compradores reais — usa isso como prova social para os próximos.</div>
+      <div class="strategy-example">"Já temos X alunos desde ontem..."</div>
+      <div class="strategy-used-by">🏆 Usado por: Jeff Walker (PLF), Hormozi</div>
+    </div>
+
+    <div class="strategy-card s3">
+      <div class="strategy-num">EST. 03</div>
+      <div class="strategy-name">Real Scarcity Engineering</div>
+      <div class="strategy-desc">Limite de vagas baseado em capacidade real de acompanhamento. Não é fake. "Só consigo acompanhar bem 80 pessoas por turma" — crível, defensável, urgente.</div>
+      <div class="strategy-example">"Quero garantir resultado para todo mundo — por isso só X vagas."</div>
+      <div class="strategy-used-by">🏆 Princípio de Cialdini — escassez real</div>
+    </div>
+
+    <div class="strategy-card s4">
+      <div class="strategy-num">EST. 04</div>
+      <div class="strategy-name">AI Clone Scale</div>
+      <div class="strategy-desc">O Joseph IA permite que o Renato tenha conversas 1:1 simultâneas com 6.000 pessoas. Cada um sente que está falando com o Renato. Escala sem perder intimidade.</div>
+      <div class="strategy-example">Áudio do Renato enviado pelo clone IA 24/7 automaticamente</div>
+      <div class="strategy-used-by">🏆 Estratégia de escala usada por criadores top no EUA</div>
+    </div>
+
+    <div class="strategy-card s5">
+      <div class="strategy-num">EST. 05</div>
+      <div class="strategy-name">Audio Trust Bridge</div>
+      <div class="strategy-desc">Áudio constrói confiança 10x mais rápido que texto. Voz transmite emoção, autenticidade e proximidade. A decisão de compra é emocional — o áudio aciona isso.</div>
+      <div class="strategy-example">Áudios de 20-40s estrategicamente posicionados nos momentos de decisão</div>
+      <div class="strategy-used-by">🏆 Princípio da psicologia da persuasão (Cialdini)</div>
+    </div>
+
+    <div class="strategy-card s6">
+      <div class="strategy-num">EST. 06</div>
+      <div class="strategy-name">Storyline Selling</div>
+      <div class="strategy-desc">Não apresenta o produto. Conta uma história de transformação que faz a pessoa se identificar antes de saber o que vai comprar. Quando o produto aparece, já é a solução óbvia.</div>
+      <div class="strategy-example">"Vi um padrão em quem não conseguia manter o resultado..."</div>
+      <div class="strategy-used-by">🏆 Usado por: Alex Hormozi, Donald Miller (StoryBrand)</div>
+    </div>
+
+    <div class="strategy-card s7">
+      <div class="strategy-num">EST. 07</div>
+      <div class="strategy-name">Mid-Launch Social Proof</div>
+      <div class="strategy-desc">Injeta depoimentos e screenshots NO MEIO do lançamento (D3-D4), não só no início. Cria sensação de "todo mundo tá entrando" no pico de indecisão.</div>
+      <div class="strategy-example">"Olha o que o João falou ontem depois de entrar..."</div>
+      <div class="strategy-used-by">🏆 Técnica de momentum — evita queda no meio do funil</div>
+    </div>
+
+    <div class="strategy-card s8">
+      <div class="strategy-num">EST. 08</div>
+      <div class="strategy-name">Revenue Stack</div>
+      <div class="strategy-desc">Um único cliente gera 3 fontes de receita: ticket G9 (R$180) + mensalidade Ortype (R$19,90/mês) + renovação trimestral. O LTV real é muito maior que os R$180 visíveis.</div>
+      <div class="strategy-example">300 alunos × R$180 = R$54k + R$5.970/mês Ortype recorrente</div>
+      <div class="strategy-used-by">🏆 Modelo de negócio Amazon, SaaS, subscriptions</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- REVENUE PROJECTIONS -->
+<div class="revenue-section">
+  <div style="height:40px;"></div>
+  <div class="strategy-title">Projeção de Receita · Turma Teste (300 contatos)</div>
+  <div class="revenue-grid">
+
+    <div class="revenue-card">
+      <div class="revenue-scenario conservative">Conservador</div>
+      <div class="revenue-people">45 <span>alunos convertidos (15%)</span></div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-row"><span>Ticket G9 (R$180)</span> <strong>R$8.100</strong></div>
+      <div class="revenue-row"><span>Renato 80%</span> <strong>R$6.480</strong></div>
+      <div class="revenue-row"><span>Rafa 10%</span> <strong>R$810</strong></div>
+      <div class="revenue-row"><span>Ramon 10%</span> <strong>R$810</strong></div>
+      <div class="revenue-row"><span>Ortype/mês (45×R$19,90)</span> <strong>R$895/mês</strong></div>
+      <div class="revenue-total">R$8.100 <span>+ R$895/mês recorrente</span></div>
+    </div>
+
+    <div class="revenue-card" style="border-color: #d97706;">
+      <div class="revenue-scenario moderate">Moderado</div>
+      <div class="revenue-people">75 <span>alunos convertidos (25%)</span></div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-row"><span>Ticket G9 (R$180)</span> <strong>R$13.500</strong></div>
+      <div class="revenue-row"><span>Renato 80%</span> <strong>R$10.800</strong></div>
+      <div class="revenue-row"><span>Rafa 10%</span> <strong>R$1.350</strong></div>
+      <div class="revenue-row"><span>Ramon 10%</span> <strong>R$1.350</strong></div>
+      <div class="revenue-row"><span>Ortype/mês (75×R$19,90)</span> <strong>R$1.493/mês</strong></div>
+      <div class="revenue-total" style="color:#f59e0b;">R$13.500 <span>+ R$1.493/mês recorrente</span></div>
+    </div>
+
+    <div class="revenue-card" style="border-color: #059669;">
+      <div class="revenue-scenario aggressive">Agressivo</div>
+      <div class="revenue-people">120 <span>alunos convertidos (40%)</span></div>
+      <div class="revenue-divider"></div>
+      <div class="revenue-row"><span>Ticket G9 (R$180)</span> <strong>R$21.600</strong></div>
+      <div class="revenue-row"><span>Renato 80%</span> <strong>R$17.280</strong></div>
+      <div class="revenue-row"><span>Rafa 10%</span> <strong>R$2.160</strong></div>
+      <div class="revenue-row"><span>Ramon 10%</span> <strong>R$2.160</strong></div>
+      <div class="revenue-row"><span>Ortype/mês (120×R$19,90)</span> <strong>R$2.388/mês</strong></div>
+      <div class="revenue-total" style="color:#34d399;">R$21.600 <span>+ R$2.388/mês recorrente</span></div>
+    </div>
+
+  </div>
+
+  <!-- COMMISSION TABLE -->
+  <div class="commission-card" style="margin-top:20px;">
+    <div class="commission-title">Divisão de comissão — por venda de R$180</div>
+    <div class="commission-row">
+      <div class="commission-avatar" style="background:#1a3020;">💪</div>
+      <div>
+        <div class="commission-name">Renato</div>
+        <div class="commission-role">Produtor · criador do protocolo</div>
+      </div>
+      <div class="commission-pct" style="color:#34d399;">80%</div>
+      <div class="commission-value">R$144 / venda</div>
+    </div>
+    <div class="commission-row">
+      <div class="commission-avatar" style="background:#1e2035;">⚙️</div>
+      <div>
+        <div class="commission-name">Rafa</div>
+        <div class="commission-role">Operações Joseph Pay</div>
+      </div>
+      <div class="commission-pct" style="color:#60a5fa;">10%</div>
+      <div class="commission-value">R$18 / venda</div>
+    </div>
+    <div class="commission-row">
+      <div class="commission-avatar" style="background:#2d1f5e;">📣</div>
+      <div>
+        <div class="commission-name">Ramon</div>
+        <div class="commission-role">Disparo / distribuição</div>
+      </div>
+      <div class="commission-pct" style="color:#a78bfa;">10%</div>
+      <div class="commission-value">R$18 / venda</div>
+    </div>
+    <div class="commission-row" style="opacity:0.7;">
+      <div class="commission-avatar" style="background:#1a1510;">📱</div>
+      <div>
+        <div class="commission-name">Nicolas (Ortype)</div>
+        <div class="commission-role">App subscription · separado</div>
+      </div>
+      <div class="commission-pct" style="color:#f59e0b; font-size:14px;">R$19,90</div>
+      <div class="commission-value">por aluno/mês</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER NOTE -->
+<div class="footer-note" style="margin-top:32px;">
+  <div class="note-box">
+    <strong>💡 Nota estratégica:</strong> A taxa de conversão de 40% (cenário agressivo) é realista para base quente de ex-alunos do Renato, com personalização por nome, áudio do próprio Renato e Joseph IA respondendo 1:1. A mesma base fria teria 3–8%. Esse é o maior ativo do lançamento: <strong>base quente + intimidade = conversão alta</strong>. Valida com 300, escala para 6.000 com os números em mãos.
+  </div>
+</div>
+
+</body>
+</html>
