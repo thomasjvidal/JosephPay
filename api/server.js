@@ -713,6 +713,7 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
+const FRONTEND_URL   = process.env.FRONTEND_URL || "https://josephpay.com";
 
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
@@ -1246,9 +1247,9 @@ app.post("/api/public/checkout", async (req, res) => {
         payment_methods:    { installments: isRecurrent ? 1 : 12 },
         statement_descriptor: "JosephPay",
         back_urls: {
-          success: `${PUBLIC_URL}/checkout.html?p=${productId}&confirmed=1`,
-          failure: `${PUBLIC_URL}/checkout.html?p=${productId}`,
-          pending: `${PUBLIC_URL}/checkout.html?p=${productId}`,
+          success: `${FRONTEND_URL}/checkout.html?p=${productId}&confirmed=1`,
+          failure: `${FRONTEND_URL}/checkout.html?p=${productId}`,
+          pending: `${FRONTEND_URL}/checkout.html?p=${productId}`,
         },
         auto_return: "approved",
       });
