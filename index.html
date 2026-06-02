@@ -1679,11 +1679,12 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   const [funnelEdit,setFunnelEdit]=useState(false);
   const [fUpsell,setFUpsell]=useState(produto.upsell_url||"");
   const [fDownsell,setFDownsell]=useState(produto.downsell_url||"");
+  const [fObrigado,setFObrigado]=useState(produto.obrigado_url||"");
   const [funnelSaving,setFunnelSaving]=useState(false);
   const [funnelMsg,setFunnelMsg]=useState("");
   const saveFunnel=async()=>{
     setFunnelSaving(true);setFunnelMsg("");
-    const d=await apiCall(`/api/products/${produto.id}/funnel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({upsellUrl:fUpsell.trim()||null,downsellUrl:(fUpsell.trim()&&fDownsell.trim())?fDownsell.trim():null})});
+    const d=await apiCall(`/api/products/${produto.id}/funnel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({upsellUrl:fUpsell.trim()||null,downsellUrl:(fUpsell.trim()&&fDownsell.trim())?fDownsell.trim():null,obrigadoUrl:fObrigado.trim()||null})});
     setFunnelSaving(false);
     if(d?.success){setFunnelMsg("Salvo!");setFunnelEdit(false);}
     else setFunnelMsg(d?.error||"Erro ao salvar.");
@@ -1773,6 +1774,10 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
               <input value={fUpsell} onChange={e=>setFUpsell(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
             </div>
             <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de obrigado (se não tiver upsell)</div>
+              <input value={fObrigado} onChange={e=>setFObrigado(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+            </div>
+            <div>
               <div style={{color:fUpsell.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de downsell</div>
               <input value={fDownsell} onChange={e=>setFDownsell(e.target.value)} disabled={!fUpsell.trim()} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:fUpsell.trim()?TEXT:"rgba(255,255,255,0.2)",fontSize:13,outline:"none",fontFamily:F,cursor:fUpsell.trim()?"text":"not-allowed"}}/>
             </div>
@@ -1784,6 +1789,10 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:12}}>Upsell</span>
               <span style={{color:fUpsell?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fUpsell||"Não configurado"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>Obrigado</span>
+              <span style={{color:fObrigado?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fObrigado||"Padrão JosephPay"}</span>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:12}}>Downsell</span>
@@ -1812,6 +1821,7 @@ function CriarProdutoModal({onClose,onCreated}){
   const [ciclo,setCiclo]=useState("MONTHLY");
   const [upsellUrl,setUpsellUrl]=useState("");
   const [downsellUrl,setDownsellUrl]=useState("");
+  const [obrigadoUrl,setObrigadoUrl]=useState("");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [created,setCreated]=useState(false); // boolean — produto foi criado
@@ -1822,7 +1832,7 @@ function CriarProdutoModal({onClose,onCreated}){
     setError("");setLoading(true);
     const val=parseFloat(preco.replace(/\./g,"").replace(",","."));
     if(isNaN(val)||val<=0){setError("Preço inválido.");setLoading(false);return;}
-    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined,upsellUrl:upsellUrl.trim()||undefined,downsellUrl:(upsellUrl.trim()&&downsellUrl.trim())?downsellUrl.trim():undefined})});
+    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined,upsellUrl:upsellUrl.trim()||undefined,downsellUrl:(upsellUrl.trim()&&downsellUrl.trim())?downsellUrl.trim():undefined,obrigadoUrl:obrigadoUrl.trim()||undefined})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
     if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}
@@ -1899,7 +1909,12 @@ function CriarProdutoModal({onClose,onCreated}){
                 <div style={{marginBottom:10}}>
                   <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de upsell</div>
                   <input value={upsellUrl} onChange={e=>setUpsellUrl(e.target.value)} placeholder="https://sua-pagina-de-upsell.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Após a compra ser confirmada, o cliente é redirecionado para esta URL.</div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se preenchida, o cliente vai para cá após pagar. Deixe vazio para usar a página de obrigado abaixo.</div>
+                </div>
+                <div>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de obrigado (se não tiver upsell)</div>
+                  <input value={obrigadoUrl} onChange={e=>setObrigadoUrl(e.target.value)} placeholder="https://sua-pagina-de-obrigado.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se não preencher nenhuma das duas, usamos a página de obrigado padrão do JosephPay.</div>
                 </div>
                 <div>
                   <div style={{color:upsellUrl.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de downsell</div>
