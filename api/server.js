@@ -1165,7 +1165,7 @@ app.post("/api/public/checkout", async (req, res) => {
     }
 
     const { data: product } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id")
+      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id,upsell_url")
       .eq("id", productId).maybeSingle();
     if (!product) return res.status(404).json({ error: "Produto não encontrado" });
 
@@ -1245,6 +1245,12 @@ app.post("/api/public/checkout", async (req, res) => {
         notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
         payment_methods:    { installments: isRecurrent ? 1 : 12 },
         statement_descriptor: "JosephPay",
+        back_urls: {
+          success: `${PUBLIC_URL}/checkout.html?p=${productId}&confirmed=1`,
+          failure: `${PUBLIC_URL}/checkout.html?p=${productId}`,
+          pending: `${PUBLIC_URL}/checkout.html?p=${productId}`,
+        },
+        auto_return: "approved",
       });
       chargeId   = String(prefResp.data.id);
       invoiceUrl = prefResp.data.init_point || prefResp.data.sandbox_init_point;

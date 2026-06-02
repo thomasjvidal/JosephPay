@@ -119,12 +119,25 @@ function App() {
   const pollRef = useRef(null);
 
   // Carrega produto via query param ?p=ID
+  // Se vier com ?confirmed=1 (retorno do Mercado Pago após cartão), redireciona para upsell
   useEffect(() => {
-    const pid = new URLSearchParams(window.location.search).get("p");
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get("p");
+    const confirmed = params.get("confirmed") === "1";
     if (!pid) { setLoading(false); return; }
     fetch(`${RAILWAY}/api/public/products/${pid}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setProduct(d); setLoading(false); })
+      .then(d => {
+        setProduct(d);
+        setLoading(false);
+        if (confirmed && d?.upsellUrl) {
+          window.location.href = d.upsellUrl;
+        } else if (confirmed) {
+          setPayStatus("PAID");
+          setStep(3);
+          setMethod("CREDIT_CARD");
+        }
+      })
       .catch(() => setLoading(false));
   }, []);
 
