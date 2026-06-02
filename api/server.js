@@ -222,7 +222,7 @@ async function requireAuth(req, res, next) {
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
     const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
-            upsellUrl, downsellUrl, obrigadoUrl } = req.body;
+            upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
@@ -244,6 +244,7 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       upsell_url:         upsellUrl   || null,
       downsell_url:       downsellUrl || null,
       obrigado_url:       obrigadoUrl || null,
+      gtm_id:             gtmId       || null,
     }).select().single();
 
     if (dbErr) {
@@ -375,17 +376,18 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
  */
 app.patch("/api/products/:id/funnel", requireAuth, async (req, res) => {
   try {
-    const { upsellUrl, downsellUrl, obrigadoUrl } = req.body;
+    const { upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
     const upsell   = upsellUrl   ? String(upsellUrl).trim()   : null;
     const downsell = upsell && downsellUrl ? String(downsellUrl).trim() : null;
     const obrigado = obrigadoUrl ? String(obrigadoUrl).trim() : null;
+    const gtm      = gtmId       ? String(gtmId).trim()       : null;
     const { error } = await supabase
       .from("products")
-      .update({ upsell_url: upsell, downsell_url: downsell, obrigado_url: obrigado })
+      .update({ upsell_url: upsell, downsell_url: downsell, obrigado_url: obrigado, gtm_id: gtm })
       .eq("id", req.params.id)
       .eq("owner_id", req.user.id);
     if (error) throw error;
-    res.json({ success: true, upsellUrl: upsell, downsellUrl: downsell, obrigadoUrl: obrigado });
+    res.json({ success: true, upsellUrl: upsell, downsellUrl: downsell, obrigadoUrl: obrigado, gtmId: gtm });
   } catch (err) {
     console.error("[products/funnel]", err.message);
     res.status(500).json({ error: err.message });
@@ -1139,7 +1141,7 @@ function calcPublicPrice(basePrice, method, installments = 1) {
 app.get("/api/public/products/:id", async (req, res) => {
   try {
     const { data: product, error } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle,upsell_url,downsell_url,obrigado_url")
+      .select("id,name,description,price,billing_type,subscription_cycle,upsell_url,downsell_url,obrigado_url,gtm_id")
       .eq("id", req.params.id)
       .maybeSingle();
     if (error || !product) return res.status(404).json({ error: "Produto não encontrado" });
@@ -1153,6 +1155,7 @@ app.get("/api/public/products/:id", async (req, res) => {
       upsellUrl:        product.upsell_url   || null,
       downsellUrl:      product.downsell_url  || null,
       obrigadoUrl:      product.obrigado_url  || null,
+      gtmId:            product.gtm_id        || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
