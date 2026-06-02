@@ -221,7 +221,8 @@ async function requireAuth(req, res, next) {
  */
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
-    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY" } = req.body;
+    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
+            upsellUrl, downsellUrl } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
@@ -240,6 +241,8 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       url:                "",   // preenchido após criar preference
       billing_type:       billingType || "UNDEFINED",
       subscription_cycle: isRecurrent ? subscriptionCycle : null,
+      upsell_url:         upsellUrl  || null,
+      downsell_url:       downsellUrl || null,
     }).select().single();
 
     if (dbErr) {
@@ -360,6 +363,29 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("[products/delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PATCH /api/products/:id/funnel
+ * Atualiza upsell_url e downsell_url de um produto existente.
+ * downsell_url só é aceito se upsell_url for fornecido.
+ */
+app.patch("/api/products/:id/funnel", requireAuth, async (req, res) => {
+  try {
+    const { upsellUrl, downsellUrl } = req.body;
+    const upsell  = upsellUrl  ? String(upsellUrl).trim()  : null;
+    const downsell = upsell && downsellUrl ? String(downsellUrl).trim() : null;
+    const { error } = await supabase
+      .from("products")
+      .update({ upsell_url: upsell, downsell_url: downsell })
+      .eq("id", req.params.id)
+      .eq("owner_id", req.user.id);
+    if (error) throw error;
+    res.json({ success: true, upsellUrl: upsell, downsellUrl: downsell });
+  } catch (err) {
+    console.error("[products/funnel]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1110,7 +1136,7 @@ function calcPublicPrice(basePrice, method, installments = 1) {
 app.get("/api/public/products/:id", async (req, res) => {
   try {
     const { data: product, error } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle")
+      .select("id,name,description,price,billing_type,subscription_cycle,upsell_url,downsell_url")
       .eq("id", req.params.id)
       .maybeSingle();
     if (error || !product) return res.status(404).json({ error: "Produto não encontrado" });
@@ -1121,6 +1147,8 @@ app.get("/api/public/products/:id", async (req, res) => {
       price:            Number(product.price),
       billingType:      product.billing_type,
       subscriptionCycle: product.subscription_cycle,
+      upsellUrl:        product.upsell_url  || null,
+      downsellUrl:      product.downsell_url || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

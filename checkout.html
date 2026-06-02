@@ -145,6 +145,14 @@ function App() {
     }
   }, [result, payStatus]);
 
+  // Redireciona para upsell após confirmação (PIX e cartão)
+  useEffect(() => {
+    if (payStatus === "PAID" && product?.upsellUrl) {
+      const t = setTimeout(() => { window.location.href = product.upsellUrl; }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, [payStatus, product]);
+
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const validateStep1 = () => {
@@ -343,7 +351,7 @@ function App() {
               )}
               <div style={{marginTop:16}}>
                 {payStatus === "PAID"
-                  ? <div className="badge-ok">✓ Pagamento confirmado!</div>
+                  ? <div className="badge-ok">✓ Pagamento confirmado!{product?.upsellUrl ? " Redirecionando…" : ""}</div>
                   : <div className="badge-pending"><span className="dot-anim">●</span> Aguardando pagamento...</div>
                 }
               </div>
@@ -358,6 +366,9 @@ function App() {
               )}
               {result.invoiceUrl && (
                 <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
+              )}
+              {product?.upsellUrl && (
+                <a className="boleto-link" href={product.upsellUrl} style={{marginTop:16,background:"rgba(108,99,255,0.2)",border:"1px solid rgba(108,99,255,0.4)"}}>Ver oferta exclusiva →</a>
               )}
             </>
           )}
