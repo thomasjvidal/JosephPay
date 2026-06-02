@@ -1680,11 +1680,12 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   const [fUpsell,setFUpsell]=useState(produto.upsell_url||"");
   const [fDownsell,setFDownsell]=useState(produto.downsell_url||"");
   const [fObrigado,setFObrigado]=useState(produto.obrigado_url||"");
+  const [fGtm,setFGtm]=useState(produto.gtm_id||"");
   const [funnelSaving,setFunnelSaving]=useState(false);
   const [funnelMsg,setFunnelMsg]=useState("");
   const saveFunnel=async()=>{
     setFunnelSaving(true);setFunnelMsg("");
-    const d=await apiCall(`/api/products/${produto.id}/funnel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({upsellUrl:fUpsell.trim()||null,downsellUrl:(fUpsell.trim()&&fDownsell.trim())?fDownsell.trim():null,obrigadoUrl:fObrigado.trim()||null})});
+    const d=await apiCall(`/api/products/${produto.id}/funnel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({upsellUrl:fUpsell.trim()||null,downsellUrl:(fUpsell.trim()&&fDownsell.trim())?fDownsell.trim():null,obrigadoUrl:fObrigado.trim()||null,gtmId:fGtm.trim()||null})});
     setFunnelSaving(false);
     if(d?.success){setFunnelMsg("Salvo!");setFunnelEdit(false);}
     else setFunnelMsg(d?.error||"Erro ao salvar.");
@@ -1781,6 +1782,10 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
               <div style={{color:fUpsell.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de downsell</div>
               <input value={fDownsell} onChange={e=>setFDownsell(e.target.value)} disabled={!fUpsell.trim()} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:fUpsell.trim()?TEXT:"rgba(255,255,255,0.2)",fontSize:13,outline:"none",fontFamily:F,cursor:fUpsell.trim()?"text":"not-allowed"}}/>
             </div>
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Google Tag Manager ID</div>
+              <input value={fGtm} onChange={e=>setFGtm(e.target.value)} placeholder="GTM-XXXXXXX" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+            </div>
             {funnelMsg&&<div style={{fontSize:12,color:funnelMsg==="Salvo!"?GREEN:RED}}>{funnelMsg}</div>}
             <button onClick={saveFunnel} disabled={funnelSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{funnelSaving?"Salvando…":"Salvar funil"}</button>
           </div>
@@ -1797,6 +1802,10 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:12}}>Downsell</span>
               <span style={{color:fDownsell?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fDownsell||"Não configurado"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>GTM</span>
+              <span style={{color:fGtm?GOLD:MUTED,fontSize:12,fontWeight:fGtm?700:400}}>{fGtm||"Não configurado"}</span>
             </div>
             {funnelMsg&&<div style={{fontSize:12,color:GREEN}}>{funnelMsg}</div>}
           </div>
