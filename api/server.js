@@ -221,7 +221,8 @@ async function requireAuth(req, res, next) {
  */
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
-    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY" } = req.body;
+    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
+            upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
@@ -240,6 +241,10 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       url:                "",   // preenchido após criar preference
       billing_type:       billingType || "UNDEFINED",
       subscription_cycle: isRecurrent ? subscriptionCycle : null,
+      upsell_url:         upsellUrl   || null,
+      downsell_url:       downsellUrl || null,
+      obrigado_url:       obrigadoUrl || null,
+      gtm_id:             gtmId       || null,
     }).select().single();
 
     if (dbErr) {
@@ -360,6 +365,31 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("[products/delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PATCH /api/products/:id/funnel
+ * Atualiza upsell_url e downsell_url de um produto existente.
+ * downsell_url só é aceito se upsell_url for fornecido.
+ */
+app.patch("/api/products/:id/funnel", requireAuth, async (req, res) => {
+  try {
+    const { upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
+    const upsell   = upsellUrl   ? String(upsellUrl).trim()   : null;
+    const downsell = upsell && downsellUrl ? String(downsellUrl).trim() : null;
+    const obrigado = obrigadoUrl ? String(obrigadoUrl).trim() : null;
+    const gtm      = gtmId       ? String(gtmId).trim()       : null;
+    const { error } = await supabase
+      .from("products")
+      .update({ upsell_url: upsell, downsell_url: downsell, obrigado_url: obrigado, gtm_id: gtm })
+      .eq("id", req.params.id)
+      .eq("owner_id", req.user.id);
+    if (error) throw error;
+    res.json({ success: true, upsellUrl: upsell, downsellUrl: downsell, obrigadoUrl: obrigado, gtmId: gtm });
+  } catch (err) {
+    console.error("[products/funnel]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -687,6 +717,7 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
+const FRONTEND_URL   = process.env.FRONTEND_URL || "https://josephpay.com";
 
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
@@ -1110,7 +1141,7 @@ function calcPublicPrice(basePrice, method, installments = 1) {
 app.get("/api/public/products/:id", async (req, res) => {
   try {
     const { data: product, error } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle")
+      .select("id,name,description,price,billing_type,subscription_cycle,upsell_url,downsell_url,obrigado_url,gtm_id")
       .eq("id", req.params.id)
       .maybeSingle();
     if (error || !product) return res.status(404).json({ error: "Produto não encontrado" });
@@ -1121,6 +1152,10 @@ app.get("/api/public/products/:id", async (req, res) => {
       price:            Number(product.price),
       billingType:      product.billing_type,
       subscriptionCycle: product.subscription_cycle,
+      upsellUrl:        product.upsell_url   || null,
+      downsellUrl:      product.downsell_url  || null,
+      obrigadoUrl:      product.obrigado_url  || null,
+      gtmId:            product.gtm_id        || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1137,7 +1172,7 @@ app.post("/api/public/checkout", async (req, res) => {
     }
 
     const { data: product } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id")
+      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id,upsell_url,obrigado_url")
       .eq("id", productId).maybeSingle();
     if (!product) return res.status(404).json({ error: "Produto não encontrado" });
 
@@ -1217,6 +1252,14 @@ app.post("/api/public/checkout", async (req, res) => {
         notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
         payment_methods:    { installments: isRecurrent ? 1 : 12 },
         statement_descriptor: "JosephPay",
+        back_urls: {
+          success: product.upsell_url
+            || product.obrigado_url
+            || `${FRONTEND_URL}/obrigado.html?p=${productId}&amount=${clientTotal.toFixed(2)}`,
+          failure: `${FRONTEND_URL}/checkout.html?p=${productId}`,
+          pending: `${FRONTEND_URL}/checkout.html?p=${productId}`,
+        },
+        auto_return: "approved",
       });
       chargeId   = String(prefResp.data.id);
       invoiceUrl = prefResp.data.init_point || prefResp.data.sandbox_init_point;

@@ -124,7 +124,19 @@ function App() {
     if (!pid) { setLoading(false); return; }
     fetch(`${RAILWAY}/api/public/products/${pid}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setProduct(d); setLoading(false); })
+      .then(d => {
+        setProduct(d);
+        setLoading(false);
+        if (d?.gtmId) {
+          window.dataLayer = window.dataLayer || [];
+          const s = document.createElement("script");
+          s.text = '(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!="dataLayer"?"&l="+l:"";j.async=true;j.src="https://www.googletagmanager.com/gtm.js?id="+i+dl;f.parentNode.insertBefore(j,f);})(window,document,"script","dataLayer","' + d.gtmId.replace(/[^A-Za-z0-9-]/g,"") + '");';
+          document.head.appendChild(s);
+          const ns = document.createElement("noscript");
+          ns.innerHTML = '<iframe src="https://www.googletagmanager.com/ns.html?id=' + d.gtmId.replace(/[^A-Za-z0-9-]/g,"") + '" height="0" width="0" style="display:none;visibility:hidden"></iframe>';
+          document.body.prepend(ns);
+        }
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -144,6 +156,17 @@ function App() {
       return () => clearInterval(pollRef.current);
     }
   }, [result, payStatus]);
+
+  // Redireciona após confirmação PIX (cartão vai direto via back_urls do MP)
+  useEffect(() => {
+    if (payStatus !== "PAID" || !product) return;
+    const { total: paidTotal } = method ? calcTotal(product.price, method, parcelas) : { total: product.price };
+    const dest = product.upsellUrl
+      || product.obrigadoUrl
+      || `${window.location.origin}/obrigado.html?p=${product.id}&amount=${paidTotal.toFixed(2)}`;
+    const t = setTimeout(() => { window.location.href = dest; }, 2000);
+    return () => clearTimeout(t);
+  }, [payStatus, product, method, parcelas]);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -343,7 +366,7 @@ function App() {
               )}
               <div style={{marginTop:16}}>
                 {payStatus === "PAID"
-                  ? <div className="badge-ok">✓ Pagamento confirmado!</div>
+                  ? <div className="badge-ok">✓ Pagamento confirmado! Redirecionando…</div>
                   : <div className="badge-pending"><span className="dot-anim">●</span> Aguardando pagamento...</div>
                 }
               </div>
@@ -358,6 +381,11 @@ function App() {
               )}
               {result.invoiceUrl && (
                 <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
+              )}
+              {(product?.upsellUrl || product?.obrigadoUrl) && (
+                <a className="boleto-link" href={product.upsellUrl || product.obrigadoUrl} style={{marginTop:16,background:"rgba(108,99,255,0.2)",border:"1px solid rgba(108,99,255,0.4)"}}>
+                  {product.upsellUrl ? "Ver oferta exclusiva →" : "Continuar →"}
+                </a>
               )}
             </>
           )}

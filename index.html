@@ -1676,6 +1676,20 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   const [detTab,setDetTab]=useState(null);
   const [copiedLink,setCopiedLink]=useState(false);
   const [deleting,setDeleting]=useState(false);
+  const [funnelEdit,setFunnelEdit]=useState(false);
+  const [fUpsell,setFUpsell]=useState(produto.upsell_url||"");
+  const [fDownsell,setFDownsell]=useState(produto.downsell_url||"");
+  const [fObrigado,setFObrigado]=useState(produto.obrigado_url||"");
+  const [fGtm,setFGtm]=useState(produto.gtm_id||"");
+  const [funnelSaving,setFunnelSaving]=useState(false);
+  const [funnelMsg,setFunnelMsg]=useState("");
+  const saveFunnel=async()=>{
+    setFunnelSaving(true);setFunnelMsg("");
+    const d=await apiCall(`/api/products/${produto.id}/funnel`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({upsellUrl:fUpsell.trim()||null,downsellUrl:(fUpsell.trim()&&fDownsell.trim())?fDownsell.trim():null,obrigadoUrl:fObrigado.trim()||null,gtmId:fGtm.trim()||null})});
+    setFunnelSaving(false);
+    if(d?.success){setFunnelMsg("Salvo!");setFunnelEdit(false);}
+    else setFunnelMsg(d?.error||"Erro ao salvar.");
+  };
   const handleDeleteProduto=async()=>{
     if(!window.confirm(`Excluir o produto "${produto.name}"? Esta ação não pode ser desfeita.`))return;
     setDeleting(true);
@@ -1748,6 +1762,55 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
           </div>
         ))}
       </div>
+      {/* Funil pós-compra */}
+      <div style={{background:CARD,border:`1px solid rgba(212,175,55,0.2)`,borderRadius:20,padding:"20px 18px",marginTop:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>Funil pós-compra</div>
+          <button onClick={()=>{setFunnelEdit(v=>!v);setFunnelMsg("");}} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{funnelEdit?"Cancelar":"Editar"}</button>
+        </div>
+        {funnelEdit?(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de upsell</div>
+              <input value={fUpsell} onChange={e=>setFUpsell(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+            </div>
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de obrigado (se não tiver upsell)</div>
+              <input value={fObrigado} onChange={e=>setFObrigado(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+            </div>
+            <div>
+              <div style={{color:fUpsell.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de downsell</div>
+              <input value={fDownsell} onChange={e=>setFDownsell(e.target.value)} disabled={!fUpsell.trim()} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:fUpsell.trim()?TEXT:"rgba(255,255,255,0.2)",fontSize:13,outline:"none",fontFamily:F,cursor:fUpsell.trim()?"text":"not-allowed"}}/>
+            </div>
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Google Tag Manager ID</div>
+              <input value={fGtm} onChange={e=>setFGtm(e.target.value)} placeholder="GTM-XXXXXXX" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+            </div>
+            {funnelMsg&&<div style={{fontSize:12,color:funnelMsg==="Salvo!"?GREEN:RED}}>{funnelMsg}</div>}
+            <button onClick={saveFunnel} disabled={funnelSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{funnelSaving?"Salvando…":"Salvar funil"}</button>
+          </div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>Upsell</span>
+              <span style={{color:fUpsell?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fUpsell||"Não configurado"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>Obrigado</span>
+              <span style={{color:fObrigado?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fObrigado||"Padrão JosephPay"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>Downsell</span>
+              <span style={{color:fDownsell?TEXT:MUTED,fontSize:12,maxWidth:"60%",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fDownsell||"Não configurado"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12}}>GTM</span>
+              <span style={{color:fGtm?GOLD:MUTED,fontSize:12,fontWeight:fGtm?700:400}}>{fGtm||"Não configurado"}</span>
+            </div>
+            {funnelMsg&&<div style={{fontSize:12,color:GREEN}}>{funnelMsg}</div>}
+          </div>
+        )}
+      </div>
       {/* Zona crítica — excluir produto */}
       <div style={{background:CARD,border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"20px 18px",marginTop:8}}>
         <div style={{color:"rgba(239,68,68,0.6)",fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Zona crítica</div>
@@ -1765,6 +1828,9 @@ function CriarProdutoModal({onClose,onCreated}){
   const [desc,setDesc]=useState("");
   const [tipo,setTipo]=useState("UNDEFINED");
   const [ciclo,setCiclo]=useState("MONTHLY");
+  const [upsellUrl,setUpsellUrl]=useState("");
+  const [downsellUrl,setDownsellUrl]=useState("");
+  const [obrigadoUrl,setObrigadoUrl]=useState("");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [created,setCreated]=useState(false); // boolean — produto foi criado
@@ -1775,7 +1841,7 @@ function CriarProdutoModal({onClose,onCreated}){
     setError("");setLoading(true);
     const val=parseFloat(preco.replace(/\./g,"").replace(",","."));
     if(isNaN(val)||val<=0){setError("Preço inválido.");setLoading(false);return;}
-    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined})});
+    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined,upsellUrl:upsellUrl.trim()||undefined,downsellUrl:(upsellUrl.trim()&&downsellUrl.trim())?downsellUrl.trim():undefined,obrigadoUrl:obrigadoUrl.trim()||undefined})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
     if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}
@@ -1846,6 +1912,24 @@ function CriarProdutoModal({onClose,onCreated}){
                     <option value="YEARLY">Anual</option>
                   </select>
                 )}
+              </div>
+              <div style={{background:"rgba(212,175,55,0.06)",border:"1px solid rgba(212,175,55,0.18)",borderRadius:14,padding:"14px 14px 10px"}}>
+                <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Funil pós-compra (opcional)</div>
+                <div style={{marginBottom:10}}>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de upsell</div>
+                  <input value={upsellUrl} onChange={e=>setUpsellUrl(e.target.value)} placeholder="https://sua-pagina-de-upsell.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se preenchida, o cliente vai para cá após pagar. Deixe vazio para usar a página de obrigado abaixo.</div>
+                </div>
+                <div>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de obrigado (se não tiver upsell)</div>
+                  <input value={obrigadoUrl} onChange={e=>setObrigadoUrl(e.target.value)} placeholder="https://sua-pagina-de-obrigado.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se não preencher nenhuma das duas, usamos a página de obrigado padrão do JosephPay.</div>
+                </div>
+                <div>
+                  <div style={{color:upsellUrl.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de downsell</div>
+                  <input value={downsellUrl} onChange={e=>setDownsellUrl(e.target.value)} disabled={!upsellUrl.trim()} placeholder="https://sua-pagina-de-downsell.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:upsellUrl.trim()?TEXT:"rgba(255,255,255,0.2)",fontSize:13,outline:"none",fontFamily:F,cursor:upsellUrl.trim()?"text":"not-allowed"}}/>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Só disponível se a página de upsell estiver preenchida.</div>
+                </div>
               </div>
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
               <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar produto →"}</button>

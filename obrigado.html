@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Compra confirmada — JosephPay</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0a0a0f;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+    .card{background:#111118;border:1px solid rgba(255,255,255,0.08);border-radius:20px;width:100%;max-width:420px;padding:40px 32px;box-shadow:0 24px 80px rgba(0,0,0,0.5);text-align:center}
+    .check{width:72px;height:72px;border-radius:50%;background:rgba(34,197,94,0.12);border:2px solid rgba(34,197,94,0.35);display:flex;align-items:center;justify-content:center;margin:0 auto 24px;font-size:32px}
+    .logo{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:32px}
+    .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#6C63FF,#4facfe);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff}
+    .logo-text{font-size:16px;font-weight:700;color:#fff}
+    h1{font-size:22px;font-weight:800;margin-bottom:8px;color:#f0f0f0}
+    .sub{color:#888;font-size:14px;margin-bottom:28px;line-height:1.5}
+    .product-box{background:#1a1a25;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:18px 20px;margin-bottom:20px;text-align:left}
+    .product-label{color:#555;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+    .product-name{color:#f0f0f0;font-size:16px;font-weight:700;margin-bottom:4px}
+    .product-amount{color:#D4AF37;font-size:22px;font-weight:800}
+    .footer{color:#444;font-size:12px;margin-top:20px;line-height:1.6}
+    @keyframes pop{0%{transform:scale(0.5);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+    .check{animation:pop 0.5s ease forwards}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const RAILWAY = window.location.hostname === "localhost"
+  ? "http://localhost:3001"
+  : "https://josephpay-production.up.railway.app";
+
+function fmtBRL(v) {
+  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function App() {
+  const [product, setProduct] = React.useState(null);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get("p");
+    if (!pid) return;
+    fetch(`${RAILWAY}/api/public/products/${pid}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setProduct(d); })
+      .catch(() => {});
+  }, []);
+
+  const params = new URLSearchParams(window.location.search);
+  const amount = parseFloat(params.get("amount") || "0");
+
+  return (
+    <div className="card">
+      <div className="logo">
+        <div className="logo-icon">J</div>
+        <span className="logo-text">JosephPay</span>
+      </div>
+      <div className="check">✓</div>
+      <h1>Compra confirmada!</h1>
+      <p className="sub">Seu pagamento foi processado com sucesso.<br/>Em breve você receberá as instruções de acesso.</p>
+      {product && (
+        <div className="product-box">
+          <div className="product-label">Produto adquirido</div>
+          <div className="product-name">{product.name}</div>
+          {amount > 0 && <div className="product-amount">{fmtBRL(amount)}</div>}
+        </div>
+      )}
+      <p className="footer">Dúvidas? Entre em contato com quem te enviou este link.</p>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
