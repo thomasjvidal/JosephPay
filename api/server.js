@@ -718,6 +718,7 @@ const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
 const FRONTEND_URL   = process.env.FRONTEND_URL || "https://josephpay.com";
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || null;
 
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
@@ -1832,6 +1833,16 @@ app.post("/api/whatsapp/inbound", async (req, res) => {
   res.json({ ok: true });
   try {
     const payload = req.body;
+
+    // Opção B — relay fire-and-forget para N8N (se configurado)
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      }).catch(e => console.warn("[inbound→n8n]", e.message));
+    }
+
     const instName = payload?.instance;
     const messages = payload?.data?.messages
       || (Array.isArray(payload?.data) ? payload.data : []);
@@ -1880,15 +1891,66 @@ async function syncAssinanteStatus() {
   } catch(e) { console.warn("[syncAssinante]", e.message); }
 }
 
+async function getEvolutionVersion() {
+  try {
+    const { data } = await evo.get("/");
+    const raw = data?.version || data?.info?.version || "";
+    const major = parseInt(raw.toString().replace(/[^0-9]/, "")) || 1;
+    console.log(`[evolution] versão detectada: ${raw || "desconhecida"} (major=${major})`);
+    return major;
+  } catch(e) {
+    console.warn("[evolution] não foi possível detectar versão:", e.message);
+    return 1;
+  }
+}
+
 async function setupEvolutionWebhook(inst) {
   try {
-    await evo.post(`/webhook/set/${inst}`, {
-      url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
-      webhook_by_events: false,
-      webhook_base64:   false,
-      events:           ["MESSAGES_UPSERT"],
-    });
-    console.log(`[evolution] webhook configurado para ${inst} →`, PUBLIC_URL);
+    // Tenta formato v2 primeiro (wrapper "webhook" + camelCase)
+    // Se a Evolution for v1 vai rejeitar e tentamos o formato v1
+    let ok = false;
+    try {
+      await evo.post(`/webhook/set/${inst}`, {
+        webhook: {
+          enabled:        true,
+          url:            `${PUBLIC_URL}/api/whatsapp/inbound`,
+          webhookByEvents: false,
+          webhookBase64:  false,
+          events:         ["MESSAGES_UPSERT"],
+        },
+      });
+      ok = true;
+      console.log(`[evolution] webhook v2 configurado para ${inst}`);
+    } catch {
+      // v1 format
+      await evo.post(`/webhook/set/${inst}`, {
+        url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
+        webhook_by_events: false,
+        webhook_base64:   false,
+        events:           ["MESSAGES_UPSERT"],
+      });
+      console.log(`[evolution] webhook v1 configurado para ${inst}`);
+    }
+
+    // Opção A — se N8N_WEBHOOK_URL configurado, tenta registrar segundo webhook (Evolution v2)
+    if (N8N_WEBHOOK_URL) {
+      try {
+        await evo.post(`/webhook/set/${inst}`, {
+          webhook: {
+            enabled:        true,
+            url:            `${PUBLIC_URL}/api/whatsapp/inbound`,
+            webhookByEvents: false,
+            webhookBase64:  false,
+            events:         ["MESSAGES_UPSERT"],
+          },
+          // Alguns builds Evolution v2 aceitam webhooks adicionais nesta chave
+          additionalWebhooks: [{ url: N8N_WEBHOOK_URL, events: ["MESSAGES_UPSERT"] }],
+        });
+        console.log(`[evolution] webhook adicional N8N configurado para ${inst} (Opção A)`);
+      } catch {
+        console.log(`[evolution] Evolution não suporta webhook adicional nativo — Opção B (relay) ativa para ${inst}`);
+      }
+    }
   } catch(e) { console.warn(`[evolution] webhook setup ${inst}:`, e.message); }
 }
 
@@ -1907,9 +1969,12 @@ app.listen(PORT, () => {
   ensureBuckets();
   syncAssinanteStatus();
   if (evo) {
-    supabase.from("profiles").select("whatsapp_instance").not("whatsapp_instance", "is", null)
-      .then(({ data }) => {
-        (data || []).forEach(p => p.whatsapp_instance && setupEvolutionWebhook(p.whatsapp_instance));
-      });
+    getEvolutionVersion().then(() => {
+      if (N8N_WEBHOOK_URL) console.log(`   N8N relay ativo → ${N8N_WEBHOOK_URL}`);
+      supabase.from("profiles").select("whatsapp_instance").not("whatsapp_instance", "is", null)
+        .then(({ data }) => {
+          (data || []).forEach(p => p.whatsapp_instance && setupEvolutionWebhook(p.whatsapp_instance));
+        });
+    });
   }
 });
