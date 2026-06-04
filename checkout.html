@@ -180,6 +180,16 @@ function App() {
   const handleStep1 = () => {
     const err = validateStep1();
     if (err) { setError(err); return; }
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event:         "checkout_form_submitted",
+      full_name:     form.name,
+      email:         form.email,
+      phone:         form.phone.replace(/\D/g,""),
+      cpf:           form.cpf.replace(/\D/g,""),
+      zip_code:      form.cep.replace(/\D/g,""),
+      date_of_birth: form.birthday,
+    });
     setError(""); setStep(2);
   };
 
