@@ -182,7 +182,7 @@ function App() {
     if (err) { setError(err); return; }
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({
-      event:         "checkout_form_submitted",
+      event:         "begin_checkout",
       full_name:     form.name,
       email:         form.email,
       phone:         form.phone.replace(/\D/g,""),
@@ -303,7 +303,7 @@ function App() {
             </div>
           </div>
           {error && <div className="err">{error}</div>}
-          <button className="btn btn-primary" onClick={handleStep1}>Continuar →</button>
+          <button id="btn-continuar" className="btn btn-primary" onClick={handleStep1}>Continuar →</button>
         </div>
       )}
 
@@ -351,10 +351,10 @@ function App() {
           )}
 
           {error && <div className="err">{error}</div>}
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!method||submitting}>
+          <button id="btn-pagar" className="btn btn-primary" onClick={handleSubmit} disabled={!method||submitting}>
             {submitting ? "Processando..." : `Pagar ${fmtBRL(total)}`}
           </button>
-          <button className="btn btn-back" onClick={()=>{setStep(1);setError("")}}>← Voltar</button>
+          <button id="btn-voltar" className="btn btn-back" onClick={()=>{setStep(1);setError("")}}>← Voltar</button>
         </div>
       )}
 
