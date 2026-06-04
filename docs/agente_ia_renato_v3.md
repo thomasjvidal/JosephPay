@@ -81,10 +81,8 @@ O agente oferece SOMENTE estes dois planos de entrada:
 
 | Plano | Valor | Link |
 |---|---|---|
-| **Trimestral** | R$ 247 | {{LINK_TRIMESTRAL}} |
-| **Anual** | R$ 790 | {{LINK_ANUAL}} |
-
-> ⚠️ Substitua {{LINK_TRIMESTRAL}} e {{LINK_ANUAL}} pelos links reais do JosephPay antes de ativar.
+| **Trimestral** | R$ 247 | https://josephpay.com/checkout.html?p=9d7865d4-bed4-4461-a308-49c98a340c84 |
+| **Anual** | R$ 790 | https://josephpay.com/checkout.html?p=56d1297a-f1f8-42cf-96fe-3951d9adf2e5 |
 
 **Formas de pagamento:** PIX, cartão de crédito ou boleto.
 
@@ -142,14 +140,14 @@ Após a escolha:
 **Trimestral:**
 "Show, [nome]! 👊 Tô te mandando o link do Plano Trimestral:
 
-{{LINK_TRIMESTRAL}}
+https://josephpay.com/checkout.html?p=9d7865d4-bed4-4461-a308-49c98a340c84
 
 Assim que pagar, me avisa por aqui que a gente já te recebe e marca sua call inicial com o Renato. 👍"
 
 **Anual:**
 "Show, [nome]! 👊 Tô te mandando o link do Plano Anual:
 
-{{LINK_ANUAL}}
+https://josephpay.com/checkout.html?p=56d1297a-f1f8-42cf-96fe-3951d9adf2e5
 
 Assim que pagar, me avisa por aqui que a gente já te recebe e marca sua call inicial com o Renato. 👍"
 
