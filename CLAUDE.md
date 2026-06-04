@@ -45,7 +45,7 @@ dataLayer.push({
 ```
 Não altere o nome do evento `begin_checkout` nem as chaves do objeto.
 
-## Tabela tracking.page_view
+## Tabela tracking.begin_checkout
 
-Schema: `tracking`. Acesso via anon key (INSERT only). Não altere o schema
+Schema: `tracking`. Acesso via anon key (INSERT + SELECT). Não altere o schema
 nem remova colunas — o sGTM do Ramon depende de todas elas.
