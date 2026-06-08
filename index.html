@@ -1775,7 +1775,7 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
               <input value={fUpsell} onChange={e=>setFUpsell(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
             </div>
             <div>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página de obrigado (se não tiver upsell)</div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>Página final / área de membros</div>
               <input value={fObrigado} onChange={e=>setFObrigado(e.target.value)} placeholder="https://..." style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
             </div>
             <div>
@@ -1918,12 +1918,12 @@ function CriarProdutoModal({onClose,onCreated}){
                 <div style={{marginBottom:10}}>
                   <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de upsell</div>
                   <input value={upsellUrl} onChange={e=>setUpsellUrl(e.target.value)} placeholder="https://sua-pagina-de-upsell.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se preenchida, o cliente vai para cá após pagar. Deixe vazio para usar a página de obrigado abaixo.</div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Após pagar, o cliente vai para cá. O downsell e a página final também são passados automaticamente.</div>
                 </div>
                 <div>
-                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de obrigado (se não tiver upsell)</div>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página final / área de membros</div>
                   <input value={obrigadoUrl} onChange={e=>setObrigadoUrl(e.target.value)} placeholder="https://sua-pagina-de-obrigado.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se não preencher nenhuma das duas, usamos a página de obrigado padrão do JosephPay.</div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Destino final do cliente — após upsell, downsell ou compra direta. Sem preenchimento usa a página padrão do JosephPay.</div>
                 </div>
                 <div>
                   <div style={{color:upsellUrl.trim()?MUTED:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Página de downsell</div>
