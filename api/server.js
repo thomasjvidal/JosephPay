@@ -16,6 +16,14 @@ const { Resend }       = require("resend");
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
+// Sensor/track: CORS aberto para qualquer domínio de produtor.
+// Deve ficar ANTES do cors() global para capturar o OPTIONS preflight primeiro.
+app.options("/api/track/visit", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
@@ -603,21 +611,13 @@ app.post("/api/mp/webhook", async (req, res) => {
       await updateCustomerStats(targetSale.customer_id);
 
       // ── Stape sGTM relay para conversão server-side (fire-and-forget) ──
+      // Manda o objeto completo do MP (resultado do GET /v1/payments/{id})
+      // para o webhook do Stape processar no GTM server-side.
       if (STAPE_WEBHOOK_URL) {
         fetch(STAPE_WEBHOOK_URL, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event_name:        "Purchase",
-            currency:          "BRL",
-            value:             baseProductPrice,
-            transaction_id:    mpPaymentId,
-            client_email:      payment.payer?.email      || null,
-            client_first_name: payment.payer?.first_name || null,
-            client_last_name:  payment.payer?.last_name  || null,
-            product_id:        targetSale.product_id,
-            sale_id:           targetSale.id,
-          }),
+          body: JSON.stringify(payment),
         }).catch(e => console.warn("[stape] relay erro:", e.message));
       }
 
