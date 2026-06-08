@@ -70,6 +70,9 @@ const RAILWAY = window.location.hostname === "localhost"
   ? "http://localhost:3001"
   : "https://josephpay-production.up.railway.app";
 
+const SUPABASE_URL      = "https://ljpjadwvqocatnqjvuvk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqcGphZHd2cW9jYXRucWp2dXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTg4MzgsImV4cCI6MjA5MTg5NDgzOH0.cflTLbryotX4p84pA2L03J1VHmVCELTvJ0WwI5WeZeY";
+
 const PLATFORM_RATE = 0.0099;
 const MP_RATES = {
   PIX:    { fixed: 0,    pct: 0.0099 },
@@ -104,15 +107,29 @@ function maskCEP(v) {
   return v.replace(/\D/g,"").slice(0,8).replace(/(\d{5})(\d)/,"$1-$2");
 }
 
-async function fetchProductWithRetry(url, retries = 2) {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) return await r.json();
-    } catch(e) {}
-    if (i < retries) await new Promise(res => setTimeout(res, 1500));
-  }
-  return null;
+async function fetchProduct(pid) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/public_checkout_products?id=eq.${encodeURIComponent(pid)}&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!rows.length) return null;
+    const p = rows[0];
+    return {
+      id:                p.id,
+      name:              p.name,
+      description:       p.description,
+      price:             Number(p.price),
+      billingType:       p.billing_type,
+      subscriptionCycle: p.subscription_cycle,
+      upsellUrl:         p.upsell_url   || null,
+      downsellUrl:       p.downsell_url || null,
+      obrigadoUrl:       p.obrigado_url || null,
+      gtmId:             p.gtm_id       || null,
+    };
+  } catch(e) { return null; }
 }
 
 function App() {
@@ -129,11 +146,11 @@ function App() {
   const [payStatus, setPayStatus] = useState("PENDING");
   const pollRef = useRef(null);
 
-  // Carrega produto via query param ?p=ID (com retry para cold start do Railway)
+  // Carrega produto via Supabase direto (sem passar pelo Railway)
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get("p");
     if (!pid) { setLoading(false); return; }
-    fetchProductWithRetry(`${RAILWAY}/api/public/products/${pid}`)
+    fetchProduct(pid)
       .then(d => {
         setProduct(d);
         setLoading(false);
