@@ -393,7 +393,7 @@ function App() {
               <div className="price-row"><span>Produto</span><span>{fmtBRL(product.price)}</span></div>
               <div className="price-row"><span>Taxa {method==="PIX"?"PIX":method==="BOLETO"?"Boleto":"Cartão"} (Mercado Pago)</span><span>+ {fmtBRL(asaasFee)}</span></div>
               <div className="price-row total">
-                <span>Total{method==="CREDIT_CARD"&&parcelas>1?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}}</span>
+                <span>Total{method==="CREDIT_CARD"&&parcelas>1?` (${parcelas}x de ${fmtBRL(total/parcelas)})`:""}</span>
                 <span>{fmtBRL(total)}</span>
               </div>
             </div>
