@@ -401,24 +401,9 @@ function App() {
               {result.invoiceUrl && (
                 <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
               )}
-              {(product?.upsellUrl || product?.obrigadoUrl) && (() => {
-                const fallback = product.obrigadoUrl || `${window.location.origin}/obrigado.html?p=${product.id}`;
-                let href;
-                if (product.upsellUrl) {
-                  const params = new URLSearchParams();
-                  if (product.downsellUrl) params.set("jp_downsell", product.downsellUrl);
-                  params.set("jp_obrigado", fallback);
-                  const sep = product.upsellUrl.includes("?") ? "&" : "?";
-                  href = product.upsellUrl + sep + params.toString();
-                } else {
-                  href = fallback;
-                }
-                return (
-                  <a className="boleto-link" href={href} style={{marginTop:16,background:"rgba(108,99,255,0.2)",border:"1px solid rgba(108,99,255,0.4)"}}>
-                    {product.upsellUrl ? "Ver oferta exclusiva →" : "Continuar →"}
-                  </a>
-                );
-              })()}
+              <div style={{marginTop:16,padding:"12px 16px",background:"rgba(234,179,8,0.06)",border:"1px solid rgba(234,179,8,0.2)",borderRadius:10,fontSize:13,color:"#f0c040"}}>
+                Após o pagamento ser confirmado você receberá acesso por e-mail.
+              </div>
             </>
           )}
           {method === "CREDIT_CARD" && (
