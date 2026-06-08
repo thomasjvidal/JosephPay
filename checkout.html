@@ -161,9 +161,18 @@ function App() {
   useEffect(() => {
     if (payStatus !== "PAID" || !product) return;
     const { total: paidTotal } = method ? calcTotal(product.price, method, parcelas) : { total: product.price };
-    const dest = product.upsellUrl
-      || product.obrigadoUrl
+    const fallback = product.obrigadoUrl
       || `${window.location.origin}/obrigado.html?p=${product.id}&amount=${paidTotal.toFixed(2)}`;
+    let dest;
+    if (product.upsellUrl) {
+      const params = new URLSearchParams();
+      if (product.downsellUrl) params.set("jp_downsell", product.downsellUrl);
+      params.set("jp_obrigado", fallback);
+      const sep = product.upsellUrl.includes("?") ? "&" : "?";
+      dest = product.upsellUrl + sep + params.toString();
+    } else {
+      dest = fallback;
+    }
     const t = setTimeout(() => { window.location.href = dest; }, 2000);
     return () => clearTimeout(t);
   }, [payStatus, product, method, parcelas]);
@@ -392,11 +401,24 @@ function App() {
               {result.invoiceUrl && (
                 <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
               )}
-              {(product?.upsellUrl || product?.obrigadoUrl) && (
-                <a className="boleto-link" href={product.upsellUrl || product.obrigadoUrl} style={{marginTop:16,background:"rgba(108,99,255,0.2)",border:"1px solid rgba(108,99,255,0.4)"}}>
-                  {product.upsellUrl ? "Ver oferta exclusiva →" : "Continuar →"}
-                </a>
-              )}
+              {(product?.upsellUrl || product?.obrigadoUrl) && (() => {
+                const fallback = product.obrigadoUrl || `${window.location.origin}/obrigado.html?p=${product.id}`;
+                let href;
+                if (product.upsellUrl) {
+                  const params = new URLSearchParams();
+                  if (product.downsellUrl) params.set("jp_downsell", product.downsellUrl);
+                  params.set("jp_obrigado", fallback);
+                  const sep = product.upsellUrl.includes("?") ? "&" : "?";
+                  href = product.upsellUrl + sep + params.toString();
+                } else {
+                  href = fallback;
+                }
+                return (
+                  <a className="boleto-link" href={href} style={{marginTop:16,background:"rgba(108,99,255,0.2)",border:"1px solid rgba(108,99,255,0.4)"}}>
+                    {product.upsellUrl ? "Ver oferta exclusiva →" : "Continuar →"}
+                  </a>
+                );
+              })()}
             </>
           )}
           {method === "CREDIT_CARD" && (
