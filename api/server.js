@@ -602,6 +602,25 @@ app.post("/api/mp/webhook", async (req, res) => {
       console.log(`[mp/webhook] sale ${targetSale.id} paga | produtor=R$${baseProductPrice} | mp_fee=R$${mpFee} | customer=${targetSale.customer_id}`);
       await updateCustomerStats(targetSale.customer_id);
 
+      // ── Stape sGTM relay para conversão server-side (fire-and-forget) ──
+      if (STAPE_WEBHOOK_URL) {
+        fetch(STAPE_WEBHOOK_URL, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_name:        "Purchase",
+            currency:          "BRL",
+            value:             baseProductPrice,
+            transaction_id:    mpPaymentId,
+            client_email:      payment.payer?.email      || null,
+            client_first_name: payment.payer?.first_name || null,
+            client_last_name:  payment.payer?.last_name  || null,
+            product_id:        targetSale.product_id,
+            sale_id:           targetSale.id,
+          }),
+        }).catch(e => console.warn("[stape] relay erro:", e.message));
+      }
+
       // ── E-mails de notificação (fire-and-forget — falha nunca afeta o webhook) ──
       (async () => {
         try {
@@ -718,7 +737,8 @@ const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
 const FRONTEND_URL   = process.env.FRONTEND_URL || "https://josephpay.com";
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || null;
+const N8N_WEBHOOK_URL   = process.env.N8N_WEBHOOK_URL   || null;
+const STAPE_WEBHOOK_URL = process.env.STAPE_WEBHOOK_URL || null;
 
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
