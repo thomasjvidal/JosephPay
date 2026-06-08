@@ -5,7 +5,7 @@
     { "src": "checkout.html", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/checkout.html", "dest": "/checkout.html" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "/checkout.html", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/checkout.html" },
+    { "src": "/(.*)", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/index.html" }
   ]
 }
