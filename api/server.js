@@ -1700,7 +1700,7 @@ app.get("/sensor.js", (req, res) => {
   res.header("Cache-Control", "public, max-age=3600");
   if (!uid) return res.send("/* sensor.js: uid ausente */");
   res.send(`(function(){
-var JP="${RAILWAY}";var uid="${uid}";
+var JP="${PUBLIC_URL}";var uid="${uid}";
 var p=window.location.pathname;var ref=document.referrer;
 var q=new URLSearchParams(window.location.search);
 var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
