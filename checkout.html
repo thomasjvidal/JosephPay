@@ -150,8 +150,10 @@ function App() {
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get("p");
     if (!pid) { setLoading(false); return; }
-    fetchProduct(pid)
-      .then(d => {
+
+    const load = () => {
+      setLoading(true);
+      fetchProduct(pid).then(d => {
         setProduct(d);
         setLoading(false);
         if (d?.gtmId) {
@@ -164,6 +166,15 @@ function App() {
           document.body.prepend(ns);
         }
       });
+    };
+
+    load();
+
+    // iOS bfcache: ao restaurar a página, re-faz o fetch dentro do React
+    // sem navegar (location.replace/reload pode ser servido do cache também)
+    const onPageShow = (e) => { if (e.persisted) load(); };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
   // Polling após pagamento (todos os métodos)
@@ -268,21 +279,7 @@ function App() {
   };
 
   if (loading) return <div className="card"><div className="loading">Carregando...</div></div>;
-  if (!product) {
-    const pid = new URLSearchParams(window.location.search).get("p");
-    return (
-      <div className="card">
-        <div className="loading" style={{color:"#f87171"}}>
-          Produto não encontrado.
-          {pid && <div style={{marginTop:8,fontSize:11,color:"#555"}}>ID: {pid}</div>}
-          <button
-            style={{display:"block",marginTop:16,background:"rgba(108,99,255,0.15)",border:"1px solid rgba(108,99,255,0.3)",color:"#a89cff",padding:"8px 20px",borderRadius:8,fontSize:13,cursor:"pointer"}}
-            onClick={() => window.location.replace(window.location.href)}
-          >Tentar novamente</button>
-        </div>
-      </div>
-    );
-  }
+  if (!product) return <div className="card"><div className="loading" style={{color:"#f87171"}}>Produto não encontrado.</div></div>;
 
   const isRecurrent = product.billingType === "RECURRENT";
   const { total, plat, asaasFee } = method ? calcTotal(product.price, method, parcelas) : { total: product.price * (1+PLATFORM_RATE), plat: 0, asaasFee: 0 };
@@ -471,10 +468,6 @@ function App() {
     </div>
   );
 }
-
-// Força nova navegação quando iOS Safari restaura a página do bfcache
-// location.replace() bypassa o bfcache; reload() não garante isso no iOS
-window.addEventListener("pageshow", function(e) { if (e.persisted) window.location.replace(window.location.href); });
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
