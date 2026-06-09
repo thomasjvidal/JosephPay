@@ -1422,6 +1422,7 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
       name:     c.name.trim(),
       phone:    c.phone?.trim() || null,
       email:    c.email?.trim() || null,
+      birthday: c.birthday?.trim() || null,
       source:   "manual",
       status:   "lead",
     }));
