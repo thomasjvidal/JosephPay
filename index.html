@@ -2207,7 +2207,7 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
     for(let i=start;i<lines.length;i++){
       const cols=parseCSVLine(lines[i]);
       if(!cols[0])continue;
-      rows.push({name:cols[0]||'',phone:cols[1]||'',email:cols[2]||''});
+      rows.push({name:cols[0]||'',phone:cols[1]||'',email:cols[2]||'',birthday:cols[3]||''});
     }
     if(!rows.length)return;
     try{
