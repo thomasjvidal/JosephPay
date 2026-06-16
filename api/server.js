@@ -704,29 +704,129 @@ app.get("/api/test-email", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ROTAS — CHAT IA (Anthropic)
+// ROTAS — CHAT IA (cadeia de fallback: várias keys Groq → Anthropic)
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Suporta várias keys da Groq (ex: de contas free diferentes) separadas por vírgula
+// em GROQ_API_KEYS, ou as antigas GROQ_API_KEY / GROQ_API_KEY_1..N — tudo somado num só pool.
+const GROQ_KEYS = [
+  ...(process.env.GROQ_API_KEYS || "").split(",").map(k => k.trim()).filter(Boolean),
+  ...Object.keys(process.env)
+    .filter(k => /^GROQ_API_KEY(_\d+)?$/.test(k))
+    .map(k => process.env[k]).filter(Boolean),
+];
+const CHAT_TIMEOUT_MS = 8000;
+
+async function callGroq(key, systemPrompt, messages) {
+  const r = await axios.post(
+    "https://api.groq.com/openai/v1/chat/completions",
+    { model: "llama-3.3-70b-versatile", max_tokens: 1024,
+      messages: [{ role: "system", content: systemPrompt }, ...messages] },
+    { headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
+  );
+  return r.data.choices[0].message.content;
+}
+
+async function callAnthropic(systemPrompt, messages) {
+  const r = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    { model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: systemPrompt, messages },
+    { headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
+  );
+  return r.data.content[0].text;
+}
+
+// IA proativa: responde com base na operação real do produtor (vendas, clientes, saldo, afiliados).
+// Cache curto por produtor pra não bater no banco a cada mensagem (simula "memória" recente).
+const opContextCache = new Map(); // uid -> { text, ts }
+const OP_CONTEXT_TTL_MS = 5 * 60 * 1000;
+
+async function getOperationContext(uid) {
+  const cached = opContextCache.get(uid);
+  if (cached && Date.now() - cached.ts < OP_CONTEXT_TTL_MS) return cached.text;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+  const [salesMonth, salesToday, totalCustomers, activeSubs, products, balance] = await Promise.all([
+    supabase.from("sales").select("amount,producer_amount").eq("owner_id", uid).eq("status", "pago").gte("created_at", monthStart),
+    supabase.from("sales").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "pago").gte("created_at", todayStart),
+    supabase.from("customers").select("id", { count: "exact", head: true }).eq("owner_id", uid),
+    supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "ativo"),
+    supabase.from("products").select("id").eq("owner_id", uid),
+    supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
+  ]);
+
+  const sales = salesMonth.data || [];
+  const receitaMes = sales.reduce((a, s) => a + Number(s.producer_amount || s.amount || 0), 0);
+  const productIds = (products.data || []).map(p => p.id);
+  let afiliadosAtivos = 0;
+  if (productIds.length) {
+    const { count } = await supabase.from("affiliates").select("id", { count: "exact", head: true }).in("product_id", productIds).eq("status", "ativo");
+    afiliadosAtivos = count || 0;
+  }
+  const totalWithdrawn = (balance.data || []).reduce((a, w) => a + Number(w.amount || 0), 0);
+  const saldo = Math.max(0, receitaMes - totalWithdrawn);
+
+  const text = `Dados reais da operação deste produtor (use para responder com precisão, sem inventar números):
+- Receita líquida do mês: R$ ${receitaMes.toFixed(2)}
+- Vendas pagas hoje: ${salesToday.count || 0}
+- Total de clientes: ${totalCustomers.count || 0}
+- Assinaturas ativas: ${activeSubs.count || 0}
+- Afiliados ativos: ${afiliadosAtivos}
+- Saldo disponível para sacar: R$ ${saldo.toFixed(2)}`;
+
+  opContextCache.set(uid, { text, ts: Date.now() });
+  return text;
+}
+
 app.post("/api/chat", requireAuth, async (req, res) => {
+  const uid = req.user.id;
   try {
     const { messages, productContext } = req.body;
+    const opContext = await getOperationContext(uid).catch(() => "");
     const systemPrompt = `Você é o assistente de IA da JosephPay, especializado em marketing digital, vendas online e infoprodutos.
 Você ajuda produtores a crescerem suas vendas, gerenciar afiliados e otimizar suas estratégias.
+Seja proativo: aponte oportunidades e próximos passos mesmo sem o produtor perguntar diretamente.
 ${productContext ? `Contexto do produto: ${productContext}` : ""}
+${opContext}
 Responda sempre em português brasileiro, de forma direta e prática.`;
 
-    const response = await axios.post(
-      "https://api.anthropic.com/v1/messages",
-      { model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: systemPrompt,
-        messages: messages.map(m => ({ role: m.role, content: m.content })) },
-      { headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" } }
-    );
+    const chatMessages = messages.map(m => ({ role: m.role, content: m.content }));
+    const lastUserMsg = chatMessages[chatMessages.length - 1]?.content || "";
 
-    res.json({ reply: response.data.content[0].text });
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, chatMessages); break; }
+      catch (e) { lastErr = e; console.warn("[chat] groq key falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, chatMessages); }
+      catch (e) { lastErr = e; console.error("[chat] anthropic falhou:", e.response?.data || e.message); }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+
+    // Persiste histórico (não bloqueia a resposta se falhar)
+    supabase.from("messages").insert([
+      { owner_id: uid, channel: "chat", direction: "outbound", content: lastUserMsg },
+      { owner_id: uid, channel: "chat", direction: "inbound",  content: reply },
+    ]).then(({ error }) => { if (error) console.warn("[chat] falha ao salvar histórico:", error.message); });
+
+    res.json({ reply });
   } catch (err) {
     console.error("[chat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || err.message });
   }
+});
+
+app.get("/api/chat/history", requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from("messages")
+    .select("direction,content,created_at")
+    .eq("owner_id", req.user.id).eq("channel", "chat")
+    .order("created_at", { ascending: true }).limit(50);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ messages: (data || []).map(m => ({ role: m.direction === "inbound" ? "ai" : "user", text: m.content })) });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1382,7 +1482,7 @@ app.get("/api/health", (req, res) => {
     services:  {
       supabase:       !!process.env.SUPABASE_URL,
       mercadopago:    !!process.env.MP_ACCESS_TOKEN,
-      anthropic:      !!process.env.ANTHROPIC_API_KEY,
+      chatIA:         GROQ_KEYS.length > 0 || !!process.env.ANTHROPIC_API_KEY,
       whatsapp:       !!(process.env.EVOLUTION_API_URL && !process.env.EVOLUTION_API_URL.includes("seudominio")),
     },
   });
