@@ -1820,8 +1820,11 @@ app.post("/api/user/avatar", requireAuth, async (req, res) => {
   const { error } = await supabase.storage.from("avatars").upload(path, buffer, { contentType, upsert: true });
   if (error) return res.status(500).json({ error: error.message });
   const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-  await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", req.user.id);
-  res.json({ url: publicUrl });
+  // upsert reaproveita o mesmo path, então a URL não muda entre uploads —
+  // sem isso o navegador/CDN serve a imagem antiga do cache mesmo após salvar
+  const url = `${publicUrl}?v=${Date.now()}`;
+  await supabase.from("profiles").update({ avatar_url: url }).eq("id", req.user.id);
+  res.json({ url });
 });
 
 // ── Site do produtor: salvar/ler URL + checar status ─────────────────────────

@@ -1452,6 +1452,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   const [avatarPreview,setAvatarPreview]=useState(profile?.avatar_url||"");
   const [croppedBlob,setCroppedBlob]=useState(null);
   const [cropSrc,setCropSrc]=useState(null);
+  const [saveError,setSaveError]=useState("");
   const statusItems=[
     {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED,action:wapConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
     {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED,action:!siteActive?()=>{onNavigate&&onNavigate("maquina");}:null},
@@ -1478,20 +1479,28 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   };
   const saveProfile=async()=>{
     setSaving(true);
+    setSaveError("");
     try{
       const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
       let avatarUrl=profile?.avatar_url||"";
       if(croppedBlob){
         const b64=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(croppedBlob);});
-        const resp=await fetch(`${RAILWAY}/api/user/avatar`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({base64:b64})});
-        const d=await resp.json();
+        const respAvatar=await fetch(`${RAILWAY}/api/user/avatar`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({base64:b64})});
+        const d=await respAvatar.json();
+        if(!respAvatar.ok)throw new Error(d.error||"Falha ao enviar a foto");
         if(d.url)avatarUrl=d.url;
       }
-      await fetch(`${RAILWAY}/api/user/profile`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({name:editName,company_name:editCompany,avatar_url:avatarUrl})});
+      const respProfile=await fetch(`${RAILWAY}/api/user/profile`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${tok}`},body:JSON.stringify({name:editName,company_name:editCompany,avatar_url:avatarUrl})});
+      const dProfile=await respProfile.json();
+      if(!respProfile.ok)throw new Error(dProfile.error||"Falha ao salvar o perfil");
+      setAvatarPreview(avatarUrl);
       setEditing(false);
       setCroppedBlob(null);
       onSaved&&onSaved();
-    }catch(e){console.error("[perfil save]",e);}
+    }catch(e){
+      console.error("[perfil save]",e);
+      setSaveError(e.message||"Erro ao salvar. Tente novamente.");
+    }
     setSaving(false);
   };
   const contaItems=[
@@ -1528,8 +1537,9 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
               </>
             )}
           </div>
-          <button onClick={()=>{if(editing){saveProfile();}else{setEditName(profile?.name||"");setEditCompany(profile?.company_name||"");setEditing(true);}}} style={{background:editing?GOLD:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:editing?"#000":GOLD,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>{saving?"…":editing?"Salvar":"Editar"}</button>
+          <button onClick={()=>{if(editing){saveProfile();}else{setSaveError("");setEditName(profile?.name||"");setEditCompany(profile?.company_name||"");setEditing(true);}}} style={{background:editing?GOLD:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:editing?"#000":GOLD,borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>{saving?"…":editing?"Salvar":"Editar"}</button>
         </div>
+        {saveError&&<div style={{color:RED,fontSize:12,fontWeight:600,marginBottom:14,marginTop:-8}}>{saveError}</div>}
         {/* Status */}
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Status</div>
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:20}}>
