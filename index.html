@@ -477,11 +477,6 @@ function ChatIA({productName, onBack}){
   const [sending,setSending]=useState(false);
   const bottom=useRef(null);
   useEffect(()=>{bottom.current?.scrollIntoView({block:"nearest"})},[msgs]);
-  useEffect(()=>{
-    apiCall('/api/chat/history').then(data=>{
-      if(data?.messages?.length){setMsgs(data.messages);setShowQ(false);}
-    });
-  },[]);
   const send=async(text)=>{
     const msg=text||input;if(!msg.trim()||sending)return;
     setInput("");setShowQ(false);setSending(true);

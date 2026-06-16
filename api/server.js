@@ -794,7 +794,6 @@ ${opContext}
 Responda sempre em português brasileiro, de forma direta e prática.`;
 
     const chatMessages = messages.map(m => ({ role: m.role, content: m.content }));
-    const lastUserMsg = chatMessages[chatMessages.length - 1]?.content || "";
 
     let reply = null, lastErr = null;
     for (const key of GROQ_KEYS) {
@@ -807,12 +806,6 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
     }
     if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
 
-    // Persiste histórico (não bloqueia a resposta se falhar)
-    supabase.from("messages").insert([
-      { owner_id: uid, channel: "chat", direction: "outbound", content: lastUserMsg },
-      { owner_id: uid, channel: "chat", direction: "inbound",  content: reply },
-    ]).then(({ error }) => { if (error) console.warn("[chat] falha ao salvar histórico:", error.message); });
-
     res.json({ reply });
   } catch (err) {
     console.error("[chat]", err.response?.data || err.message);
@@ -820,14 +813,6 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
   }
 });
 
-app.get("/api/chat/history", requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from("messages")
-    .select("direction,content,created_at")
-    .eq("owner_id", req.user.id).eq("channel", "chat")
-    .order("created_at", { ascending: true }).limit(50);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ messages: (data || []).map(m => ({ role: m.direction === "inbound" ? "ai" : "user", text: m.content })) });
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROTAS — WHATSAPP (Evolution API)
