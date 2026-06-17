@@ -29,7 +29,8 @@
       "Bash(where \"GitHub Desktop\")",
       "Read(//c/Users/junio/AppData/Local/GitHubDesktop\" 2>/dev/null | head -5; where gh 2>/dev/**)",
       "Bash(git push *)",
-      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); \\(Get-Command node\\).Source)"
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); \\(Get-Command node\\).Source)",
+      "mcp__cc61bd47-2d49-4882-a9b3-806b482f8770__list_projects"
     ]
   }
 }
