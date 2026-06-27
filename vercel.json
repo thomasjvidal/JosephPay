@@ -2,10 +2,12 @@
   "version": 2,
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
-    { "src": "checkout.html", "use": "@vercel/static" }
+    { "src": "checkout.html", "use": "@vercel/static" },
+    { "src": "favicon.jpeg", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/checkout.html", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/checkout.html" },
+    { "src": "/favicon.jpeg", "dest": "/favicon.jpeg" },
     { "src": "/(.*)", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/index.html" }
   ]
 }
