@@ -241,7 +241,7 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
 const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))?'':'https://josephpay-production.up.railway.app';
 const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
-const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});return await res.json();}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
+const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});const json=await res.json();if(res.status===402||json?.error==="subscription_required"){window.dispatchEvent(new CustomEvent("jp:paywall",{detail:json}));}return json;}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B8DEF";
@@ -3057,6 +3057,120 @@ function Login({onLogin}){
   );
 }
 
+// ── Paywall: aparece quando o usuário sem assinatura tenta usar chat/disparo ──
+// Escuta o evento "jp:paywall" disparado pelo apiCall ao receber 402 do backend.
+function Paywall(){
+  const [open,setOpen]=useState(false);
+  const [tab,setTab]=useState("pix");         // "pix" | "cartao"
+  const [cpf,setCpf]=useState("");
+  const [pix,setPix]=useState(null);          // {pixQrCode, pixCopyCola}
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  const [paid,setPaid]=useState(false);
+  const pollRef=useRef(null);
+
+  useEffect(()=>{
+    const onEvt=()=>{setOpen(true);};
+    window.addEventListener("jp:paywall",onEvt);
+    return()=>window.removeEventListener("jp:paywall",onEvt);
+  },[]);
+
+  // Enquanto o PIX está gerado, verifica a cada 4s se o pagamento caiu → libera na hora
+  useEffect(()=>{
+    if(!pix)return;
+    pollRef.current=setInterval(async()=>{
+      const s=await apiCall("/api/subscription/status");
+      if(s?.active){clearInterval(pollRef.current);setPaid(true);setTimeout(()=>location.reload(),1800);}
+    },4000);
+    return()=>clearInterval(pollRef.current);
+  },[pix]);
+
+  const close=()=>{setOpen(false);setPix(null);setErr("");setPaid(false);setCpf("");};
+
+  const gerarPix=async()=>{
+    setErr("");
+    if(cpf.replace(/\D/g,"").length<11){setErr("Digite um CPF válido.");return;}
+    setLoading(true);
+    const r=await apiCall("/api/subscription/pix",{method:"POST",body:JSON.stringify({cpf})});
+    setLoading(false);
+    if(r?.error){setErr(r.error);return;}
+    setPix(r);
+  };
+  const assinarCartao=async()=>{
+    setErr("");setLoading(true);
+    const r=await apiCall("/api/subscription/card",{method:"POST",body:JSON.stringify({})});
+    setLoading(false);
+    if(r?.error){setErr(r.error);return;}
+    if(r?.init_point)location.href=r.init_point;
+  };
+
+  if(!open)return null;
+  const box={background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:24,width:"100%",maxWidth:420,color:TEXT,fontFamily:F,maxHeight:"90vh",overflowY:"auto"};
+  const btn=(bg)=>({background:bg,color:"#131312",border:"none",borderRadius:10,padding:"13px 16px",fontWeight:700,fontSize:15,cursor:"pointer",width:"100%",fontFamily:F});
+  const tabBtn=(active)=>({flex:1,background:active?GOLD:"transparent",color:active?"#131312":MUTED,border:`1px solid ${active?GOLD:BDR}`,borderRadius:9,padding:"9px 0",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F});
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={close}>
+      <div style={box} onClick={e=>e.stopPropagation()}>
+        {paid?(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:44}}>✅</div>
+            <div style={{fontSize:20,fontWeight:700,marginTop:10}}>Pagamento confirmado!</div>
+            <div style={{color:MUTED,marginTop:6,fontSize:14}}>Liberando seu acesso…</div>
+          </div>
+        ):(<>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div style={{fontFamily:SF,fontSize:22,fontWeight:600}}>Assine o Joseph<span style={{color:GOLD}}>Pay</span></div>
+            <button onClick={close} style={{background:"none",border:"none",color:MUTED,fontSize:22,cursor:"pointer",lineHeight:1}}>×</button>
+          </div>
+          <div style={{color:MUTED,fontSize:14,marginTop:8,lineHeight:1.5}}>
+            Seu período grátis acabou. Continue usando o chat de IA, os disparos e todas as ferramentas por <b style={{color:TEXT}}>R$30/mês</b>.
+          </div>
+
+          {!pix&&(
+            <div style={{display:"flex",gap:8,margin:"18px 0 16px"}}>
+              <button style={tabBtn(tab==="pix")} onClick={()=>{setTab("pix");setErr("");}}>PIX</button>
+              <button style={tabBtn(tab==="cartao")} onClick={()=>{setTab("cartao");setErr("");}}>Cartão · automático</button>
+            </div>
+          )}
+
+          {err&&<div style={{background:"#EF444422",color:"#FCA5A5",padding:"9px 12px",borderRadius:8,fontSize:13,marginBottom:12}}>{err}</div>}
+
+          {tab==="pix"&&!pix&&(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="Seu CPF" inputMode="numeric"
+                style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"12px 14px",color:TEXT,fontSize:15,fontFamily:F,outline:"none"}}/>
+              <button style={btn(GOLD)} disabled={loading} onClick={gerarPix}>{loading?"Gerando…":"Gerar PIX de R$30"}</button>
+              <div style={{color:MUTED,fontSize:12,textAlign:"center"}}>PIX avulso — renove todo mês para manter o acesso.</div>
+            </div>
+          )}
+
+          {tab==="pix"&&pix&&(
+            <div style={{display:"flex",flexDirection:"column",gap:12,alignItems:"center"}}>
+              {pix.pixQrCode&&<img src={`data:image/png;base64,${pix.pixQrCode}`} alt="QR Code PIX" style={{width:220,height:220,borderRadius:10,background:"#fff",padding:8}}/>}
+              {pix.pixCopyCola&&(
+                <button style={{...btn(CARD3),color:TEXT,fontSize:13}} onClick={()=>{navigator.clipboard?.writeText(pix.pixCopyCola);}}>
+                  📋 Copiar código PIX (copia e cola)
+                </button>
+              )}
+              <div style={{color:MUTED,fontSize:13,textAlign:"center"}}>Aguardando pagamento… o acesso libera sozinho assim que o PIX cair.</div>
+            </div>
+          )}
+
+          {tab==="cartao"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:14,fontSize:13,color:MUTED,lineHeight:1.5}}>
+                <b style={{color:GOLD}}>1º mês grátis</b>, depois <b style={{color:TEXT}}>R$30/mês</b> automático no cartão.
+                Você autoriza uma vez e o Mercado Pago cobra sozinho — cancele quando quiser. O cartão fica no cofre do Mercado Pago.
+              </div>
+              <button style={btn(GOLD)} disabled={loading} onClick={assinarCartao}>{loading?"Abrindo…":"Assinar no cartão"}</button>
+            </div>
+          )}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [user,setUser]=useState(null);
   const [booting,setBooting]=useState(true);
@@ -3105,6 +3219,7 @@ function App(){
       {!user&&<Login onLogin={handleLogin}/>}
       {user?.role==="admin"&&<AdminPanel onLogout={handleLogout}/>}
       {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout}/>}
+      {user&&<Paywall/>}
     </div>
   );
 }

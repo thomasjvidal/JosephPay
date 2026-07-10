@@ -166,6 +166,66 @@ function calcFees(grossAmount, netAmount) {
   return { platformFee, asaasFee, producerAmount };
 }
 
+// ── Assinatura da plataforma (mensalidade dos usuários JosephPay) ─────────────
+const PLATFORM_SUB_PRICE = 30;        // R$ por mês
+const PLATFORM_SUB_DAYS  = 30;        // dias liberados por pagamento
+
+// Retorna o estado de acesso do usuário. Acesso liberado enquanto now() < access_until.
+// Fallback defensivo: se access_until vier nulo (usuário sem migração), concede
+// 30 dias de cortesia a partir do cadastro — nunca bloqueia por acidente.
+async function getAccess(userId) {
+  try {
+    const { data } = await supabase.from("profiles")
+      .select("access_until, plan_status, created_at, mp_preapproval_id")
+      .eq("id", userId).maybeSingle();
+    if (!data) return { active: true, until: null, plan_status: "trial", hasCard: false };
+    const until = data.access_until
+      ? new Date(data.access_until)
+      : new Date(new Date(data.created_at || Date.now()).getTime() + PLATFORM_SUB_DAYS * 86400000);
+    return {
+      active:      until.getTime() > Date.now(),
+      until,
+      plan_status: data.plan_status || "trial",
+      hasCard:     !!data.mp_preapproval_id,
+    };
+  } catch (e) {
+    console.warn("[getAccess]", e.message);
+    return { active: true, until: null, plan_status: "trial", hasCard: false }; // fail-open
+  }
+}
+
+// Estende (ou renova) o acesso do usuário em N dias a partir do maior entre agora
+// e o vencimento atual — usado quando um pagamento de mensalidade é aprovado.
+async function grantPlatformAccess(userId, days = PLATFORM_SUB_DAYS) {
+  try {
+    const { data } = await supabase.from("profiles")
+      .select("access_until").eq("id", userId).maybeSingle();
+    const cur  = data?.access_until ? new Date(data.access_until) : null;
+    const base = cur && cur.getTime() > Date.now() ? cur : new Date();
+    const until = new Date(base.getTime() + days * 86400000);
+    await supabase.from("profiles").update({
+      access_until: until.toISOString(),
+      plan_status:  "active",
+    }).eq("id", userId);
+    console.log(`[platform-sub] acesso liberado userId=${userId} até ${until.toISOString()}`);
+    return until;
+  } catch (e) {
+    console.error("[grantPlatformAccess]", e.message);
+  }
+}
+
+// Middleware: bloqueia funcionalidades premium se o mês grátis acabou e não há
+// assinatura ativa. Responde 402 com uma mensagem para o front abrir o paywall.
+async function requireSubscription(req, res, next) {
+  const acc = await getAccess(req.user.id);
+  if (acc.active) return next();
+  return res.status(402).json({
+    error:   "subscription_required",
+    message: "Seu período grátis acabou. Assine o JosephPay por R$30/mês para continuar usando.",
+    price:   PLATFORM_SUB_PRICE,
+  });
+}
+
 async function updateCustomerStats(customerId) {
   if (!customerId) return;
   try {
@@ -529,11 +589,59 @@ app.post("/api/mp/webhook", async (req, res) => {
     const { type, action, data: eventData } = req.body;
     console.log(`[mp/webhook] ✓ chegou — type=${type} action=${action} id=${eventData?.id} live=${req.body.live_mode}`);
 
+    // ── ASSINATURA DA PLATAFORMA — cobrança recorrente do cartão (Mercado Pago) ──
+    // Cada mês que o MP cobra o cartão do usuário chega aqui e renova o acesso +30 dias.
+    if (type === "subscription_authorized_payment" && eventData?.id) {
+      try {
+        const { data: ap } = await mp.get(`/authorized_payments/${eventData.id}`);
+        console.log("[mp/webhook] sub_payment status:", ap.status, "preapproval:", ap.preapproval_id);
+        if (ap.status === "processed" || ap.payment?.status === "approved") {
+          const { data: prof } = await supabase.from("profiles")
+            .select("id").eq("mp_preapproval_id", ap.preapproval_id).maybeSingle();
+          if (prof) await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS);
+        }
+      } catch (e) { console.error("[mp/webhook] sub_payment erro:", e.message); }
+      return;
+    }
+
+    // ── ASSINATURA DA PLATAFORMA — mudança de status (autorizada / cancelada) ──
+    if (type === "subscription_preapproval" && eventData?.id) {
+      try {
+        const { data: pre } = await mp.get(`/preapproval/${eventData.id}`);
+        console.log("[mp/webhook] preapproval status:", pre.status);
+        const { data: prof } = await supabase.from("profiles")
+          .select("id").eq("mp_preapproval_id", eventData.id).maybeSingle();
+        if (prof) {
+          if (pre.status === "authorized") {
+            // Assinatura ativa com 1º mês grátis — garante que o acesso não expire durante o trial
+            await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS);
+          } else if (pre.status === "cancelled" || pre.status === "paused") {
+            await supabase.from("profiles")
+              .update({ plan_status: "canceled" }).eq("id", prof.id);
+          }
+        }
+      } catch (e) { console.error("[mp/webhook] preapproval erro:", e.message); }
+      return;
+    }
+
     if (type !== "payment" || !eventData?.id) return;
 
     // Busca detalhes reais do pagamento no MP
     const { data: payment } = await mp.get(`/v1/payments/${eventData.id}`);
     console.log("[mp/webhook] status:", payment.status, "ref:", payment.external_reference);
+
+    // ── ASSINATURA DA PLATAFORMA — pagamento avulso via PIX (mensalidade manual) ──
+    // external_reference = {"kind":"PLATFORM_SUB","ownerId":"..."} → libera +30 dias na hora.
+    // Interceptado ANTES da busca de sale para não ser tratado como venda de produto.
+    try {
+      const subRef = JSON.parse(payment.external_reference || "{}");
+      if (subRef.kind === "PLATFORM_SUB" && subRef.ownerId) {
+        if (payment.status === "approved") {
+          await grantPlatformAccess(subRef.ownerId, PLATFORM_SUB_DAYS);
+        }
+        return; // não é uma venda de produto — encerra aqui
+      }
+    } catch { /* external_reference não é JSON — segue fluxo normal de venda */ }
 
     // ── Localiza a sale pendente (3 estratégias, em ordem de prioridade) ─────────
     const mpPaymentId = String(payment.id);
@@ -781,7 +889,7 @@ async function getOperationContext(uid) {
   return text;
 }
 
-app.post("/api/chat", requireAuth, async (req, res) => {
+app.post("/api/chat", requireAuth, requireSubscription, async (req, res) => {
   const uid = req.user.id;
   try {
     const { messages, productContext } = req.body;
@@ -813,6 +921,87 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
   }
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — ASSINATURA DA PLATAFORMA (mensalidade dos usuários JosephPay)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/subscription/status — estado da assinatura do usuário logado */
+app.get("/api/subscription/status", requireAuth, async (req, res) => {
+  const acc = await getAccess(req.user.id);
+  res.json({
+    active:      acc.active,
+    until:       acc.until,
+    plan_status: acc.plan_status,
+    hasCard:     acc.hasCard,
+    price:       PLATFORM_SUB_PRICE,
+    daysLeft:    acc.until ? Math.max(0, Math.ceil((acc.until.getTime() - Date.now()) / 86400000)) : null,
+  });
+});
+
+/** POST /api/subscription/pix — gera um PIX de R$30 (mensalidade avulsa/manual).
+ *  Ao pagar, o webhook libera +30 dias na hora. Ideal para quem não usa cartão. */
+app.post("/api/subscription/pix", requireAuth, async (req, res) => {
+  try {
+    const { cpf, name } = req.body;
+    if (!cpf || cpf.replace(/\D/g, "").length < 11) {
+      return res.status(400).json({ error: "CPF é obrigatório para gerar o PIX." });
+    }
+    const payerName = (name || req.user.user_metadata?.name || req.user.email?.split("@")[0] || "Usuário").trim();
+    const parts = payerName.split(" ");
+    const payResp = await mp.post("/v1/payments", {
+      transaction_amount: PLATFORM_SUB_PRICE,
+      payment_method_id:  "pix",
+      description:        "JosephPay — Mensalidade",
+      external_reference: JSON.stringify({ kind: "PLATFORM_SUB", ownerId: req.user.id }),
+      notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+      installments:       1,
+      payer: {
+        email:          req.user.email,
+        first_name:     parts[0],
+        last_name:      parts.slice(1).join(" ") || parts[0],
+        identification: { type: "CPF", number: cpf.replace(/\D/g, "") },
+      },
+    });
+    res.json({
+      chargeId:    String(payResp.data.id),
+      pixQrCode:   payResp.data.point_of_interaction?.transaction_data?.qr_code_base64 || null,
+      pixCopyCola: payResp.data.point_of_interaction?.transaction_data?.qr_code || null,
+    });
+  } catch (err) {
+    console.error("[subscription/pix]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+/** POST /api/subscription/card — cria assinatura recorrente no cartão (Mercado Pago
+ *  Assinaturas / preapproval) com 1º MÊS GRÁTIS e depois R$30/mês automático.
+ *  O cartão fica no cofre do Mercado Pago — nunca passa pelo nosso servidor. */
+app.post("/api/subscription/card", requireAuth, async (req, res) => {
+  try {
+    const pre = await mp.post("/preapproval", {
+      reason:         "JosephPay — Mensalidade",
+      payer_email:    req.user.email,
+      status:         "pending",
+      back_url:       `${FRONTEND_URL}/?sub=ok`,
+      external_reference: JSON.stringify({ kind: "PLATFORM_SUB", ownerId: req.user.id }),
+      auto_recurring: {
+        frequency:          1,
+        frequency_type:     "months",
+        transaction_amount: PLATFORM_SUB_PRICE,
+        currency_id:        "BRL",
+        free_trial:         { frequency: 1, frequency_type: "months" }, // 1º mês grátis
+      },
+    });
+    // Guarda o id da assinatura para casar com os webhooks de cobrança recorrente
+    await supabase.from("profiles")
+      .update({ mp_preapproval_id: String(pre.data.id) }).eq("id", req.user.id);
+    res.json({ init_point: pre.data.init_point || pre.data.sandbox_init_point, preapprovalId: String(pre.data.id) });
+  } catch (err) {
+    console.error("[subscription/card]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROTAS — WHATSAPP (Evolution API)
@@ -1629,7 +1818,7 @@ app.patch("/api/customers/:id", requireAuth, async (req, res) => {
 });
 
 // ── POST /api/whatsapp/send-group ─────────────────────────────────────────────
-app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
+app.post("/api/whatsapp/send-group", requireAuth, requireSubscription, async (req, res) => {
   try {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
   const inst = await getUserInst(req.user.id);
