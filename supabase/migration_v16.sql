@@ -12,11 +12,12 @@ alter table profiles
   add column if not exists mp_preapproval_id  text,                 -- id da assinatura no cartão (Mercado Pago)
   add column if not exists trial_started_at   timestamptz;
 
--- 2. Dá 30 dias de cortesia (o "beijo de graça") a partir de AGORA
---    para TODOS os usuários que já existem — ninguém é bloqueado de imediato.
+-- 2. Trial de 30 dias contados a partir do CADASTRO de cada usuário.
+--    Quem já usa há MAIS de 30 dias entra bloqueado (precisa assinar);
+--    quem tem menos de 30 dias continua liberado até completar o mês.
 update profiles
-   set access_until      = now() + interval '30 days',
-       trial_started_at  = coalesce(trial_started_at, now()),
+   set access_until      = created_at + interval '30 days',
+       trial_started_at  = coalesce(trial_started_at, created_at),
        plan_status       = 'trial'
  where access_until is null;
 
