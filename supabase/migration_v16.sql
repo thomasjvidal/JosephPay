@@ -21,19 +21,29 @@ update profiles
        plan_status       = 'trial'
  where access_until is null;
 
--- 3. Novos cadastros já entram com 30 dias grátis automaticamente
+-- 3. Novos cadastros já entram com 30 dias grátis automaticamente.
+--    À prova de falha: se o insert do perfil der qualquer erro, NÃO bloqueia
+--    a criação do usuário no Auth (só registra um aviso). Evita o erro
+--    "Database error creating new user" caso algo no perfil falhe.
 create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 begin
-  insert into profiles (id, name, role, access_until, trial_started_at, plan_status)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email,'@',1)),
-    coalesce(new.raw_user_meta_data->>'role', 'client'),
-    now() + interval '30 days',
-    now(),
-    'trial'
-  );
+  begin
+    insert into public.profiles (id, name, role, access_until, trial_started_at, plan_status)
+    values (
+      new.id,
+      coalesce(new.raw_user_meta_data->>'name', split_part(new.email,'@',1)),
+      coalesce(new.raw_user_meta_data->>'role', 'client'),
+      now() + interval '30 days',
+      now(),
+      'trial'
+    )
+    on conflict (id) do nothing;
+  exception when others then
+    raise warning '[handle_new_user] perfil nao criado para %: %', new.id, sqlerrm;
+  end;
   return new;
 end;
 $$;
