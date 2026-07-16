@@ -95,6 +95,10 @@ const RAILWAY       = "https://josephpay-production.up.railway.app";
 | GET | `/api/whatsapp/status` | ✓ | Status da instância WhatsApp |
 | POST | `/api/whatsapp/send` | ✓ | Envia mensagem WhatsApp |
 | POST | `/api/whatsapp/webhook` | ✗ | Recebe mensagens WhatsApp inbound |
+| GET | `/api/email/status` | ✓ | Status da conexão de e-mail (SMTP) do produtor |
+| POST | `/api/email/connect` | ✓ | Conecta e-mail do produtor (host/porta/usuário/senha de app) via SMTP |
+| POST | `/api/email/disconnect` | ✓ | Desconecta o e-mail do produtor |
+| POST | `/api/email/send-group` | ✓ | Disparo de e-mail em massa para grupo de clientes (CRM) |
 | GET | `/api/dashboard/kpis` | ✓ | KPIs do produtor (bruto, líquido, taxas) |
 | GET | `/api/dashboard/chart?period=X` | ✓ | Dados de gráfico do produtor |
 | GET | `/api/admin/kpis` | ✓ | KPIs globais da plataforma |
@@ -202,6 +206,24 @@ FRONTEND_ORIGIN
 
 ---
 
+### 6b. E-mail (disparo CRM) — SMTP próprio do produtor
+
+**Independente do Resend transacional** (que envia confirmação de compra para cliente/produtor).
+Este é o canal de disparo do CRM (aba Clientes → Disparos), espelhando o WhatsApp:
+
+- Cada produtor conecta seu próprio e-mail (host/porta SMTP + usuário + senha de app) em
+  Clientes → Disparos → "Conectar e-mail". Testado com `transporter.verify()` antes de salvar.
+- Credenciais salvas em `profiles.email_smtp_*` (texto simples, mesma postura de segurança
+  usada hoje para `whatsapp_instance` — protegido por RLS + acesso apenas via service role).
+- Envio em massa: `POST /api/email/send-group` (mesma lógica de grupo/exclusão do WhatsApp,
+  chunks de 5 em paralelo), logado em `messages` com `channel:'email'`.
+- Na aba Mensagens, um seletor de Canal (WhatsApp / E-mail) decide qual rota é usada ao enviar;
+  o e-mail exige um campo de Assunto adicional.
+- Cada automação em Disparos tem um campo `canal` (whatsapp/email) — armazenado dentro do
+  jsonb `profiles.disparos`, sem migração de schema necessária.
+
+---
+
 ## Status Real de Implementação
 
 | Funcionalidade | Status | Notas |
@@ -241,6 +263,7 @@ FRONTEND_ORIGIN
 | Saque PIX | ✅ Funcional | Componente Sacar + backend ledger; botão no dashboard |
 | Chat IA | ✅ Funcional | Anthropic Claude Haiku |
 | WhatsApp | ❌ Não configurado | EVOLUTION_API_URL é placeholder |
+| E-mail (disparo CRM) | ✅ Implementado | Conexão SMTP por produtor (senha de app) — requer migration_v17 |
 | Analytics Visitantes | 🔜 Futuro | Sem infraestrutura ainda |
 
 ---
@@ -263,6 +286,8 @@ FRONTEND_ORIGIN
    - `ASAAS_API_KEY` → chave de produção
 5. **Configurar WhatsApp:**
    - `EVOLUTION_API_URL` → URL real da Evolution API
+5b. **Aplicar migration_v17.sql no Supabase** ← necessário para conexão de e-mail (disparo CRM)
+   - `cd api && npm install` (adiciona a dependência `nodemailer`)
 6. **Domínio customizado:**
    - Vercel Settings → Domains
    - Atualizar `FRONTEND_ORIGIN` no Railway
