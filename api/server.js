@@ -12,6 +12,7 @@ const cors       = require("cors");
 const axios      = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 const { Resend }       = require("resend");
+const nodemailer       = require("nodemailer");
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1104,6 +1105,129 @@ app.post("/api/whatsapp/webhook", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — E-MAIL (disparo CRM via SMTP próprio do produtor)
+// Independente do Resend transacional acima — aqui cada produtor conecta a
+// própria conta de e-mail (ex: Gmail + senha de app) para os disparos do CRM.
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function getUserEmailConn(userId) {
+  const { data } = await supabase.from("profiles")
+    .select("email_smtp_host,email_smtp_port,email_smtp_user,email_smtp_pass,email_from_name,email_connected")
+    .eq("id", userId).single();
+  return data || null;
+}
+
+function buildTransport(conn) {
+  return nodemailer.createTransport({
+    host: conn.email_smtp_host,
+    port: conn.email_smtp_port,
+    secure: Number(conn.email_smtp_port) === 465,
+    auth: { user: conn.email_smtp_user, pass: conn.email_smtp_pass },
+  });
+}
+
+app.get("/api/email/status", requireAuth, async (req, res) => {
+  const conn = await getUserEmailConn(req.user.id);
+  res.json({ connected: !!conn?.email_connected, email: conn?.email_smtp_user || null, fromName: conn?.email_from_name || null });
+});
+
+app.post("/api/email/connect", requireAuth, async (req, res) => {
+  const { host, port, user, pass, fromName } = req.body || {};
+  if (!host || !port || !user || !pass) return res.status(400).json({ error: "Preencha host, porta, e-mail e senha." });
+  try {
+    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: port, email_smtp_user: user, email_smtp_pass: pass });
+    await transporter.verify();
+    const { error } = await supabase.from("profiles").update({
+      email_smtp_host: host, email_smtp_port: Number(port), email_smtp_user: user,
+      email_smtp_pass: pass, email_from_name: fromName || null, email_connected: true,
+    }).eq("id", req.user.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ connected: true, email: user });
+  } catch (err) {
+    console.error("[email/connect]", err.message);
+    res.status(400).json({ error: "Não foi possível conectar. Verifique os dados e a senha de app." });
+  }
+});
+
+app.post("/api/email/disconnect", requireAuth, async (req, res) => {
+  const { error } = await supabase.from("profiles").update({
+    email_smtp_host: null, email_smtp_port: null, email_smtp_user: null,
+    email_smtp_pass: null, email_from_name: null, email_connected: false,
+  }).eq("id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ connected: false });
+});
+
+// ── POST /api/email/send-group ────────────────────────────────────────────────
+app.post("/api/email/send-group", requireAuth, requireSubscription, async (req, res) => {
+  try {
+  const conn = await getUserEmailConn(req.user.id);
+  if (!conn?.email_connected) return res.status(503).json({ error: "E-mail não conectado" });
+  const { message, subject, group } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia" });
+  if (!subject?.trim()) return res.status(400).json({ error: "Assunto obrigatório" });
+  const transporter = buildTransport(conn);
+  const senderName = conn.email_from_name || req.user.user_metadata?.name || "JosephPay";
+
+  let query = supabase.from("customers").select("id,email,name").eq("owner_id", req.user.id);
+  if (group && group !== "todos") {
+    if (group === "cliente") query = query.or("status.eq.cliente,status.is.null");
+    else query = query.eq("status", group);
+  }
+  const { data: customers, error: custErr } = await query;
+  if (custErr) return res.status(500).json({ error: custErr.message });
+
+  const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
+  const skipped = (customers || []).filter(c => !c.email || excludedIds.has(c.id))
+    .map(c => ({ name: c.name, reason: !c.email ? 'no_email' : 'excluded' }));
+  const withEmail = (customers || []).filter(c => c.email && !excludedIds.has(c.id));
+  let sent = 0, failed = 0;
+  const log = [...skipped];
+
+  const CHUNK = 5;
+  for (let i = 0; i < withEmail.length; i += CHUNK) {
+    await Promise.all(withEmail.slice(i, i + CHUNK).map(async c => {
+      const personalized = message.replace(/\{nome\}/g, c.name || "");
+      try {
+        const info = await transporter.sendMail({
+          from: `${senderName} <${conn.email_smtp_user}>`,
+          to: c.email,
+          subject: subject.replace(/\{nome\}/g, c.name || ""),
+          text: personalized,
+        });
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id, channel: "email",
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "sent", provider_id: info.messageId || null,
+        }).then(null, () => {});
+        log.push({ name: c.name, reason: 'sent' });
+        sent++;
+      } catch (e) {
+        console.error(`[email/send-group] falha ${c.name}:`, e.message);
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id, channel: "email",
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "failed", error_message: e.message,
+        }).then(null, () => {});
+        log.push({ name: c.name, reason: e.message });
+        failed++;
+      }
+    }));
+  }
+
+  await supabase.from("messages").insert({
+    owner_id: req.user.id, channel: "email", direction: "outbound", content: message, type: "text",
+    group_target: group || "todos", group_count: sent, status: sent > 0 ? "sent" : "failed",
+  }).then(null, () => {});
+
+  res.json({ sent, failed, total: withEmail.length, log });
+  } catch (e) {
+    console.error('[email/send-group] crash:', e.message, e.stack);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ROTAS — DASHBOARD DO PRODUTOR
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1658,6 +1782,7 @@ app.get("/api/health", (req, res) => {
       mercadopago:    !!process.env.MP_ACCESS_TOKEN,
       chatIA:         GROQ_KEYS.length > 0 || !!process.env.ANTHROPIC_API_KEY,
       whatsapp:       !!(process.env.EVOLUTION_API_URL && !process.env.EVOLUTION_API_URL.includes("seudominio")),
+      emailDisparo:   true,
     },
   });
 });

@@ -1445,7 +1445,7 @@ function CropModal({src,onConfirm,onCancel}){
     </div>
   );
 }
-function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onSaved,onNavigate}){
+function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected,siteActive,onSaved,onNavigate}){
   const [senhaMsg,setSenhaMsg]=useState("");
   const [editing,setEditing]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -1457,6 +1457,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,siteActive,onS
   const [saveError,setSaveError]=useState("");
   const statusItems=[
     {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED,action:wapConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
+    {label:"E-mail",val:emailConnected===true?"conectado":"não configurado",c:emailConnected===true?GREEN:MUTED,action:emailConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
     {label:"Site",val:siteActive?"ativo":"não configurado",c:siteActive?GREEN:MUTED,action:!siteActive?()=>{onNavigate&&onNavigate("maquina");}:null},
     {label:"Automações",val:"desligadas",c:MUTED,action:()=>{onNavigate&&onNavigate("clientes",3);}},
   ];
@@ -1607,6 +1608,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
   React.useLayoutEffect(()=>{if(tab==="chat")window.scrollTo(0,0);},[tab]);
   const [showPerfil,setShowPerfil]=useState(false);
   const [wapConnected,setWapConnected]=useState(null);
+  const [emailConnected,setEmailConnected]=useState(null);
   const [siteActive,setSiteActive]=useState(false);
   const [profile,setProfile]=useState({name:clientName,company_name:"",avatar_url:""});
   const reloadProfile=async()=>{
@@ -1638,7 +1640,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
   const VIEWS={
     dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
-    clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab} onWapChange={v=>setWapConnected(v)}/>,
+    clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab} onWapChange={v=>setWapConnected(v)} onEmailChange={v=>setEmailConnected(v)}/>,
     maquina:<MaquinaTab onNav={onNav}/>,
     chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
@@ -1652,7 +1654,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
-      {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} onNavigate={(t,subTab=null)=>{setShowPerfil(false);onNav(t,null,subTab);}}/>}
+      {showPerfil&&<PerfilModal profile={profile} email={email} wapConnected={wapConnected} emailConnected={emailConnected} siteActive={siteActive} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} onNavigate={(t,subTab=null)=>{setShowPerfil(false);onNav(t,null,subTab);}}/>}
     </>
   );
 }
@@ -2027,7 +2029,7 @@ function ProdutosTab({accent,isDeise}){
   );
 }
 
-function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
+function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
   const [tab,setTab]=useState(0);
   const [clientes,setClientes]=useState(null);
   const [msgs,setMsgs]=useState([]);
@@ -2057,10 +2059,18 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
   const [editing,setEditing]=useState(false);
   const [editForm,setEditForm]=useState({});
   const [disparos,setDisparos]=useState([
-    {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00"},
-    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00"},
-    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00"},
+    {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00",canal:"whatsapp"},
+    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00",canal:"whatsapp"},
+    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00",canal:"whatsapp"},
   ]);
+  const [channel,setChannel]=useState('whatsapp');
+  const [emailStatus,setEmailStatus]=useState('verificando');
+  const [emailInfo,setEmailInfo]=useState(null);
+  const [emailSubject,setEmailSubject]=useState('');
+  const [showEmailConnect,setShowEmailConnect]=useState(false);
+  const [emailForm,setEmailForm]=useState({host:'',port:'587',user:'',pass:'',fromName:''});
+  const [emailConnecting,setEmailConnecting]=useState(false);
+  const [emailConnectError,setEmailConnectError]=useState('');
 
   useEffect(()=>{
     apiCall('/api/products').then(d=>{
@@ -2083,6 +2093,20 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
     apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'));
   },[]);
   useEffect(()=>{ if(onWapChange)onWapChange(wapStatus==='conectado'); },[wapStatus]);
+  useEffect(()=>{
+    apiCall('/api/email/status').then(d=>{setEmailStatus(d?.connected?'conectado':'desconectado');setEmailInfo(d?.connected?{email:d.email,fromName:d.fromName}:null);}).catch(()=>setEmailStatus('desconectado'));
+  },[]);
+  useEffect(()=>{ if(onEmailChange)onEmailChange(emailStatus==='conectado'); },[emailStatus]);
+  async function connectEmail(){
+    setEmailConnecting(true);setEmailConnectError('');
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      const res=await apiCall('/api/email/connect',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(emailForm)});
+      if(res?.connected){setEmailStatus('conectado');setEmailInfo({email:res.email,fromName:emailForm.fromName});setShowEmailConnect(false);setEmailForm({host:'',port:'587',user:'',pass:'',fromName:''});}
+      else{setEmailConnectError(res?.error||'Erro ao conectar.');}
+    }catch(e){setEmailConnectError(e.message||'Erro ao conectar.');}
+    setEmailConnecting(false);
+  }
   useEffect(()=>setExcluded(new Set()),[group]);
   const connectWhatsApp=async()=>{
     setQrLoading(true);
@@ -2158,15 +2182,22 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
   const listaFiltrada=(clientes||[]).filter(c=>filtro==='todos'||(c.status||'cliente')===filtro);
 
   async function sendMsg(){
-    if(!msgText.trim()||wapStatus!=='conectado'||sending)return;
+    if(!msgText.trim()||sending)return;
+    if(channel==='whatsapp'&&wapStatus!=='conectado')return;
+    if(channel==='email'&&(emailStatus!=='conectado'||!emailSubject.trim()))return;
     setSending(true);
     try{
-      const res=await apiCall('/api/whatsapp/send-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msgText.trim(),group:groupMap[group]||'todos',excludedIds:[...excluded]})});
+      const endpoint=channel==='email'?'/api/email/send-group':'/api/whatsapp/send-group';
+      const payload=channel==='email'
+        ?{message:msgText.trim(),subject:emailSubject.trim(),group:groupMap[group]||'todos',excludedIds:[...excluded]}
+        :{message:msgText.trim(),group:groupMap[group]||'todos',excludedIds:[...excluded]};
+      const res=await apiCall(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       if(res){
         const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
         if((res.sent||0)===0)console.warn('[send-group] enviado para 0. log:',res.log);
-        setSentBubbles(p=>[...p,{text:msgText.trim(),time:now,sent:res.sent||0,failed:res.failed||0}]);
+        setSentBubbles(p=>[...p,{text:msgText.trim(),time:now,sent:res.sent||0,failed:res.failed||0,channel}]);
         setMsgText('');
+        if(channel==='email')setEmailSubject('');
         const {data:s}=await _sb.auth.getSession();
         if(s.session){const {data:d}=await _sb.from('messages').select('*').eq('owner_id',s.session.user.id).order('created_at',{ascending:false}).limit(20);if(d)setMsgs(d);}
       }
@@ -2272,8 +2303,8 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
             <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
           <div className="qr">
-            <div className="qb" onClick={()=>{setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
-            <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></div><div className="ql">E-mail</div></div>
+            <div className="qb" onClick={()=>{setChannel('whatsapp');setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Mensagem</div></div>
+            <div className="qb" onClick={()=>{setChannel('email');setSel(null);setTab(1);}}><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></div><div className="ql">E-mail</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></div><div className="ql">Etiquetar</div></div>
             <div className="qb"><div className="qi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="ql">Nota</div></div>
           </div>
@@ -2501,12 +2532,18 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
       {tab===1&&(
         <div className="scr" style={{paddingBottom:160}}>
           <div className="chat-top">
+            <div className="chat-to-lbl">Canal</div>
+            <div className="chat-pills">{[{id:'whatsapp',label:'WhatsApp'},{id:'email',label:'E-mail'}].map(ch=><div key={ch.id} className={`cp${channel===ch.id?' on':''}`} onClick={()=>setChannel(ch.id)}>{ch.label}</div>)}</div>
+          </div>
+          <div className="chat-top">
             <div className="chat-to-lbl">Enviar para</div>
             <div className="chat-pills">{(()=>{const gc={'Todos':totalClientes,'Interessados':cnts.lead,'Clientes':cnts.cliente,'Assinantes':cnts.assinante};return['Todos','Interessados','Clientes','Assinantes'].map(g=><div key={g} className={`cp${group===g?' on':''}`} onClick={()=>setGroup(g)}>{g}{clientes!==null?` (${gc[g]??0})`:''}</div>);})()}</div>
           </div>
           <div className="chat-rec"><strong>{recCount} {recCount===1?'pessoa':'pessoas'}</strong> selecionadas</div>
           {listaGrupo.length>0&&<div style={{display:'flex',gap:6,padding:'6px 0 4px',overflowX:'auto',scrollbarWidth:'none',WebkitOverflowScrolling:'touch',msOverflowStyle:'none'}}>{listaGrupo.map(c=>{const isEx=excluded.has(c.id);return(<div key={c.id} onClick={()=>setExcluded(p=>{const n=new Set(p);isEx?n.delete(c.id):n.add(c.id);return n;})} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px 4px 5px',borderRadius:20,background:isEx?'var(--c2)':'var(--gd2)',border:`1px solid ${isEx?'var(--ln)':'rgba(212,175,55,.3)'}`,opacity:isEx?0.4:1,cursor:'pointer',flexShrink:0,transition:'opacity .15s'}}><div style={{width:20,height:20,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'var(--t2)'}}>{inits(c.name)}</div><span style={{fontSize:11,color:isEx?'var(--t2)':'var(--tx)',fontWeight:500,userSelect:'none',whiteSpace:'nowrap'}}>{c.name.split(' ')[0]}</span>{isEx&&<span style={{fontSize:9,color:'var(--t3)',marginLeft:1}}>✕</span>}</div>);})}</div>}
-          {wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
+          {channel==='whatsapp'&&wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
+          {channel==='email'&&emailStatus!=='conectado'&&<div className="wap-warn">E-mail desconectado — vá para Disparos para conectar</div>}
+          {channel==='email'&&<input className="chat-ta" style={{marginBottom:8}} value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} placeholder="Assunto do e-mail"/>}
           {sentBubbles.length===0&&<div className="sys-msg">Escreva sua mensagem. Use as variáveis para personalizar.</div>}
           {msgText.trim()&&(
             <div className="bubble-out" style={{opacity:0.65}}>
@@ -2519,7 +2556,7 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
               <div className="bubble-out"><div className="btxt">{b.text}</div><div className="btm"><span style={{fontSize:10}}>{b.time}</span><svg className="ck" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#c8a84b" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg></div></div>
               {b.sent>0
                 ?<div className="sent-ok">✓ Enviado para {b.sent} {b.sent===1?'pessoa':'pessoas'}{b.failed>0?` · ${b.failed} falha`:''}</div>
-                :<div className="sent-ok" style={{color:'var(--rd)'}}>⚠ Nenhuma mensagem enviada{b.failed>0?` (${b.failed} erro${b.failed>1?'s':''})`:''} — verifique se o WhatsApp está conectado</div>
+                :<div className="sent-ok" style={{color:'var(--rd)'}}>⚠ Nenhuma mensagem enviada{b.failed>0?` (${b.failed} erro${b.failed>1?'s':''})`:''} — verifique se o {b.channel==='email'?'e-mail':'WhatsApp'} está conectado</div>
               }
             </div>
           ))}
@@ -2586,6 +2623,11 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
             <div><div className="wlbl">WhatsApp</div><div className="wval">{wapStatus==='conectado'?'Conectado':'Desconectado'}</div></div>
             <button id="btn-conectar-whatsapp" className="wcb" onClick={wapStatus==='conectado'?()=>apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')):connectWhatsApp} disabled={qrLoading}>{qrLoading?'Aguarde…':wapStatus==='conectado'?'Verificar':'Conectar'}</button>
           </div>
+          <div className={`wab${emailStatus==='conectado'?' on':' off'}`}>
+            <div className={`wdot${emailStatus==='conectado'?' g':' r'}`}/>
+            <div><div className="wlbl">E-mail</div><div className="wval">{emailStatus==='conectado'?(emailInfo?.email||'Conectado'):'Desconectado'}</div></div>
+            <button id="btn-conectar-email" className="wcb" onClick={emailStatus==='conectado'?()=>apiCall('/api/email/status').then(d=>setEmailStatus(d?.connected?'conectado':'desconectado')):()=>{setEmailConnectError('');setShowEmailConnect(true);}}>{emailStatus==='conectado'?'Verificar':'Conectar'}</button>
+          </div>
           <div style={{marginBottom:12}}/>
           {disparos.map((d,i)=>(
             <div key={i} className="dc">
@@ -2598,6 +2640,10 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
                 </div>
               </div>
               {d.open&&<div className="dbody">
+                <div className="df"><div className="dfl">Canal</div>
+                  <div className="chat-pills">{[{id:'whatsapp',label:'WhatsApp'},{id:'email',label:'E-mail'}].map(ch=><div key={ch.id} className={`cp${(d.canal||'whatsapp')===ch.id?' on':''}`} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,canal:ch.id}:x))}>{ch.label}</div>)}</div>
+                </div>
+                {d.canal==='email'&&<div className="df"><div className="dfl">Assunto</div><input className="dfi" value={d.assunto||''} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,assunto:e.target.value}:x))}/></div>}
                 {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
                 <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
                 <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
@@ -2647,6 +2693,15 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange}){
         )}
       </div></div>}
       {showDisp&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowDisp(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Novo disparo</div><div className="sh-s">Configure sua automação</div><div className="shf"><div className="shl">Nome do disparo</div><input className="shin" placeholder="Ex: Boas-vindas"/></div><div className="shf"><div className="shl">Quando enviar</div><select className="shin" style={{WebkitAppearance:'none'}}><option>Após a compra</option><option>Antes do aniversário</option><option>Após inatividade</option><option>Manual</option></select></div><div className="shf"><div className="shl">Dias</div><input className="shin" type="number" defaultValue={3}/></div><div className="shf"><div className="shl">Mensagem</div><textarea className="shin" style={{height:80,fontSize:15,lineHeight:1.5}} placeholder="Olá {nome}!..."/></div><button className="shbtn" onClick={()=>setShowDisp(false)}>Criar disparo</button></div></div>}
+      {showEmailConnect&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowEmailConnect(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Conectar e-mail</div><div className="sh-s">Use seu e-mail e uma senha de app (Gmail: Conta Google → Segurança → Senhas de app)</div>
+        <div className="shf"><div className="shl">Servidor SMTP</div><input className="shin" placeholder="smtp.gmail.com" value={emailForm.host} onChange={e=>setEmailForm(p=>({...p,host:e.target.value}))}/></div>
+        <div className="shf"><div className="shl">Porta</div><input className="shin" type="number" placeholder="587" value={emailForm.port} onChange={e=>setEmailForm(p=>({...p,port:e.target.value}))}/></div>
+        <div className="shf"><div className="shl">Seu e-mail</div><input className="shin" type="email" placeholder="voce@gmail.com" value={emailForm.user} onChange={e=>setEmailForm(p=>({...p,user:e.target.value}))}/></div>
+        <div className="shf"><div className="shl">Senha de app</div><input className="shin" type="password" placeholder="••••••••••••••••" value={emailForm.pass} onChange={e=>setEmailForm(p=>({...p,pass:e.target.value}))}/></div>
+        <div className="shf"><div className="shl">Nome do remetente</div><input className="shin" placeholder="Seu nome ou marca" value={emailForm.fromName} onChange={e=>setEmailForm(p=>({...p,fromName:e.target.value}))}/></div>
+        {emailConnectError&&<div style={{color:'var(--rd)',fontSize:12,marginTop:-8,marginBottom:10}}>{emailConnectError}</div>}
+        <button className="shbtn" onClick={connectEmail} disabled={emailConnecting||!emailForm.host||!emailForm.port||!emailForm.user||!emailForm.pass}>{emailConnecting?'Conectando…':'Conectar'}</button>
+      </div></div>}
     </div>
   );
 }
