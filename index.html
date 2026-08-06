@@ -1346,6 +1346,11 @@ function BottomNav({tab,setTab,nav}){
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
       </svg>
     ),
+    disparos:(
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </svg>
+    ),
   };
   return(
     <div className="jp-bnav" style={{
@@ -1657,14 +1662,16 @@ function ClientPanel({clientName,userEmail,onLogout}){
     {id:"dashboard",icon:"⌂",label:"Início"},
     {id:"produtos",icon:"◈",label:"Produtos"},
     {id:"clientes",icon:"◻",label:"Clientes"},
+    {id:"disparos",icon:"⚡",label:"Disparos"},
     {id:"maquina",icon:"⚙",label:"Máquina"},
     {id:"chat",icon:"✧",label:"Chat IA"},
   ];
-  const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",maquina:"Máquina",chat:"Chat IA"};
+  const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",disparos:"Disparos",maquina:"Máquina",chat:"Chat IA"};
   const VIEWS={
     dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
-    clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab} onWapChange={v=>setWapConnected(v)} onEmailChange={v=>setEmailConnected(v)}/>,
+    clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab}/>,
+    disparos:<DisparosTab onWapChange={v=>setWapConnected(v)} onEmailChange={v=>setEmailConnected(v)}/>,
     maquina:<MaquinaTab onNav={onNav}/>,
     chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
     saque:<Sacar/>,
@@ -2053,11 +2060,10 @@ function ProdutosTab({accent,isDeise}){
   );
 }
 
-function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
+function ClientesTab({targetCustomerId,navSubTab}){
   const [tab,setTab]=useState(0);
   const [clientes,setClientes]=useState(null);
   const [msgs,setMsgs]=useState([]);
-  const [wapStatus,setWapStatus]=useState("verificando");
   const [sel,setSel]=useState(null);
   const [selSales,setSelSales]=useState(null);
   const [prodMap,setProdMap]=useState({});
@@ -2071,30 +2077,12 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
   const [showAllBdays,setShowAllBdays]=useState(false);
   const [convOpen,setConvOpen]=useState(null);
   const [excluded,setExcluded]=useState(new Set());
-  const [qrCode,setQrCode]=useState(null);
-  const [qrLoading,setQrLoading]=useState(false);
-  const [pairingPhone,setPairingPhone]=useState('');
-  const [pairingCountry,setPairingCountry]=useState('55');
-  const [pairingCode,setPairingCode]=useState(null);
-  const [pairingMode,setPairingMode]=useState(false);
-  const [showDisp,setShowDisp]=useState(false);
   const [form,setForm]=useState({name:'',phone:'',email:'',birthday:''});
   const [saving,setSaving]=useState(false);
   const [editing,setEditing]=useState(false);
   const [editForm,setEditForm]=useState({});
-  const [disparos,setDisparos]=useState([
-    {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00",canal:"whatsapp"},
-    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00",canal:"whatsapp"},
-    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00",canal:"whatsapp"},
-  ]);
   const [channel,setChannel]=useState('whatsapp');
-  const [emailStatus,setEmailStatus]=useState('verificando');
-  const [emailInfo,setEmailInfo]=useState(null);
   const [emailSubject,setEmailSubject]=useState('');
-  const [showEmailConnect,setShowEmailConnect]=useState(false);
-  const [emailForm,setEmailForm]=useState({host:'',port:'587',user:'',pass:'',fromName:''});
-  const [emailConnecting,setEmailConnecting]=useState(false);
-  const [emailConnectError,setEmailConnectError]=useState('');
 
   useEffect(()=>{
     apiCall('/api/products').then(d=>{
@@ -2109,60 +2097,9 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
       if(!data.session)return;
       _sb.from('messages').select('*').eq('owner_id',data.session.user.id).order('created_at',{ascending:false}).limit(20)
         .then(({data:d})=>{if(d)setMsgs(d);});
-      apiCall('/api/user/disparos',{headers:{'Authorization':`Bearer ${data.session.access_token}`}})
-        .then(d=>{if(Array.isArray(d))setDisparos(d.map(x=>({...x,open:false})));}).catch(()=>{});
     });
   },[]);
-  useEffect(()=>{
-    apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'));
-  },[]);
-  useEffect(()=>{ if(onWapChange)onWapChange(wapStatus==='conectado'); },[wapStatus]);
-  useEffect(()=>{
-    apiCall('/api/email/status').then(d=>{setEmailStatus(d?.connected?'conectado':'desconectado');setEmailInfo(d?.connected?{email:d.email,fromName:d.fromName}:null);}).catch(()=>setEmailStatus('desconectado'));
-  },[]);
-  useEffect(()=>{ if(onEmailChange)onEmailChange(emailStatus==='conectado'); },[emailStatus]);
-  async function connectEmail(){
-    setEmailConnecting(true);setEmailConnectError('');
-    try{
-      const {data:s}=await _sb.auth.getSession();
-      const res=await apiCall('/api/email/connect',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(emailForm)});
-      if(res?.connected){setEmailStatus('conectado');setEmailInfo({email:res.email,fromName:emailForm.fromName});setShowEmailConnect(false);setEmailForm({host:'',port:'587',user:'',pass:'',fromName:''});}
-      else{setEmailConnectError(res?.error||'Erro ao conectar.');}
-    }catch(e){setEmailConnectError(e.message||'Erro ao conectar.');}
-    setEmailConnecting(false);
-  }
   useEffect(()=>setExcluded(new Set()),[group]);
-  const connectWhatsApp=async()=>{
-    setQrLoading(true);
-    try{
-      const d=await apiCall('/api/whatsapp/qr');
-      if(d?.code) setQrCode(d.code);
-      else if(d?.connected) setWapStatus('conectado');
-      else if(d?.error) alert('Erro ao conectar WhatsApp: '+d.error);
-    }catch(e){console.error(e);alert('Erro ao conectar: '+e.message);}
-    setQrLoading(false);
-  };
-  useEffect(()=>{
-    if(!qrCode)return;
-    const iv=setInterval(async()=>{
-      const d=await apiCall('/api/whatsapp/status').catch(()=>null);
-      if(d?.connected){setWapStatus('conectado');setQrCode(null);clearInterval(iv);}
-    },3000);
-    return()=>clearInterval(iv);
-  },[qrCode]);
-  useEffect(()=>{
-    if(!pairingCode)return;
-    const iv=setInterval(async()=>{
-      const d=await apiCall('/api/whatsapp/status').catch(()=>null);
-      if(d?.connected){
-        setWapStatus('conectado');
-        onWapChange&&onWapChange(true);
-        setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');setPairingCountry('55');
-        clearInterval(iv);
-      }
-    },3000);
-    return()=>clearInterval(iv);
-  },[pairingCode]);
   useEffect(()=>{
     if(targetCustomerId&&clientes){
       const idx=clientes.findIndex(c=>c.id===targetCustomerId);
@@ -2207,8 +2144,7 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
 
   async function sendMsg(){
     if(!msgText.trim()||sending)return;
-    if(channel==='whatsapp'&&wapStatus!=='conectado')return;
-    if(channel==='email'&&(emailStatus!=='conectado'||!emailSubject.trim()))return;
+    if(channel==='email'&&!emailSubject.trim())return;
     setSending(true);
     try{
       const endpoint=channel==='email'?'/api/email/send-group':'/api/whatsapp/send-group';
@@ -2227,13 +2163,6 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
       }
     }catch(e){console.error('[send]',e);}
     setSending(false);
-  }
-  async function salvarDisparos(idx){
-    try{
-      const {data:s}=await _sb.auth.getSession();
-      await apiCall('/api/user/disparos',{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(disparos)});
-      // saved
-    }catch(e){console.error('[salvar-disparos]',e);}
   }
   async function salvarCliente(){
     if(!form.name.trim())return;setSaving(true);
@@ -2308,9 +2237,7 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
       if(res?.id){setClientes(p=>p.map(x=>x.id===c.id?{...x,...res}:x));setEditing(false);}
     }catch(e){console.error('[edit]',e);}
   }
-  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on}:d));
-  const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
-  const tabNames=['Painel','Mensagens','Conversas','Disparos'];
+  const tabNames=['Painel','Mensagens','Conversas'];
 
   if(tab===0&&sel!==null&&clientes){
     const c=clientes[sel];const compras=selSales!==null?selSales:(c.sales||[]);
@@ -2565,8 +2492,6 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
           </div>
           <div className="chat-rec"><strong>{recCount} {recCount===1?'pessoa':'pessoas'}</strong> selecionadas</div>
           {listaGrupo.length>0&&<div style={{display:'flex',gap:6,padding:'6px 0 4px',overflowX:'auto',scrollbarWidth:'none',WebkitOverflowScrolling:'touch',msOverflowStyle:'none'}}>{listaGrupo.map(c=>{const isEx=excluded.has(c.id);return(<div key={c.id} onClick={()=>setExcluded(p=>{const n=new Set(p);isEx?n.delete(c.id):n.add(c.id);return n;})} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px 4px 5px',borderRadius:20,background:isEx?'var(--c2)':'var(--gd2)',border:`1px solid ${isEx?'var(--ln)':'rgba(212,175,55,.3)'}`,opacity:isEx?0.4:1,cursor:'pointer',flexShrink:0,transition:'opacity .15s'}}><div style={{width:20,height:20,borderRadius:'50%',background:'var(--c3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,color:'var(--t2)'}}>{inits(c.name)}</div><span style={{fontSize:11,color:isEx?'var(--t2)':'var(--tx)',fontWeight:500,userSelect:'none',whiteSpace:'nowrap'}}>{c.name.split(' ')[0]}</span>{isEx&&<span style={{fontSize:9,color:'var(--t3)',marginLeft:1}}>✕</span>}</div>);})}</div>}
-          {channel==='whatsapp'&&wapStatus!=='conectado'&&<div className="wap-warn">WhatsApp desconectado — vá para Disparos para conectar</div>}
-          {channel==='email'&&emailStatus!=='conectado'&&<div className="wap-warn">E-mail desconectado — vá para Disparos para conectar</div>}
           {channel==='email'&&<input className="chat-ta" style={{marginBottom:8}} value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} placeholder="Assunto do e-mail"/>}
           {sentBubbles.length===0&&<div className="sys-msg">Escreva sua mensagem. Use as variáveis para personalizar.</div>}
           {msgText.trim()&&(
@@ -2640,48 +2565,137 @@ function ClientesTab({targetCustomerId,navSubTab,onWapChange,onEmailChange}){
         </div>
       )}
 
-      {tab===3&&(
-        <div className="scr">
-          <div className={`wab${wapStatus==='conectado'?' on':' off'}`}>
-            <div className={`wdot${wapStatus==='conectado'?' g':' r'}`}/>
-            <div><div className="wlbl">WhatsApp</div><div className="wval">{wapStatus==='conectado'?'Conectado':'Desconectado'}</div></div>
-            <button id="btn-conectar-whatsapp" className="wcb" onClick={wapStatus==='conectado'?()=>apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')):connectWhatsApp} disabled={qrLoading}>{qrLoading?'Aguarde…':wapStatus==='conectado'?'Verificar':'Conectar'}</button>
-          </div>
-          <div className={`wab${emailStatus==='conectado'?' on':' off'}`}>
-            <div className={`wdot${emailStatus==='conectado'?' g':' r'}`}/>
-            <div><div className="wlbl">E-mail</div><div className="wval">{emailStatus==='conectado'?(emailInfo?.email||'Conectado'):'Desconectado'}</div></div>
-            <button id="btn-conectar-email" className="wcb" onClick={emailStatus==='conectado'?()=>apiCall('/api/email/status').then(d=>setEmailStatus(d?.connected?'conectado':'desconectado')):()=>{setEmailConnectError('');setShowEmailConnect(true);}}>{emailStatus==='conectado'?'Verificar':'Conectar'}</button>
-          </div>
-          <div style={{marginBottom:12}}/>
-          {disparos.map((d,i)=>(
-            <div key={i} className="dc">
-              <div className="dtop" style={{cursor:'pointer'}} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,open:!x.open}:x))}>
-                <div className="dleft"><div className="dname">{d.name}{d.on&&<span style={{marginLeft:6,color:'var(--gd)',fontSize:12}}>✓</span>}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
-                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
-                  <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:'transform .2s',transform:d.open?'rotate(180deg)':'rotate(0deg)'}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
-              </div>
-              {d.open&&<div className="dbody">
-                <div className="df"><div className="dfl">Canal</div>
-                  <div className="chat-pills">{[{id:'whatsapp',label:'WhatsApp'},{id:'email',label:'E-mail'}].map(ch=><div key={ch.id} className={`cp${(d.canal||'whatsapp')===ch.id?' on':''}`} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,canal:ch.id}:x))}>{ch.label}</div>)}</div>
-                </div>
-                {d.canal==='email'&&<div className="df"><div className="dfl">Assunto</div><input className="dfi" value={d.assunto||''} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,assunto:e.target.value}:x))}/></div>}
-                {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
-                <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
-                <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
-                <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
-              </div>}
-            </div>
-          ))}
-          <button className="add-disp" onClick={()=>setShowDisp(true)}>+ Novo disparo</button>
-        </div>
-      )}
-
       {showNova&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowNova(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Nova ação</div><div className="sh-s">O que você quer fazer?</div><button className="shop gd" onClick={()=>{setShowNova(false);setTab(2);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="rgba(0,0,0,.6)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>Enviar mensagem ao grupo</button><button className="shop" onClick={()=>{setShowNova(false);setShowAdd(true);}}><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/><line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Adicionar contato</button><button className="shop"><div className="sh-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></div>Importar lista</button></div></div>}
       {showAdd&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowAdd(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Adicionar contato</div><div className="sh-s">Preencha os dados</div>{[{k:'name',l:'Nome completo',p:'Nome',t:'text'},{k:'phone',l:'Telefone (WhatsApp)',p:'(XX) XXXXX-XXXX',t:'tel'},{k:'email',l:'E-mail',p:'email@email.com',t:'email'},{k:'birthday',l:'Data de nascimento',p:'',t:'date'}].map(f=><div key={f.k} className="shf"><div className="shl">{f.l}</div><input className="shin" type={f.t} placeholder={f.p} value={form[f.k]} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}/></div>)}<button className="shbtn" onClick={salvarCliente} disabled={saving||!form.name.trim()}>{saving?'Salvando…':'Salvar'}</button></div></div>}
 
+    </div>
+  );
+}
+
+function DisparosTab({onWapChange,onEmailChange}){
+  const [wapStatus,setWapStatus]=useState("verificando");
+  const [emailStatus,setEmailStatus]=useState('verificando');
+  const [emailInfo,setEmailInfo]=useState(null);
+  const [qrCode,setQrCode]=useState(null);
+  const [qrLoading,setQrLoading]=useState(false);
+  const [pairingPhone,setPairingPhone]=useState('');
+  const [pairingCountry,setPairingCountry]=useState('55');
+  const [pairingCode,setPairingCode]=useState(null);
+  const [pairingMode,setPairingMode]=useState(false);
+  const [showDisp,setShowDisp]=useState(false);
+  const [disparos,setDisparos]=useState([
+    {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00",canal:"whatsapp"},
+    {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00",canal:"whatsapp"},
+    {name:"Pós-compra",on:false,live:false,open:false,msg:"Olá {nome}! Como foi sua experiência?",dias:"3",hora:"09:00",canal:"whatsapp"},
+  ]);
+  const [showEmailConnect,setShowEmailConnect]=useState(false);
+  const [emailForm,setEmailForm]=useState({host:'',port:'587',user:'',pass:'',fromName:''});
+  const [emailConnecting,setEmailConnecting]=useState(false);
+  const [emailConnectError,setEmailConnectError]=useState('');
+
+  useEffect(()=>{
+    apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')).catch(()=>setWapStatus('desconectado'));
+  },[]);
+  useEffect(()=>{ if(onWapChange)onWapChange(wapStatus==='conectado'); },[wapStatus]);
+  useEffect(()=>{
+    apiCall('/api/email/status').then(d=>{setEmailStatus(d?.connected?'conectado':'desconectado');setEmailInfo(d?.connected?{email:d.email,fromName:d.fromName}:null);}).catch(()=>setEmailStatus('desconectado'));
+  },[]);
+  useEffect(()=>{ if(onEmailChange)onEmailChange(emailStatus==='conectado'); },[emailStatus]);
+  useEffect(()=>{
+    if(!_sb)return;
+    _sb.auth.getSession().then(({data})=>{
+      if(!data.session)return;
+      apiCall('/api/user/disparos',{headers:{'Authorization':`Bearer ${data.session.access_token}`}})
+        .then(d=>{if(Array.isArray(d))setDisparos(d.map(x=>({...x,open:false})));}).catch(()=>{});
+    });
+  },[]);
+  useEffect(()=>{
+    if(!qrCode)return;
+    const iv=setInterval(async()=>{
+      const d=await apiCall('/api/whatsapp/status').catch(()=>null);
+      if(d?.connected){setWapStatus('conectado');setQrCode(null);clearInterval(iv);}
+    },3000);
+    return()=>clearInterval(iv);
+  },[qrCode]);
+  useEffect(()=>{
+    if(!pairingCode)return;
+    const iv=setInterval(async()=>{
+      const d=await apiCall('/api/whatsapp/status').catch(()=>null);
+      if(d?.connected){
+        setWapStatus('conectado');
+        onWapChange&&onWapChange(true);
+        setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');setPairingCountry('55');
+        clearInterval(iv);
+      }
+    },3000);
+    return()=>clearInterval(iv);
+  },[pairingCode]);
+  async function connectEmail(){
+    setEmailConnecting(true);setEmailConnectError('');
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      const res=await apiCall('/api/email/connect',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(emailForm)});
+      if(res?.connected){setEmailStatus('conectado');setEmailInfo({email:res.email,fromName:emailForm.fromName});setShowEmailConnect(false);setEmailForm({host:'',port:'587',user:'',pass:'',fromName:''});}
+      else{setEmailConnectError(res?.error||'Erro ao conectar.');}
+    }catch(e){setEmailConnectError(e.message||'Erro ao conectar.');}
+    setEmailConnecting(false);
+  }
+  const connectWhatsApp=async()=>{
+    setQrLoading(true);
+    try{
+      const d=await apiCall('/api/whatsapp/qr');
+      if(d?.code) setQrCode(d.code);
+      else if(d?.connected) setWapStatus('conectado');
+      else if(d?.error) alert('Erro ao conectar WhatsApp: '+d.error);
+    }catch(e){console.error(e);alert('Erro ao conectar: '+e.message);}
+    setQrLoading(false);
+  };
+  async function salvarDisparos(idx){
+    try{
+      const {data:s}=await _sb.auth.getSession();
+      await apiCall('/api/user/disparos',{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${s.session?.access_token}`},body:JSON.stringify(disparos)});
+    }catch(e){console.error('[salvar-disparos]',e);}
+  }
+  const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on}:d));
+  const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
+  return(
+    <div>
+      <div className="scr">
+        <div className={`wab${wapStatus==='conectado'?' on':' off'}`}>
+          <div className={`wdot${wapStatus==='conectado'?' g':' r'}`}/>
+          <div><div className="wlbl">WhatsApp</div><div className="wval">{wapStatus==='conectado'?'Conectado':'Desconectado'}</div></div>
+          <button id="btn-conectar-whatsapp" className="wcb" onClick={wapStatus==='conectado'?()=>apiCall('/api/whatsapp/status').then(d=>setWapStatus(d?.connected?'conectado':'desconectado')):connectWhatsApp} disabled={qrLoading}>{qrLoading?'Aguarde…':wapStatus==='conectado'?'Verificar':'Conectar'}</button>
+        </div>
+        <div className={`wab${emailStatus==='conectado'?' on':' off'}`}>
+          <div className={`wdot${emailStatus==='conectado'?' g':' r'}`}/>
+          <div><div className="wlbl">E-mail</div><div className="wval">{emailStatus==='conectado'?(emailInfo?.email||'Conectado'):'Desconectado'}</div></div>
+          <button id="btn-conectar-email" className="wcb" onClick={emailStatus==='conectado'?()=>apiCall('/api/email/status').then(d=>setEmailStatus(d?.connected?'conectado':'desconectado')):()=>{setEmailConnectError('');setShowEmailConnect(true);}}>{emailStatus==='conectado'?'Verificar':'Conectar'}</button>
+        </div>
+        <div style={{marginBottom:12}}/>
+        {disparos.map((d,i)=>(
+          <div key={i} className="dc">
+            <div className="dtop" style={{cursor:'pointer'}} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,open:!x.open}:x))}>
+              <div className="dleft"><div className="dname">{d.name}{d.on&&<span style={{marginLeft:6,color:'var(--gd)',fontSize:12}}>✓</span>}</div><div className={`dst${d.on?' on':' off'}`}>{d.on?'Ativo':'Inativo'}</div></div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div className="dlive"><div className={`dlive-dot${d.live?' live':' paused'}`}/><div className={`dlive-txt${d.live?' live':' paused'}`}>{d.live?'ao vivo':'pausado'}</div></div>
+                <div className={`tgl${d.on?' on':''}`} onClick={e=>{e.stopPropagation();togTgl(i);}}/>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:'transform .2s',transform:d.open?'rotate(180deg)':'rotate(0deg)'}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+            </div>
+            {d.open&&<div className="dbody">
+              <div className="df"><div className="dfl">Canal</div>
+                <div className="chat-pills">{[{id:'whatsapp',label:'WhatsApp'},{id:'email',label:'E-mail'}].map(ch=><div key={ch.id} className={`cp${(d.canal||'whatsapp')===ch.id?' on':''}`} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,canal:ch.id}:x))}>{ch.label}</div>)}</div>
+              </div>
+              {d.canal==='email'&&<div className="df"><div className="dfl">Assunto</div><input className="dfi" value={d.assunto||''} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,assunto:e.target.value}:x))}/></div>}
+              {d.dias&&<div className="df"><div className="dfl">Dias após a compra</div><input className="dfi" value={d.dias} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,dias:e.target.value}:x))}/></div>}
+              <div className="df"><div className="dfl">Hora do disparo</div><input className="dfi" type="time" value={d.hora||'09:00'} style={{maxWidth:120}} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}/></div>
+              <div className="df"><div className="dfl">Mensagem</div><textarea className="dfa" value={d.msg} onChange={e=>setDisparos(p=>p.map((x,j)=>j===i?{...x,msg:e.target.value}:x))}/></div>
+              <div className="d-bar"><button className="dsave" onClick={()=>salvarDisparos(i)}>Salvar</button><button className={`dpause${d.live?' live':' paused'}`} onClick={()=>togPause(i)}>{d.live?'Pausar disparo':'Ativar disparo'}</button></div>
+            </div>}
+          </div>
+        ))}
+        <button className="add-disp" onClick={()=>setShowDisp(true)}>+ Novo disparo</button>
+      </div>
       {(qrCode||pairingMode)&&<div className="ov" onClick={()=>{setQrCode(null);setPairingMode(false);setPairingCode(null);setPairingPhone('');setPairingCountry('55');}}><div className="sh" onClick={e=>e.stopPropagation()}><div className="sh-h"/><div className="sh-t">Conectar WhatsApp</div>
         {!pairingMode?(
           <>
