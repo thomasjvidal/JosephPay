@@ -12,9 +12,18 @@ const cors       = require("cors");
 const axios      = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 const { Resend }       = require("resend");
+const nodemailer       = require("nodemailer");
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
+
+// Sensor/track: CORS aberto para qualquer domínio de produtor.
+// Deve ficar ANTES do cors() global para capturar o OPTIONS preflight primeiro.
+app.options("/api/track/visit", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -158,6 +167,66 @@ function calcFees(grossAmount, netAmount) {
   return { platformFee, asaasFee, producerAmount };
 }
 
+// ── Assinatura da plataforma (mensalidade dos usuários JosephPay) ─────────────
+const PLATFORM_SUB_PRICE = 30;        // R$ por mês
+const PLATFORM_SUB_DAYS  = 30;        // dias liberados por pagamento
+
+// Retorna o estado de acesso do usuário. Acesso liberado enquanto now() < access_until.
+// Fallback defensivo: se access_until vier nulo (usuário sem migração), concede
+// 30 dias de cortesia a partir do cadastro — nunca bloqueia por acidente.
+async function getAccess(userId) {
+  try {
+    const { data } = await supabase.from("profiles")
+      .select("access_until, plan_status, created_at, mp_preapproval_id")
+      .eq("id", userId).maybeSingle();
+    if (!data) return { active: true, until: null, plan_status: "trial", hasCard: false };
+    const until = data.access_until
+      ? new Date(data.access_until)
+      : new Date(new Date(data.created_at || Date.now()).getTime() + PLATFORM_SUB_DAYS * 86400000);
+    return {
+      active:      until.getTime() > Date.now(),
+      until,
+      plan_status: data.plan_status || "trial",
+      hasCard:     !!data.mp_preapproval_id,
+    };
+  } catch (e) {
+    console.warn("[getAccess]", e.message);
+    return { active: true, until: null, plan_status: "trial", hasCard: false }; // fail-open
+  }
+}
+
+// Estende (ou renova) o acesso do usuário em N dias a partir do maior entre agora
+// e o vencimento atual — usado quando um pagamento de mensalidade é aprovado.
+async function grantPlatformAccess(userId, days = PLATFORM_SUB_DAYS) {
+  try {
+    const { data } = await supabase.from("profiles")
+      .select("access_until").eq("id", userId).maybeSingle();
+    const cur  = data?.access_until ? new Date(data.access_until) : null;
+    const base = cur && cur.getTime() > Date.now() ? cur : new Date();
+    const until = new Date(base.getTime() + days * 86400000);
+    await supabase.from("profiles").update({
+      access_until: until.toISOString(),
+      plan_status:  "active",
+    }).eq("id", userId);
+    console.log(`[platform-sub] acesso liberado userId=${userId} até ${until.toISOString()}`);
+    return until;
+  } catch (e) {
+    console.error("[grantPlatformAccess]", e.message);
+  }
+}
+
+// Middleware: bloqueia funcionalidades premium se o mês grátis acabou e não há
+// assinatura ativa. Responde 402 com uma mensagem para o front abrir o paywall.
+async function requireSubscription(req, res, next) {
+  const acc = await getAccess(req.user.id);
+  if (acc.active) return next();
+  return res.status(402).json({
+    error:   "subscription_required",
+    message: "Seu período grátis acabou. Assine o JosephPay por R$30/mês para continuar usando.",
+    price:   PLATFORM_SUB_PRICE,
+  });
+}
+
 async function updateCustomerStats(customerId) {
   if (!customerId) return;
   try {
@@ -221,7 +290,8 @@ async function requireAuth(req, res, next) {
  */
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
-    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY" } = req.body;
+    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
+            upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
     if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
 
     const basePrice   = Math.round(Number(price) * 100) / 100;
@@ -240,6 +310,10 @@ app.post("/api/products/create", requireAuth, async (req, res) => {
       url:                "",   // preenchido após criar preference
       billing_type:       billingType || "UNDEFINED",
       subscription_cycle: isRecurrent ? subscriptionCycle : null,
+      upsell_url:         upsellUrl   || null,
+      downsell_url:       downsellUrl || null,
+      obrigado_url:       obrigadoUrl || null,
+      gtm_id:             gtmId       || null,
     }).select().single();
 
     if (dbErr) {
@@ -360,6 +434,31 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("[products/delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PATCH /api/products/:id/funnel
+ * Atualiza upsell_url e downsell_url de um produto existente.
+ * downsell_url só é aceito se upsell_url for fornecido.
+ */
+app.patch("/api/products/:id/funnel", requireAuth, async (req, res) => {
+  try {
+    const { upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
+    const upsell   = upsellUrl   ? String(upsellUrl).trim()   : null;
+    const downsell = upsell && downsellUrl ? String(downsellUrl).trim() : null;
+    const obrigado = obrigadoUrl ? String(obrigadoUrl).trim() : null;
+    const gtm      = gtmId       ? String(gtmId).trim()       : null;
+    const { error } = await supabase
+      .from("products")
+      .update({ upsell_url: upsell, downsell_url: downsell, obrigado_url: obrigado, gtm_id: gtm })
+      .eq("id", req.params.id)
+      .eq("owner_id", req.user.id);
+    if (error) throw error;
+    res.json({ success: true, upsellUrl: upsell, downsellUrl: downsell, obrigadoUrl: obrigado, gtmId: gtm });
+  } catch (err) {
+    console.error("[products/funnel]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -491,11 +590,59 @@ app.post("/api/mp/webhook", async (req, res) => {
     const { type, action, data: eventData } = req.body;
     console.log(`[mp/webhook] ✓ chegou — type=${type} action=${action} id=${eventData?.id} live=${req.body.live_mode}`);
 
+    // ── ASSINATURA DA PLATAFORMA — cobrança recorrente do cartão (Mercado Pago) ──
+    // Cada mês que o MP cobra o cartão do usuário chega aqui e renova o acesso +30 dias.
+    if (type === "subscription_authorized_payment" && eventData?.id) {
+      try {
+        const { data: ap } = await mp.get(`/authorized_payments/${eventData.id}`);
+        console.log("[mp/webhook] sub_payment status:", ap.status, "preapproval:", ap.preapproval_id);
+        if (ap.status === "processed" || ap.payment?.status === "approved") {
+          const { data: prof } = await supabase.from("profiles")
+            .select("id").eq("mp_preapproval_id", ap.preapproval_id).maybeSingle();
+          if (prof) await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS);
+        }
+      } catch (e) { console.error("[mp/webhook] sub_payment erro:", e.message); }
+      return;
+    }
+
+    // ── ASSINATURA DA PLATAFORMA — mudança de status (autorizada / cancelada) ──
+    if (type === "subscription_preapproval" && eventData?.id) {
+      try {
+        const { data: pre } = await mp.get(`/preapproval/${eventData.id}`);
+        console.log("[mp/webhook] preapproval status:", pre.status);
+        const { data: prof } = await supabase.from("profiles")
+          .select("id").eq("mp_preapproval_id", eventData.id).maybeSingle();
+        if (prof) {
+          if (pre.status === "authorized") {
+            // Assinatura ativa com 1º mês grátis — garante que o acesso não expire durante o trial
+            await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS);
+          } else if (pre.status === "cancelled" || pre.status === "paused") {
+            await supabase.from("profiles")
+              .update({ plan_status: "canceled" }).eq("id", prof.id);
+          }
+        }
+      } catch (e) { console.error("[mp/webhook] preapproval erro:", e.message); }
+      return;
+    }
+
     if (type !== "payment" || !eventData?.id) return;
 
     // Busca detalhes reais do pagamento no MP
     const { data: payment } = await mp.get(`/v1/payments/${eventData.id}`);
     console.log("[mp/webhook] status:", payment.status, "ref:", payment.external_reference);
+
+    // ── ASSINATURA DA PLATAFORMA — pagamento avulso via PIX (mensalidade manual) ──
+    // external_reference = {"kind":"PLATFORM_SUB","ownerId":"..."} → libera +30 dias na hora.
+    // Interceptado ANTES da busca de sale para não ser tratado como venda de produto.
+    try {
+      const subRef = JSON.parse(payment.external_reference || "{}");
+      if (subRef.kind === "PLATFORM_SUB" && subRef.ownerId) {
+        if (payment.status === "approved") {
+          await grantPlatformAccess(subRef.ownerId, PLATFORM_SUB_DAYS);
+        }
+        return; // não é uma venda de produto — encerra aqui
+      }
+    } catch { /* external_reference não é JSON — segue fluxo normal de venda */ }
 
     // ── Localiza a sale pendente (3 estratégias, em ordem de prioridade) ─────────
     const mpPaymentId = String(payment.id);
@@ -571,6 +718,17 @@ app.post("/api/mp/webhook", async (req, res) => {
       }).eq("id", targetSale.id);
       console.log(`[mp/webhook] sale ${targetSale.id} paga | produtor=R$${baseProductPrice} | mp_fee=R$${mpFee} | customer=${targetSale.customer_id}`);
       await updateCustomerStats(targetSale.customer_id);
+
+      // ── Stape sGTM relay para conversão server-side (fire-and-forget) ──
+      // Manda o objeto completo do MP (resultado do GET /v1/payments/{id})
+      // para o webhook do Stape processar no GTM server-side.
+      if (STAPE_WEBHOOK_URL) {
+        fetch(STAPE_WEBHOOK_URL, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payment),
+        }).catch(e => console.warn("[stape] relay erro:", e.message));
+      }
 
       // ── E-mails de notificação (fire-and-forget — falha nunca afeta o webhook) ──
       (async () => {
@@ -655,28 +813,194 @@ app.get("/api/test-email", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ROTAS — CHAT IA (Anthropic)
+// ROTAS — CHAT IA (cadeia de fallback: várias keys Groq → Anthropic)
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.post("/api/chat", requireAuth, async (req, res) => {
+// Suporta várias keys da Groq (ex: de contas free diferentes) separadas por vírgula
+// em GROQ_API_KEYS, ou as antigas GROQ_API_KEY / GROQ_API_KEY_1..N — tudo somado num só pool.
+const GROQ_KEYS = [
+  ...(process.env.GROQ_API_KEYS || "").split(",").map(k => k.trim()).filter(Boolean),
+  ...Object.keys(process.env)
+    .filter(k => /^GROQ_API_KEY(_\d+)?$/.test(k))
+    .map(k => process.env[k]).filter(Boolean),
+];
+const CHAT_TIMEOUT_MS = 8000;
+
+async function callGroq(key, systemPrompt, messages) {
+  const r = await axios.post(
+    "https://api.groq.com/openai/v1/chat/completions",
+    { model: "llama-3.3-70b-versatile", max_tokens: 1024,
+      messages: [{ role: "system", content: systemPrompt }, ...messages] },
+    { headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
+  );
+  return r.data.choices[0].message.content;
+}
+
+async function callAnthropic(systemPrompt, messages) {
+  const r = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    { model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: systemPrompt, messages },
+    { headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
+  );
+  return r.data.content[0].text;
+}
+
+// IA proativa: responde com base na operação real do produtor (vendas, clientes, saldo, afiliados).
+// Cache curto por produtor pra não bater no banco a cada mensagem (simula "memória" recente).
+const opContextCache = new Map(); // uid -> { text, ts }
+const OP_CONTEXT_TTL_MS = 5 * 60 * 1000;
+
+async function getOperationContext(uid) {
+  const cached = opContextCache.get(uid);
+  if (cached && Date.now() - cached.ts < OP_CONTEXT_TTL_MS) return cached.text;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+  const [salesMonth, salesToday, totalCustomers, activeSubs, products, balance] = await Promise.all([
+    supabase.from("sales").select("amount,producer_amount").eq("owner_id", uid).eq("status", "pago").gte("created_at", monthStart),
+    supabase.from("sales").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "pago").gte("created_at", todayStart),
+    supabase.from("customers").select("id", { count: "exact", head: true }).eq("owner_id", uid),
+    supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "ativo"),
+    supabase.from("products").select("id").eq("owner_id", uid),
+    supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
+  ]);
+
+  const sales = salesMonth.data || [];
+  const receitaMes = sales.reduce((a, s) => a + Number(s.producer_amount || s.amount || 0), 0);
+  const productIds = (products.data || []).map(p => p.id);
+  let afiliadosAtivos = 0;
+  if (productIds.length) {
+    const { count } = await supabase.from("affiliates").select("id", { count: "exact", head: true }).in("product_id", productIds).eq("status", "ativo");
+    afiliadosAtivos = count || 0;
+  }
+  const totalWithdrawn = (balance.data || []).reduce((a, w) => a + Number(w.amount || 0), 0);
+  const saldo = Math.max(0, receitaMes - totalWithdrawn);
+
+  const text = `Dados reais da operação deste produtor (use para responder com precisão, sem inventar números):
+- Receita líquida do mês: R$ ${receitaMes.toFixed(2)}
+- Vendas pagas hoje: ${salesToday.count || 0}
+- Total de clientes: ${totalCustomers.count || 0}
+- Assinaturas ativas: ${activeSubs.count || 0}
+- Afiliados ativos: ${afiliadosAtivos}
+- Saldo disponível para sacar: R$ ${saldo.toFixed(2)}`;
+
+  opContextCache.set(uid, { text, ts: Date.now() });
+  return text;
+}
+
+app.post("/api/chat", requireAuth, requireSubscription, async (req, res) => {
+  const uid = req.user.id;
   try {
     const { messages, productContext } = req.body;
+    const opContext = await getOperationContext(uid).catch(() => "");
     const systemPrompt = `Você é o assistente de IA da JosephPay, especializado em marketing digital, vendas online e infoprodutos.
 Você ajuda produtores a crescerem suas vendas, gerenciar afiliados e otimizar suas estratégias.
+Seja proativo: aponte oportunidades e próximos passos mesmo sem o produtor perguntar diretamente.
 ${productContext ? `Contexto do produto: ${productContext}` : ""}
+${opContext}
 Responda sempre em português brasileiro, de forma direta e prática.`;
 
-    const response = await axios.post(
-      "https://api.anthropic.com/v1/messages",
-      { model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: systemPrompt,
-        messages: messages.map(m => ({ role: m.role, content: m.content })) },
-      { headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" } }
-    );
+    const chatMessages = messages.map(m => ({ role: m.role, content: m.content }));
 
-    res.json({ reply: response.data.content[0].text });
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, chatMessages); break; }
+      catch (e) { lastErr = e; console.warn("[chat] groq key falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, chatMessages); }
+      catch (e) { lastErr = e; console.error("[chat] anthropic falhou:", e.response?.data || e.message); }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+
+    res.json({ reply });
   } catch (err) {
     console.error("[chat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — ASSINATURA DA PLATAFORMA (mensalidade dos usuários JosephPay)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/subscription/status — estado da assinatura do usuário logado */
+app.get("/api/subscription/status", requireAuth, async (req, res) => {
+  const acc = await getAccess(req.user.id);
+  res.json({
+    active:      acc.active,
+    until:       acc.until,
+    plan_status: acc.plan_status,
+    hasCard:     acc.hasCard,
+    price:       PLATFORM_SUB_PRICE,
+    daysLeft:    acc.until ? Math.max(0, Math.ceil((acc.until.getTime() - Date.now()) / 86400000)) : null,
+  });
+});
+
+/** POST /api/subscription/pix — gera um PIX de R$30 (mensalidade avulsa/manual).
+ *  Ao pagar, o webhook libera +30 dias na hora. Ideal para quem não usa cartão. */
+app.post("/api/subscription/pix", requireAuth, async (req, res) => {
+  try {
+    const { cpf, name } = req.body;
+    if (!cpf || cpf.replace(/\D/g, "").length < 11) {
+      return res.status(400).json({ error: "CPF é obrigatório para gerar o PIX." });
+    }
+    const payerName = (name || req.user.user_metadata?.name || req.user.email?.split("@")[0] || "Usuário").trim();
+    const parts = payerName.split(" ");
+    const payResp = await mp.post("/v1/payments", {
+      transaction_amount: PLATFORM_SUB_PRICE,
+      payment_method_id:  "pix",
+      description:        "JosephPay — Mensalidade",
+      external_reference: JSON.stringify({ kind: "PLATFORM_SUB", ownerId: req.user.id }),
+      notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+      installments:       1,
+      payer: {
+        email:          req.user.email,
+        first_name:     parts[0],
+        last_name:      parts.slice(1).join(" ") || parts[0],
+        identification: { type: "CPF", number: cpf.replace(/\D/g, "") },
+      },
+    });
+    res.json({
+      chargeId:    String(payResp.data.id),
+      pixQrCode:   payResp.data.point_of_interaction?.transaction_data?.qr_code_base64 || null,
+      pixCopyCola: payResp.data.point_of_interaction?.transaction_data?.qr_code || null,
+    });
+  } catch (err) {
+    console.error("[subscription/pix]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+/** POST /api/subscription/card — cria assinatura recorrente no cartão (Mercado Pago
+ *  Assinaturas / preapproval) com 1º MÊS GRÁTIS e depois R$30/mês automático.
+ *  O cartão fica no cofre do Mercado Pago — nunca passa pelo nosso servidor. */
+app.post("/api/subscription/card", requireAuth, async (req, res) => {
+  try {
+    const pre = await mp.post("/preapproval", {
+      reason:         "JosephPay — Mensalidade",
+      payer_email:    req.user.email,
+      status:         "pending",
+      back_url:       `${FRONTEND_URL}/?sub=ok`,
+      external_reference: JSON.stringify({ kind: "PLATFORM_SUB", ownerId: req.user.id }),
+      auto_recurring: {
+        frequency:          1,
+        frequency_type:     "months",
+        transaction_amount: PLATFORM_SUB_PRICE,
+        currency_id:        "BRL",
+        free_trial:         { frequency: 1, frequency_type: "months" }, // 1º mês grátis
+      },
+    });
+    // Guarda o id da assinatura para casar com os webhooks de cobrança recorrente
+    await supabase.from("profiles")
+      .update({ mp_preapproval_id: String(pre.data.id) }).eq("id", req.user.id);
+    res.json({ init_point: pre.data.init_point || pre.data.sandbox_init_point, preapprovalId: String(pre.data.id) });
+  } catch (err) {
+    console.error("[subscription/card]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 });
 
@@ -687,6 +1011,9 @@ Responda sempre em português brasileiro, de forma direta e prática.`;
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL;
 const EVOLUTION_KEY  = process.env.EVOLUTION_API_KEY;
 const PUBLIC_URL     = process.env.PUBLIC_URL || "https://josephpay-production.up.railway.app";
+const FRONTEND_URL   = process.env.FRONTEND_URL || "https://josephpay.com";
+const N8N_WEBHOOK_URL   = process.env.N8N_WEBHOOK_URL   || null;
+const STAPE_WEBHOOK_URL = process.env.STAPE_WEBHOOK_URL || null;
 
 const evo = EVOLUTION_BASE && !EVOLUTION_BASE.includes("seudominio") ? axios.create({
   baseURL: EVOLUTION_BASE,
@@ -775,6 +1102,129 @@ app.post("/api/whatsapp/webhook", async (req, res) => {
     }
   }
   res.json({ received: true });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — E-MAIL (disparo CRM via SMTP próprio do produtor)
+// Independente do Resend transacional acima — aqui cada produtor conecta a
+// própria conta de e-mail (ex: Gmail + senha de app) para os disparos do CRM.
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function getUserEmailConn(userId) {
+  const { data } = await supabase.from("profiles")
+    .select("email_smtp_host,email_smtp_port,email_smtp_user,email_smtp_pass,email_from_name,email_connected")
+    .eq("id", userId).single();
+  return data || null;
+}
+
+function buildTransport(conn) {
+  return nodemailer.createTransport({
+    host: conn.email_smtp_host,
+    port: conn.email_smtp_port,
+    secure: Number(conn.email_smtp_port) === 465,
+    auth: { user: conn.email_smtp_user, pass: conn.email_smtp_pass },
+  });
+}
+
+app.get("/api/email/status", requireAuth, async (req, res) => {
+  const conn = await getUserEmailConn(req.user.id);
+  res.json({ connected: !!conn?.email_connected, email: conn?.email_smtp_user || null, fromName: conn?.email_from_name || null });
+});
+
+app.post("/api/email/connect", requireAuth, async (req, res) => {
+  const { host, port, user, pass, fromName } = req.body || {};
+  if (!host || !port || !user || !pass) return res.status(400).json({ error: "Preencha host, porta, e-mail e senha." });
+  try {
+    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: port, email_smtp_user: user, email_smtp_pass: pass });
+    await transporter.verify();
+    const { error } = await supabase.from("profiles").update({
+      email_smtp_host: host, email_smtp_port: Number(port), email_smtp_user: user,
+      email_smtp_pass: pass, email_from_name: fromName || null, email_connected: true,
+    }).eq("id", req.user.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ connected: true, email: user });
+  } catch (err) {
+    console.error("[email/connect]", err.message);
+    res.status(400).json({ error: "Não foi possível conectar. Verifique os dados e a senha de app." });
+  }
+});
+
+app.post("/api/email/disconnect", requireAuth, async (req, res) => {
+  const { error } = await supabase.from("profiles").update({
+    email_smtp_host: null, email_smtp_port: null, email_smtp_user: null,
+    email_smtp_pass: null, email_from_name: null, email_connected: false,
+  }).eq("id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ connected: false });
+});
+
+// ── POST /api/email/send-group ────────────────────────────────────────────────
+app.post("/api/email/send-group", requireAuth, requireSubscription, async (req, res) => {
+  try {
+  const conn = await getUserEmailConn(req.user.id);
+  if (!conn?.email_connected) return res.status(503).json({ error: "E-mail não conectado" });
+  const { message, subject, group } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia" });
+  if (!subject?.trim()) return res.status(400).json({ error: "Assunto obrigatório" });
+  const transporter = buildTransport(conn);
+  const senderName = conn.email_from_name || req.user.user_metadata?.name || "JosephPay";
+
+  let query = supabase.from("customers").select("id,email,name").eq("owner_id", req.user.id);
+  if (group && group !== "todos") {
+    if (group === "cliente") query = query.or("status.eq.cliente,status.is.null");
+    else query = query.eq("status", group);
+  }
+  const { data: customers, error: custErr } = await query;
+  if (custErr) return res.status(500).json({ error: custErr.message });
+
+  const excludedIds = Array.isArray(req.body.excludedIds) ? new Set(req.body.excludedIds) : new Set();
+  const skipped = (customers || []).filter(c => !c.email || excludedIds.has(c.id))
+    .map(c => ({ name: c.name, reason: !c.email ? 'no_email' : 'excluded' }));
+  const withEmail = (customers || []).filter(c => c.email && !excludedIds.has(c.id));
+  let sent = 0, failed = 0;
+  const log = [...skipped];
+
+  const CHUNK = 5;
+  for (let i = 0; i < withEmail.length; i += CHUNK) {
+    await Promise.all(withEmail.slice(i, i + CHUNK).map(async c => {
+      const personalized = message.replace(/\{nome\}/g, c.name || "");
+      try {
+        const info = await transporter.sendMail({
+          from: `${senderName} <${conn.email_smtp_user}>`,
+          to: c.email,
+          subject: subject.replace(/\{nome\}/g, c.name || ""),
+          text: personalized,
+        });
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id, channel: "email",
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "sent", provider_id: info.messageId || null,
+        }).then(null, () => {});
+        log.push({ name: c.name, reason: 'sent' });
+        sent++;
+      } catch (e) {
+        console.error(`[email/send-group] falha ${c.name}:`, e.message);
+        await supabase.from("messages").insert({
+          owner_id: req.user.id, customer_id: c.id, channel: "email",
+          direction: "outbound", content: message, type: "text",
+          group_target: group || "todos", status: "failed", error_message: e.message,
+        }).then(null, () => {});
+        log.push({ name: c.name, reason: e.message });
+        failed++;
+      }
+    }));
+  }
+
+  await supabase.from("messages").insert({
+    owner_id: req.user.id, channel: "email", direction: "outbound", content: message, type: "text",
+    group_target: group || "todos", group_count: sent, status: sent > 0 ? "sent" : "failed",
+  }).then(null, () => {});
+
+  res.json({ sent, failed, total: withEmail.length, log });
+  } catch (e) {
+    console.error('[email/send-group] crash:', e.message, e.stack);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1110,7 +1560,7 @@ function calcPublicPrice(basePrice, method, installments = 1) {
 app.get("/api/public/products/:id", async (req, res) => {
   try {
     const { data: product, error } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle")
+      .select("id,name,description,price,billing_type,subscription_cycle,upsell_url,downsell_url,obrigado_url,gtm_id")
       .eq("id", req.params.id)
       .maybeSingle();
     if (error || !product) return res.status(404).json({ error: "Produto não encontrado" });
@@ -1121,6 +1571,10 @@ app.get("/api/public/products/:id", async (req, res) => {
       price:            Number(product.price),
       billingType:      product.billing_type,
       subscriptionCycle: product.subscription_cycle,
+      upsellUrl:        product.upsell_url   || null,
+      downsellUrl:      product.downsell_url  || null,
+      obrigadoUrl:      product.obrigado_url  || null,
+      gtmId:            product.gtm_id        || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1137,7 +1591,7 @@ app.post("/api/public/checkout", async (req, res) => {
     }
 
     const { data: product } = await supabase.from("products")
-      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id")
+      .select("id,name,description,price,billing_type,subscription_cycle,owner_id,asaas_link_id,upsell_url,obrigado_url")
       .eq("id", productId).maybeSingle();
     if (!product) return res.status(404).json({ error: "Produto não encontrado" });
 
@@ -1217,6 +1671,14 @@ app.post("/api/public/checkout", async (req, res) => {
         notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
         payment_methods:    { installments: isRecurrent ? 1 : 12 },
         statement_descriptor: "JosephPay",
+        back_urls: {
+          success: product.upsell_url
+            || product.obrigado_url
+            || `${FRONTEND_URL}/obrigado.html?p=${productId}&amount=${clientTotal.toFixed(2)}`,
+          failure: `${FRONTEND_URL}/checkout.html?p=${productId}`,
+          pending: `${FRONTEND_URL}/checkout.html?p=${productId}`,
+        },
+        auto_return: "approved",
       });
       chargeId   = String(prefResp.data.id);
       invoiceUrl = prefResp.data.init_point || prefResp.data.sandbox_init_point;
@@ -1318,8 +1780,9 @@ app.get("/api/health", (req, res) => {
     services:  {
       supabase:       !!process.env.SUPABASE_URL,
       mercadopago:    !!process.env.MP_ACCESS_TOKEN,
-      anthropic:      !!process.env.ANTHROPIC_API_KEY,
+      chatIA:         GROQ_KEYS.length > 0 || !!process.env.ANTHROPIC_API_KEY,
       whatsapp:       !!(process.env.EVOLUTION_API_URL && !process.env.EVOLUTION_API_URL.includes("seudominio")),
+      emailDisparo:   true,
     },
   });
 });
@@ -1358,6 +1821,7 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
       name:     c.name.trim(),
       phone:    c.phone?.trim() || null,
       email:    c.email?.trim() || null,
+      birthday: c.birthday?.trim() || null,
       source:   "manual",
       status:   "lead",
     }));
@@ -1384,7 +1848,18 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
 
 // ── CRM: entrada de lead via MiniChat (protegido por X-Owner-Key) ─────────────
 const leadsRateMap = new Map();
-app.post("/api/leads/create", async (req, res) => {
+// CORS aberto — chamado de domínios externos (sites dos produtores)
+app.options("/api/leads/create", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
+  res.header("Access-Control-Allow-Methods", "POST");
+  res.sendStatus(204);
+});
+app.post("/api/leads/create", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
+  next();
+}, async (req, res) => {
   const ownerKey = req.headers["x-owner-key"];
   if (!ownerKey) return res.status(401).json({ error: "X-Owner-Key ausente" });
 
@@ -1409,17 +1884,14 @@ app.post("/api/leads/create", async (req, res) => {
 
   const { data, error } = await supabase
     .from("customers")
-    .upsert(
-      {
-        owner_id: profile.id,
-        name: name.trim(),
-        phone: phone?.trim() || null,
-        email: email?.trim() || null,
-        source: "minichat",
-        status: "lead",
-      },
-      { onConflict: "owner_id,phone", ignoreDuplicates: false }
-    )
+    .insert({
+      owner_id: profile.id,
+      name: name.trim(),
+      phone: phone?.trim() || null,
+      email: email?.trim() || null,
+      source: "minichat",
+      status: "lead",
+    })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -1471,7 +1943,7 @@ app.patch("/api/customers/:id", requireAuth, async (req, res) => {
 });
 
 // ── POST /api/whatsapp/send-group ─────────────────────────────────────────────
-app.post("/api/whatsapp/send-group", requireAuth, async (req, res) => {
+app.post("/api/whatsapp/send-group", requireAuth, requireSubscription, async (req, res) => {
   try {
   if (!evo) return res.status(503).json({ error: "Evolution API não configurada" });
   const inst = await getUserInst(req.user.id);
@@ -1620,6 +2092,61 @@ app.options("/api/track/visit", (req, res) => {
   res.sendStatus(204);
 });
 
+// ── Sensor hospedado — uma linha no <head> substitui o bloco inteiro ──────────
+app.get("/sensor.js", (req, res) => {
+  const uid = (req.query.uid || "").replace(/[^a-zA-Z0-9\-]/g, "");
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Content-Type", "application/javascript");
+  res.header("Cache-Control", "public, max-age=3600");
+  if (!uid) return res.send("/* sensor.js: uid ausente */");
+  res.send(`(function(){
+var JP="${PUBLIC_URL}";var uid="${uid}";
+var p=window.location.pathname;var ref=document.referrer;
+var q=new URLSearchParams(window.location.search);
+var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
+var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
+fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
+})();`);
+});
+
+// ── Funil de conversão ────────────────────────────────────────────────────────
+app.get("/api/funnel", requireAuth, async (req, res) => {
+  try {
+    const uid  = req.user.id;
+    const from = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [total, chatVisits, checkoutVisits, leads, salesRes, salesSrc] = await Promise.all([
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%minichat%"),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%checkout%"),
+      supabase.from("customers").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("source","minichat").gte("created_at",from).is("deleted_at",null),
+      supabase.from("sales").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("status","pago").gte("created_at",from),
+      supabase.from("sales").select("producer_amount,amount,customers!customer_id(source)").eq("owner_id",uid).eq("status","pago").gte("created_at",from),
+    ]);
+    // agrupa origem de vendas
+    const srcMap = {};
+    (salesSrc.data || []).forEach(s => {
+      const src = s.customers?.source || "direto";
+      if (!srcMap[src]) srcMap[src] = { count: 0, revenue: 0 };
+      srcMap[src].count++;
+      srcMap[src].revenue += Number(s.producer_amount || s.amount || 0);
+    });
+    const salesBySource = Object.entries(srcMap)
+      .map(([source, d]) => ({ source, ...d }))
+      .sort((a, b) => b.revenue - a.revenue);
+    res.json({
+      visitors:  total.count       || 0,
+      chat:      chatVisits.count  || 0,
+      leads:     leads.count       || 0,
+      checkout:  checkoutVisits.count || 0,
+      sales:     salesRes.count    || 0,
+      salesBySource,
+    });
+  } catch(err) {
+    console.error("[funnel]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Analytics: dados de visitas para a aba Máquina ───────────────────────────
 app.get("/api/analytics/visits", requireAuth, async (req, res) => {
   const days  = Math.min(parseInt(req.query.days) || 30, 30);
@@ -1650,7 +2177,13 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
     .map(([src, cnt]) => ({ source: src, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
     .sort((a, b) => b.count - a.count);
 
-  res.json({ total, daily, sources });
+  const byDevice = {};
+  rows.forEach(r => { byDevice[r.device||'unknown'] = (byDevice[r.device||'unknown']||0) + 1; });
+  const devices = Object.entries(byDevice)
+    .map(([device, cnt]) => ({ device, count: cnt, pct: total ? Math.round(cnt*100/total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  res.json({ total, daily, sources, devices });
 });
 
 // ── Perfil do produtor: ler e salvar nome/empresa/avatar ──────────────────────
@@ -1686,8 +2219,11 @@ app.post("/api/user/avatar", requireAuth, async (req, res) => {
   const { error } = await supabase.storage.from("avatars").upload(path, buffer, { contentType, upsert: true });
   if (error) return res.status(500).json({ error: error.message });
   const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-  await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", req.user.id);
-  res.json({ url: publicUrl });
+  // upsert reaproveita o mesmo path, então a URL não muda entre uploads —
+  // sem isso o navegador/CDN serve a imagem antiga do cache mesmo após salvar
+  const url = `${publicUrl}?v=${Date.now()}`;
+  await supabase.from("profiles").update({ avatar_url: url }).eq("id", req.user.id);
+  res.json({ url });
 });
 
 // ── Site do produtor: salvar/ler URL + checar status ─────────────────────────
@@ -1720,6 +2256,16 @@ app.post("/api/whatsapp/inbound", async (req, res) => {
   res.json({ ok: true });
   try {
     const payload = req.body;
+
+    // Opção B — relay fire-and-forget para N8N (se configurado)
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      }).catch(e => console.warn("[inbound→n8n]", e.message));
+    }
+
     const instName = payload?.instance;
     const messages = payload?.data?.messages
       || (Array.isArray(payload?.data) ? payload.data : []);
@@ -1768,15 +2314,66 @@ async function syncAssinanteStatus() {
   } catch(e) { console.warn("[syncAssinante]", e.message); }
 }
 
+async function getEvolutionVersion() {
+  try {
+    const { data } = await evo.get("/");
+    const raw = data?.version || data?.info?.version || "";
+    const major = parseInt(raw.toString().replace(/[^0-9]/, "")) || 1;
+    console.log(`[evolution] versão detectada: ${raw || "desconhecida"} (major=${major})`);
+    return major;
+  } catch(e) {
+    console.warn("[evolution] não foi possível detectar versão:", e.message);
+    return 1;
+  }
+}
+
 async function setupEvolutionWebhook(inst) {
   try {
-    await evo.post(`/webhook/set/${inst}`, {
-      url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
-      webhook_by_events: false,
-      webhook_base64:   false,
-      events:           ["MESSAGES_UPSERT"],
-    });
-    console.log(`[evolution] webhook configurado para ${inst} →`, PUBLIC_URL);
+    // Tenta formato v2 primeiro (wrapper "webhook" + camelCase)
+    // Se a Evolution for v1 vai rejeitar e tentamos o formato v1
+    let ok = false;
+    try {
+      await evo.post(`/webhook/set/${inst}`, {
+        webhook: {
+          enabled:        true,
+          url:            `${PUBLIC_URL}/api/whatsapp/inbound`,
+          webhookByEvents: false,
+          webhookBase64:  false,
+          events:         ["MESSAGES_UPSERT"],
+        },
+      });
+      ok = true;
+      console.log(`[evolution] webhook v2 configurado para ${inst}`);
+    } catch {
+      // v1 format
+      await evo.post(`/webhook/set/${inst}`, {
+        url:              `${PUBLIC_URL}/api/whatsapp/inbound`,
+        webhook_by_events: false,
+        webhook_base64:   false,
+        events:           ["MESSAGES_UPSERT"],
+      });
+      console.log(`[evolution] webhook v1 configurado para ${inst}`);
+    }
+
+    // Opção A — se N8N_WEBHOOK_URL configurado, tenta registrar segundo webhook (Evolution v2)
+    if (N8N_WEBHOOK_URL) {
+      try {
+        await evo.post(`/webhook/set/${inst}`, {
+          webhook: {
+            enabled:        true,
+            url:            `${PUBLIC_URL}/api/whatsapp/inbound`,
+            webhookByEvents: false,
+            webhookBase64:  false,
+            events:         ["MESSAGES_UPSERT"],
+          },
+          // Alguns builds Evolution v2 aceitam webhooks adicionais nesta chave
+          additionalWebhooks: [{ url: N8N_WEBHOOK_URL, events: ["MESSAGES_UPSERT"] }],
+        });
+        console.log(`[evolution] webhook adicional N8N configurado para ${inst} (Opção A)`);
+      } catch {
+        console.log(`[evolution] Evolution não suporta webhook adicional nativo — Opção B (relay) ativa para ${inst}`);
+      }
+    }
   } catch(e) { console.warn(`[evolution] webhook setup ${inst}:`, e.message); }
 }
 
@@ -1795,9 +2392,12 @@ app.listen(PORT, () => {
   ensureBuckets();
   syncAssinanteStatus();
   if (evo) {
-    supabase.from("profiles").select("whatsapp_instance").not("whatsapp_instance", "is", null)
-      .then(({ data }) => {
-        (data || []).forEach(p => p.whatsapp_instance && setupEvolutionWebhook(p.whatsapp_instance));
-      });
+    getEvolutionVersion().then(() => {
+      if (N8N_WEBHOOK_URL) console.log(`   N8N relay ativo → ${N8N_WEBHOOK_URL}`);
+      supabase.from("profiles").select("whatsapp_instance").not("whatsapp_instance", "is", null)
+        .then(({ data }) => {
+          (data || []).forEach(p => p.whatsapp_instance && setupEvolutionWebhook(p.whatsapp_instance));
+        });
+    });
   }
 });

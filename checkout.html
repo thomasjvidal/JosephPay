@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>JosephPay — Checkout</title>
+  <link rel="icon" type="image/jpeg" href="/favicon.jpeg"/>
+  <link rel="apple-touch-icon" href="/favicon.jpeg"/>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -70,6 +72,9 @@ const RAILWAY = window.location.hostname === "localhost"
   ? "http://localhost:3001"
   : "https://josephpay-production.up.railway.app";
 
+const SUPABASE_URL      = "https://ljpjadwvqocatnqjvuvk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqcGphZHd2cW9jYXRucWp2dXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTg4MzgsImV4cCI6MjA5MTg5NDgzOH0.cflTLbryotX4p84pA2L03J1VHmVCELTvJ0WwI5WeZeY";
+
 const PLATFORM_RATE = 0.0099;
 const MP_RATES = {
   PIX:    { fixed: 0,    pct: 0.0099 },
@@ -104,6 +109,31 @@ function maskCEP(v) {
   return v.replace(/\D/g,"").slice(0,8).replace(/(\d{5})(\d)/,"$1-$2");
 }
 
+async function fetchProduct(pid) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/public_checkout_products?id=eq.${encodeURIComponent(pid)}&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!rows.length) return null;
+    const p = rows[0];
+    return {
+      id:                p.id,
+      name:              p.name,
+      description:       p.description,
+      price:             Number(p.price),
+      billingType:       p.billing_type,
+      subscriptionCycle: p.subscription_cycle,
+      upsellUrl:         p.upsell_url   || null,
+      downsellUrl:       p.downsell_url || null,
+      obrigadoUrl:       p.obrigado_url || null,
+      gtmId:             p.gtm_id       || null,
+    };
+  } catch(e) { return null; }
+}
+
 function App() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -118,14 +148,35 @@ function App() {
   const [payStatus, setPayStatus] = useState("PENDING");
   const pollRef = useRef(null);
 
-  // Carrega produto via query param ?p=ID
+  // Carrega produto via Supabase direto (sem passar pelo Railway)
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get("p");
     if (!pid) { setLoading(false); return; }
-    fetch(`${RAILWAY}/api/public/products/${pid}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { setProduct(d); setLoading(false); })
-      .catch(() => setLoading(false));
+
+    const load = () => {
+      setLoading(true);
+      fetchProduct(pid).then(d => {
+        setProduct(d);
+        setLoading(false);
+        if (d?.gtmId) {
+          window.dataLayer = window.dataLayer || [];
+          const s = document.createElement("script");
+          s.text = '(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!="dataLayer"?"&l="+l:"";j.async=true;j.src="https://www.googletagmanager.com/gtm.js?id="+i+dl;f.parentNode.insertBefore(j,f);})(window,document,"script","dataLayer","' + d.gtmId.replace(/[^A-Za-z0-9-]/g,"") + '");';
+          document.head.appendChild(s);
+          const ns = document.createElement("noscript");
+          ns.innerHTML = '<iframe src="https://www.googletagmanager.com/ns.html?id=' + d.gtmId.replace(/[^A-Za-z0-9-]/g,"") + '" height="0" width="0" style="display:none;visibility:hidden"></iframe>';
+          document.body.prepend(ns);
+        }
+      });
+    };
+
+    load();
+
+    // iOS bfcache: ao restaurar a página, re-faz o fetch dentro do React
+    // sem navegar (location.replace/reload pode ser servido do cache também)
+    const onPageShow = (e) => { if (e.persisted) load(); };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
   // Polling após pagamento (todos os métodos)
@@ -145,6 +196,26 @@ function App() {
     }
   }, [result, payStatus]);
 
+  // Redireciona após confirmação PIX (cartão vai direto via back_urls do MP)
+  useEffect(() => {
+    if (payStatus !== "PAID" || !product) return;
+    const { total: paidTotal } = method ? calcTotal(product.price, method, parcelas) : { total: product.price };
+    const fallback = product.obrigadoUrl
+      || `${window.location.origin}/obrigado.html?p=${product.id}&amount=${paidTotal.toFixed(2)}`;
+    let dest;
+    if (product.upsellUrl) {
+      const params = new URLSearchParams();
+      if (product.downsellUrl) params.set("jp_downsell", product.downsellUrl);
+      params.set("jp_obrigado", fallback);
+      const sep = product.upsellUrl.includes("?") ? "&" : "?";
+      dest = product.upsellUrl + sep + params.toString();
+    } else {
+      dest = fallback;
+    }
+    const t = setTimeout(() => { window.location.href = dest; }, 2000);
+    return () => clearTimeout(t);
+  }, [payStatus, product, method, parcelas]);
+
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const validateStep1 = () => {
@@ -157,6 +228,16 @@ function App() {
   const handleStep1 = () => {
     const err = validateStep1();
     if (err) { setError(err); return; }
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event:         "begin_checkout",
+      full_name:     form.name,
+      email:         form.email,
+      phone:         form.phone.replace(/\D/g,""),
+      cpf:           form.cpf.replace(/\D/g,""),
+      zip_code:      form.cep.replace(/\D/g,""),
+      date_of_birth: form.birthday,
+    });
     setError(""); setStep(2);
   };
 
@@ -270,7 +351,7 @@ function App() {
             </div>
           </div>
           {error && <div className="err">{error}</div>}
-          <button className="btn btn-primary" onClick={handleStep1}>Continuar →</button>
+          <button id="btn-continuar" className="btn btn-primary" onClick={handleStep1}>Continuar →</button>
         </div>
       )}
 
@@ -318,10 +399,10 @@ function App() {
           )}
 
           {error && <div className="err">{error}</div>}
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!method||submitting}>
+          <button id="btn-pagar" className="btn btn-primary" onClick={handleSubmit} disabled={!method||submitting}>
             {submitting ? "Processando..." : `Pagar ${fmtBRL(total)}`}
           </button>
-          <button className="btn btn-back" onClick={()=>{setStep(1);setError("")}}>← Voltar</button>
+          <button id="btn-voltar" className="btn btn-back" onClick={()=>{setStep(1);setError("")}}>← Voltar</button>
         </div>
       )}
 
@@ -343,7 +424,7 @@ function App() {
               )}
               <div style={{marginTop:16}}>
                 {payStatus === "PAID"
-                  ? <div className="badge-ok">✓ Pagamento confirmado!</div>
+                  ? <div className="badge-ok">✓ Pagamento confirmado! Redirecionando…</div>
                   : <div className="badge-pending"><span className="dot-anim">●</span> Aguardando pagamento...</div>
                 }
               </div>
@@ -359,6 +440,9 @@ function App() {
               {result.invoiceUrl && (
                 <a className="boleto-link" href={result.invoiceUrl} target="_blank" rel="noopener" style={{marginTop:8}}>Ver fatura →</a>
               )}
+              <div style={{marginTop:16,padding:"12px 16px",background:"rgba(234,179,8,0.06)",border:"1px solid rgba(234,179,8,0.2)",borderRadius:10,fontSize:13,color:"#f0c040"}}>
+                Após o pagamento ser confirmado você receberá acesso por e-mail.
+              </div>
             </>
           )}
           {method === "CREDIT_CARD" && (
