@@ -2659,7 +2659,7 @@ function DisparosTab({onWapChange,onEmailChange}){
   const togTgl=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,on:!d.on}:d));
   const togPause=i=>setDisparos(p=>p.map((d,j)=>j===i?{...d,live:!d.live}:d));
   return(
-    <div>
+    <div className="crm-v9">
       <div className="scr">
         <div className={`wab${wapStatus==='conectado'?' on':' off'}`}>
           <div className={`wdot${wapStatus==='conectado'?' g':' r'}`}/>
