@@ -275,6 +275,13 @@ async function requireAuth(req, res, next) {
   next();
 }
 
+// ── Middleware: exige role='admin' (rodar depois de requireAuth) ────────────
+async function requireAdmin(req, res, next) {
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", req.user.id).single();
+  if (profile?.role !== "admin") return res.status(403).json({ error: "Acesso restrito ao admin" });
+  next();
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ROTAS — PRODUTOS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1322,7 +1329,7 @@ app.get("/api/dashboard/chart", requireAuth, async (req, res) => {
 // ROTAS — ADMIN (service role — vê TODOS os dados)
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get("/api/admin/kpis", requireAuth, async (req, res) => {
+app.get("/api/admin/kpis", requireAuth, requireAdmin, async (req, res) => {
   try {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -1351,7 +1358,7 @@ app.get("/api/admin/kpis", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/admin/sales", requireAuth, async (req, res) => {
+app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const owner = req.query.owner;
@@ -1368,10 +1375,11 @@ app.get("/api/admin/sales", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/admin/clients", requireAuth, async (req, res) => {
+app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at").order("created_at", { ascending: false });
+      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config")
+      .order("created_at", { ascending: false });
     if (error) throw error;
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount] = await Promise.all([
@@ -1380,7 +1388,18 @@ app.get("/api/admin/clients", requireAuth, async (req, res) => {
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
-      return { ...p, vol: Math.round(vol * 100) / 100, taxa: Math.round(taxa * 100) / 100, produtos: prodCount.count || 0 };
+      return {
+        ...p,
+        vol: Math.round(vol * 100) / 100,
+        taxa: Math.round(taxa * 100) / 100,
+        produtos: prodCount.count || 0,
+        conn: {
+          whatsapp: !!p.whatsapp_instance,
+          site:     !!p.site_url,
+          email:    !!p.email_connected,
+          minichat: !!p.minichat_config,
+        },
+      };
     }));
     res.json({ clients: enriched });
   } catch (err) {
@@ -1389,7 +1408,7 @@ app.get("/api/admin/clients", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/admin/chart", requireAuth, async (req, res) => {
+app.get("/api/admin/chart", requireAuth, requireAdmin, async (req, res) => {
   try {
     const period = req.query.period || "mes";
     const owner  = req.query.owner;
@@ -1415,6 +1434,95 @@ app.get("/api/admin/chart", requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Admin: cadastrar produtor/afiliado (cria a conta e define a senha) ──────
+function generatePassword() {
+  return require("crypto").randomBytes(9).toString("base64").replace(/[+/=]/g, "x");
+}
+
+app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { tipo, name, email, password, phone, product_id, commission_rate } = req.body;
+    if (!["client", "afiliado"].includes(tipo)) return res.status(400).json({ error: "Tipo inválido" });
+    if (!name?.trim() || !email?.trim()) return res.status(400).json({ error: "Nome e e-mail são obrigatórios" });
+    const finalPassword = password?.trim() || generatePassword();
+    if (finalPassword.length < 6) return res.status(400).json({ error: "Senha deve ter ao menos 6 caracteres" });
+
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+      email: email.trim(),
+      password: finalPassword,
+      email_confirm: true,
+      user_metadata: { name: name.trim(), role: tipo },
+    });
+    if (createErr) return res.status(400).json({ error: createErr.message });
+    const newId = created.user.id;
+
+    await supabase.from("profiles").upsert(
+      { id: newId, name: name.trim(), role: tipo, email: email.trim(), phone: phone?.trim() || null },
+      { onConflict: "id" }
+    );
+
+    if (tipo === "afiliado" && product_id) {
+      await supabase.from("affiliates").insert({
+        product_id, user_id: newId,
+        commission_rate: Number(commission_rate) || 0,
+        status: "ativo",
+      });
+    }
+
+    const sensorSnippet = `<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${newId}"><\/script>`;
+    res.json({ id: newId, email: email.trim(), password: finalPassword, sensorSnippet });
+  } catch (err) {
+    console.error("[admin/producers create]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const newPassword = generatePassword();
+    const { error } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ id, password: newPassword });
+  } catch (err) {
+    console.error("[admin/producers reset-password]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { whatsapp_number, brand_name, greeting_name } = req.body;
+    if (!whatsapp_number?.trim()) return res.status(400).json({ error: "Número de WhatsApp é obrigatório" });
+    const minichat_config = {
+      whatsapp_number: whatsapp_number.trim(),
+      brand_name: brand_name?.trim() || null,
+      greeting_name: greeting_name?.trim() || brand_name?.trim() || null,
+    };
+    const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, minichat_config });
+  } catch (err) {
+    console.error("[admin/producers minichat]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Mini Chat: config pública por produtor (lida pelo widget embutido) ──────
+app.options("/api/minichat/config", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+app.get("/api/minichat/config", async (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  const { uid } = req.query;
+  if (!uid) return res.status(400).json({ error: "uid ausente" });
+  const { data } = await supabase.from("profiles").select("minichat_config").eq("id", uid).single();
+  res.json({ config: data?.minichat_config || null });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

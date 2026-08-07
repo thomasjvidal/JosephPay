@@ -527,11 +527,13 @@ function ChatIA({productName, onBack}){
 
 function Afiliados({isAdmin}){
   const [list,setList]=useState(null);
+  const [showCriar,setShowCriar]=useState(false);
+  const [refresh,setRefresh]=useState(0);
   useEffect(()=>{
     if(!_sb){setList([]);return;}
     _sb.from('affiliates').select('*,products(name),profiles!owner_id(name)').order('created_at',{ascending:false})
       .then(({data})=>setList(data||[]));
-  },[]);
+  },[refresh]);
   const ativos=(list||[]).filter(a=>a.status==="ativo").length;
   const inativos=(list||[]).filter(a=>a.status!=="ativo").length;
   const comissaoTotal=(list||[]).reduce((s,a)=>s+Number(a.commission_amount||a.commission||0),0);
@@ -560,6 +562,7 @@ function Afiliados({isAdmin}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {isAdmin?(
         <>
+          {showCriar&&<CriarContaModal tipoInicial="afiliado" onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
           <div className="kpi-grid">
             <KPICard label="Total afiliados" value={list?String(list.length):"—"} accent={GOLD} icon="◉"/>
             <KPICard label="Comissão total" value={list?fmtBRL(comissaoTotal):"—"} sub="acumulado" accent={GOLD} icon="◈"/>
@@ -580,7 +583,7 @@ function Afiliados({isAdmin}){
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Todos os afiliados</span>
-              <Btn sm outline color={GOLD}>+ Convidar</Btn>
+              <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Convidar</Btn>
             </div>
             {list===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div className="sk" style={{height:12,width:56,borderRadius:6,marginLeft:"auto"}}/></div>))}
             {list!==null&&list.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum afiliado cadastrado ainda.</div>}
@@ -888,6 +891,44 @@ function DashAdmin({onNav}){
   );
 }
 
+function AtivacaoAdmin({c}){
+  const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
+  const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
+  const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
+  const [miniSaved,setMiniSaved]=useState(false);
+  const [resetResult,setResetResult]=useState(null);
+  const [resetting,setResetting]=useState(false);
+  const salvarMinichat=async()=>{
+    if(!wapNum.trim())return;
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({whatsapp_number:wapNum.trim(),brand_name:brandName.trim(),greeting_name:brandName.trim()})});
+    if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
+  };
+  const resetarSenha=async()=>{
+    if(!window.confirm(`Gerar uma nova senha para ${c.name}? A senha antiga deixa de funcionar.`))return;
+    setResetting(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}/reset-password`,{method:'POST'});
+    setResetting(false);
+    if(!d.error)setResetResult(d.password);
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Ativação</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
+      <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
+        <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+        <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+      </div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mini Chat</div>
+      <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+      <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,marginBottom:16}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
+      {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
+        <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
+    </div>
+  );
+}
+
 function ClientePerfilAdmin({c,onBack}){
   const accent=GOLD;
   const [sales,setSales]=useState(null);
@@ -939,6 +980,7 @@ function ClientePerfilAdmin({c,onBack}){
         <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
       </div>
       <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
+      <AtivacaoAdmin c={c}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
         {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
@@ -964,22 +1006,41 @@ function ClientePerfilAdmin({c,onBack}){
   );
 }
 
+function StatusBadges({status}){
+  if(!status)return null;
+  const items=[["WhatsApp",status.whatsapp],["Site",status.site],["E-mail",status.email],["Mini Chat",status.minichat]];
+  return(
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {items.map(([label,on])=>(
+        <span key={label} style={{display:"flex",alignItems:"center",gap:5,background:CARD2,border:`1px solid ${BDR}`,borderRadius:20,padding:"4px 10px 4px 8px"}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:on?GREEN:"rgba(255,255,255,0.2)",flexShrink:0}}/>
+          <span style={{color:on?TEXT:MUTED,fontSize:10,fontWeight:600}}>{label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ClientesAdmin(){
   const [sel,setSel]=useState(null);
   const [clients,setClients]=useState(null);
+  const [showCriar,setShowCriar]=useState(false);
+  const [refresh,setRefresh]=useState(0);
   useEffect(()=>{
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
-  },[]);
+  },[refresh]);
   if(sel!==null){
     const c=clients?.find(x=>x.id===sel)||null;
     return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)}/>;
   }
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {showCriar&&<CriarContaModal onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
         <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clients.length} produtores`:"—"}</span>
       </div>
+      <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn>
       <div className="jp-promo-card" style={{marginBottom:16}}>
         <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
           <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2070&auto=format&fit=crop" alt="gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45,mixBlendMode:"luminosity"}}/>
@@ -1003,6 +1064,7 @@ function ClientesAdmin(){
             </div>
             <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
           </div>
+          <StatusBadges status={c.conn}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
             {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
@@ -1978,6 +2040,144 @@ function CriarProdutoModal({onClose,onCreated}){
               </div>
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
               <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar produto →"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function gerarSenhaLocal(){
+  const bytes=new Uint8Array(9);
+  (window.crypto||window.msCrypto).getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g,"x");
+}
+
+function CopyField({label,value,mono}){
+  const [copied,setCopied]=useState(false);
+  const copiar=()=>{
+    if(!value)return;
+    navigator.clipboard?.writeText(value).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
+  };
+  return(
+    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 14px",marginBottom:10,position:"relative"}}>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+      <div style={{color:GOLD,fontSize:mono?12:13,fontWeight:600,wordBreak:"break-all",paddingRight:70,fontFamily:mono?"monospace":F,whiteSpace:mono?"pre-wrap":"normal"}}>{value}</div>
+      <button onClick={copiar} style={{position:"absolute",top:10,right:10,background:copied?`${GREEN}18`:GOLD,border:copied?`1px solid ${GREEN}40`:"none",borderRadius:8,padding:"5px 10px",color:copied?GREEN:"#0C0C0C",fontWeight:700,fontSize:11,cursor:"pointer"}}>{copied?"✓":"Copiar"}</button>
+    </div>
+  );
+}
+
+function CriarContaModal({onClose,onCreated,tipoInicial}){
+  const [tipo,setTipo]=useState(tipoInicial||"client");
+  const [nome,setNome]=useState("");
+  const [email,setEmail]=useState("");
+  const [senha,setSenha]=useState(gerarSenhaLocal());
+  const [telefone,setTelefone]=useState("");
+  const [produtos,setProdutos]=useState(null);
+  const [productId,setProductId]=useState("");
+  const [comissao,setComissao]=useState("10");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [result,setResult]=useState(null); // {id,email,password,sensorSnippet}
+  const [wapNum,setWapNum]=useState("");
+  const [brandName,setBrandName]=useState("");
+  const [miniSaved,setMiniSaved]=useState(false);
+  useEffect(()=>{
+    if(tipo!=="afiliado"||!_sb)return;
+    _sb.from('products').select('id,name').order('created_at',{ascending:false}).then(({data})=>setProdutos(data||[]));
+  },[tipo]);
+  const criar=async()=>{
+    if(!nome.trim()||!email.trim()){setError("Preencha nome e e-mail.");return;}
+    if(senha.trim().length<6){setError("Senha deve ter ao menos 6 caracteres.");return;}
+    setError("");setLoading(true);
+    const d=await apiCall('/api/admin/producers',{method:'POST',body:JSON.stringify({
+      tipo,name:nome.trim(),email:email.trim(),password:senha.trim(),phone:telefone.trim()||undefined,
+      product_id:tipo==="afiliado"?(productId||undefined):undefined,
+      commission_rate:tipo==="afiliado"?comissao:undefined,
+    })});
+    setLoading(false);
+    if(d.error){setError(d.error);return;}
+    setResult(d);
+    setBrandName(nome.trim());
+    if(onCreated)onCreated();
+  };
+  const salvarMinichat=async()=>{
+    if(!wapNum.trim()||!result)return;
+    const d=await apiCall(`/api/admin/producers/${result.id}/minichat`,{method:'PATCH',body:JSON.stringify({whatsapp_number:wapNum.trim(),brand_name:brandName.trim(),greeting_name:brandName.trim()})});
+    if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
+        {result?(
+          <div>
+            <div style={{textAlign:"center",padding:"4px 0 14px"}}>
+              <div style={{color:GREEN,fontSize:36,marginBottom:8}}>✓</div>
+              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Conta criada!</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:4}}>Anote a senha agora — ela não fica salva em texto em nenhum lugar. Se precisar depois, use "Resetar senha" no perfil.</div>
+            </div>
+            <CopyField label="E-mail de acesso" value={result.email}/>
+            <CopyField label="Senha" value={result.password}/>
+            <CopyField label="Script do sensor (colar no <head> do site)" value={result.sensorSnippet} mono/>
+            <div style={{background:"rgba(212,175,55,0.06)",border:"1px solid rgba(212,175,55,0.18)",borderRadius:14,padding:"14px",marginTop:6,marginBottom:10}}>
+              <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Configurar Mini Chat (opcional)</div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Número de WhatsApp</div>
+              <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="5524999999999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome usado na saudação</div>
+              <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome do cliente" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+              <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+              {miniSaved&&<CopyField label="Link do Mini Chat" value={`https://minichat.josephpay.com/?uid=${result.id}`}/>}
+            </div>
+            <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
+          </div>
+        ):(
+          <>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:20}}>Cadastrar {tipo==="afiliado"?"afiliado":"produtor"}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{display:"flex",gap:8}}>
+                {[["client","Produtor"],["afiliado","Afiliado"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setTipo(v)} style={{flex:1,background:tipo===v?GOLD:CARD2,border:`1px solid ${tipo===v?GOLD:BDR}`,borderRadius:100,padding:"10px",color:tipo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{l}</button>
+                ))}
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome *</div>
+                <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Nome completo" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>E-mail de acesso *</div>
+                <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="cliente@email.com" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha *</div>
+                <div style={{display:"flex",gap:8}}>
+                  <input value={senha} onChange={e=>setSenha(e.target.value)} style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:"monospace"}}/>
+                  <button onClick={()=>setSenha(gerarSenhaLocal())} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"0 16px",color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>Gerar</button>
+                </div>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Telefone (opcional)</div>
+                <input value={telefone} onChange={e=>setTelefone(e.target.value)} placeholder="(24) 99999-9999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              </div>
+              {tipo==="afiliado"&&(
+                <>
+                  <div>
+                    <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Produto vinculado</div>
+                    <select value={productId} onChange={e=>setProductId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none"}}>
+                      <option value="">Selecionar depois</option>
+                      {(produtos||[]).map(p=>(<option key={p.id} value={p.id}>{p.name}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Comissão (%)</div>
+                    <input value={comissao} onChange={e=>setComissao(e.target.value)} placeholder="10" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+                  </div>
+                </>
+              )}
+              {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
+              <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar conta →"}</button>
             </div>
           </>
         )}
