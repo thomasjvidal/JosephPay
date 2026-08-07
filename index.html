@@ -2583,6 +2583,8 @@ function DisparosTab({onWapChange,onEmailChange}){
   const [pairingCode,setPairingCode]=useState(null);
   const [pairingMode,setPairingMode]=useState(false);
   const [showDisp,setShowDisp]=useState(false);
+  const [clientes,setClientes]=useState(null);
+  const [showAllBdays,setShowAllBdays]=useState(false);
   const [disparos,setDisparos]=useState([
     {name:"Aniversário",on:false,live:false,open:false,msg:"Feliz aniversário, {nome}! Aqui vai um presentinho especial para você.",dias:"",hora:"09:00",canal:"whatsapp"},
     {name:"Cashback",on:false,live:false,open:false,msg:"Oi {nome}, você tem cashback esperando! Use hoje.",dias:"7",hora:"09:00",canal:"whatsapp"},
@@ -2630,6 +2632,22 @@ function DisparosTab({onWapChange,onEmailChange}){
     },3000);
     return()=>clearInterval(iv);
   },[pairingCode]);
+  useEffect(()=>{
+    if(!_sb)return;
+    _sb.from('customers').select('id,name,birthday').is('deleted_at',null)
+      .then(({data})=>{if(data)setClientes(data);});
+  },[]);
+  const inits=n=>n?n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2):'?';
+  const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const todayMid=(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate());})();
+  const anivs=(clientes||[]).filter(c=>c.birthday).map(c=>{
+    const b=new Date(c.birthday+'T00:00:00');
+    const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
+    if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
+    const dias=Math.round((nx-todayMid)/864e5);
+    const label=dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`;
+    return{...c,dias,label,inits:inits(c.name)};
+  }).sort((a,b)=>a.dias-b.dias).slice(0,10);
   async function connectEmail(){
     setEmailConnecting(true);setEmailConnectError('');
     try{
@@ -2672,6 +2690,24 @@ function DisparosTab({onWapChange,onEmailChange}){
           <button id="btn-conectar-email" className="wcb" onClick={emailStatus==='conectado'?()=>apiCall('/api/email/status').then(d=>setEmailStatus(d?.connected?'conectado':'desconectado')):()=>{setEmailConnectError('');setShowEmailConnect(true);}}>{emailStatus==='conectado'?'Verificar':'Conectar'}</button>
         </div>
         <div style={{marginBottom:12}}/>
+        {anivs.length>0&&(
+          <div className="bday-msgs-card" style={{marginBottom:12}}>
+            <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
+            <div className="bday-circles">
+              {anivs.map((a,i)=>(
+                <div key={i} className="bday-circle-wrap">
+                  <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
+                  <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
+                  <div className="bday-circle-date">{a.label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="bm-today">
+              <div className="bm-today-left">Aniversários hoje</div>
+              <div className="bm-today-val">{anivs.filter(a=>a.dias===0).length}</div>
+            </div>
+          </div>
+        )}
         {disparos.map((d,i)=>(
           <div key={i} className="dc">
             <div className="dtop" style={{cursor:'pointer'}} onClick={()=>setDisparos(p=>p.map((x,j)=>j===i?{...x,open:!x.open}:x))}>
@@ -2730,6 +2766,33 @@ function DisparosTab({onWapChange,onEmailChange}){
           </>
         )}
       </div></div>}
+      {showAllBdays&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
+          <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
+              <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
+              <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
+            </div>
+            {(clientes||[]).filter(c=>c.birthday).map(c=>{
+              const b=new Date(c.birthday+'T00:00:00');
+              const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
+              if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
+              const dias=Math.round((nx-todayMid)/864e5);
+              const label=dias===0?'hoje':dias===1?'amanhã':`${b.getDate()} ${MO[b.getMonth()]}`;
+              return{...c,dias,label};
+            }).sort((a,b)=>a.dias-b.dias).map((c,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',background:'var(--c1)',borderRadius:14,marginBottom:8}}>
+                <div style={{width:44,height:44,borderRadius:'50%',background:'var(--c2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,color:'var(--t2)',border:'2px solid var(--ln)',flexShrink:0}}>{inits(c.name)}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:600,color:'var(--tx)',marginBottom:2}}>{c.name}</div>
+                  <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
+                </div>
+                <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>🎂 {c.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {showDisp&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowDisp(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Novo disparo</div><div className="sh-s">Configure sua automação</div><div className="shf"><div className="shl">Nome do disparo</div><input className="shin" placeholder="Ex: Boas-vindas"/></div><div className="shf"><div className="shl">Quando enviar</div><select className="shin" style={{WebkitAppearance:'none'}}><option>Após a compra</option><option>Antes do aniversário</option><option>Após inatividade</option><option>Manual</option></select></div><div className="shf"><div className="shl">Dias</div><input className="shin" type="number" defaultValue={3}/></div><div className="shf"><div className="shl">Mensagem</div><textarea className="shin" style={{height:80,fontSize:15,lineHeight:1.5}} placeholder="Olá {nome}!..."/></div><button className="shbtn" onClick={()=>setShowDisp(false)}>Criar disparo</button></div></div>}
       {showEmailConnect&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget)setShowEmailConnect(false);}}><div className="sh"><div className="sh-h"/><div className="sh-t">Conectar e-mail</div><div className="sh-s">Use seu e-mail e uma senha de app (Gmail: Conta Google → Segurança → Senhas de app)</div>
         <div className="shf"><div className="shl">Servidor SMTP</div><input className="shin" placeholder="smtp.gmail.com" value={emailForm.host} onChange={e=>setEmailForm(p=>({...p,host:e.target.value}))}/></div>
