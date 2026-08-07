@@ -921,7 +921,8 @@ function AtivacaoAdmin({c}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mini Chat</div>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,marginBottom:16}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,marginBottom:c.minichat_config||miniSaved?10:16}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+      {(miniSaved||c.minichat_config)&&<div style={{marginBottom:16}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
@@ -2129,7 +2130,7 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
               <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome usado na saudação</div>
               <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome do cliente" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
               <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
-              {miniSaved&&<CopyField label="Link do Mini Chat" value={`https://minichat.josephpay.com/?uid=${result.id}`}/>}
+              {miniSaved&&<CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${result.id}`}/>}
             </div>
             <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
           </div>
