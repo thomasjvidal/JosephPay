@@ -277,6 +277,10 @@ async function requireAuth(req, res, next) {
 
 // ── Middleware: exige role='admin' (rodar depois de requireAuth) ────────────
 async function requireAdmin(req, res, next) {
+  // Mesma fonte de verdade que o front usa pra decidir AdminPanel vs ClientPanel
+  // (user_metadata.role) — profiles.role é só um espelho gravado uma única vez
+  // no primeiro login e pode ficar desatualizado, então serve de fallback.
+  if (req.user.user_metadata?.role === "admin") return next();
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", req.user.id).single();
   if (profile?.role !== "admin") return res.status(403).json({ error: "Acesso restrito ao admin" });
   next();
