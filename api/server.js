@@ -272,6 +272,12 @@ async function requireAuth(req, res, next) {
       }
     });
 
+  // Marca atividade: último acesso + dia ativo (pra contar dias ativos no mês) — fire-and-forget
+  supabase.from("profiles").update({ last_login_at: new Date().toISOString() }).eq("id", user.id).then(() => {});
+  supabase.from("login_events")
+    .upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) }, { onConflict: "user_id,day", ignoreDuplicates: true })
+    .then(() => {});
+
   next();
 }
 
@@ -1382,9 +1388,16 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config")
+      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
+
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const { data: loginRows } = await supabase.from("login_events")
+      .select("user_id").gte("day", monthStart.toISOString().slice(0, 10));
+    const loginsPorUsuario = {};
+    (loginRows || []).forEach(r => { loginsPorUsuario[r.user_id] = (loginsPorUsuario[r.user_id] || 0) + 1; });
+
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
@@ -1397,6 +1410,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         vol: Math.round(vol * 100) / 100,
         taxa: Math.round(taxa * 100) / 100,
         produtos: prodCount.count || 0,
+        last_login_at: p.last_login_at || null,
+        logins_mes: loginsPorUsuario[p.id] || 0,
         conn: {
           whatsapp: !!p.whatsapp_instance,
           site:     !!p.site_url,

@@ -240,6 +240,15 @@ const _sb = (SUPABASE_URL && SUPABASE_ANON && typeof supabase !== "undefined")
 // ── Railway + helpers ────────────────────────────────────────────────────────
 const RAILWAY=(['localhost','127.0.0.1'].includes(location.hostname))?'':'https://josephpay-production.up.railway.app';
 const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const fmtLastLogin=(iso)=>{
+  if(!iso)return"nunca acessou";
+  const d=new Date(iso),now=new Date();
+  const dias=Math.floor((now-d)/86400000);
+  if(dias===0)return`hoje às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  if(dias===1)return"ontem";
+  if(dias<30)return`há ${dias} dias`;
+  return d.toLocaleDateString('pt-BR');
+};
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});const json=await res.json();if(res.status===402||json?.error==="subscription_required"){window.dispatchEvent(new CustomEvent("jp:paywall",{detail:json}));}return json;}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
 // ─────────────────────────────────────────────────────────────────────────────
@@ -979,6 +988,8 @@ function ClientePerfilAdmin({c,onBack}){
         <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
         <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
         <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
+        <KPICard label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
+        <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
       </div>
       <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
       <AtivacaoAdmin c={c}/>
@@ -1062,6 +1073,7 @@ function ClientesAdmin(){
               <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name||"—"}</div>
               <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
               <div style={{color:MUTED,fontSize:11,marginTop:1}}>📧 {c.email||"—"}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:1}}>🕒 {fmtLastLogin(c.last_login_at)} · {c.logins_mes||0} dia(s) ativo(s) no mês</div>
             </div>
             <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
           </div>
