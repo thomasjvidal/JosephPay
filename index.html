@@ -1714,7 +1714,9 @@ function AdminPanel({onLogout,userEmail}){
     {id:"afiliados",icon:"⊙",label:"Afiliados"},
     {id:"assinaturas",icon:"↺",label:"Assinaturas"},
     {id:"chat",icon:"✧",label:"Chat IA"},
+    {id:"config",icon:"⚙",label:"Config"},
   ];
+  const NAV_RODAPE=NAV.filter(n=>n.id!=="config");
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
   const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
   return(
@@ -1724,7 +1726,7 @@ function AdminPanel({onLogout,userEmail}){
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial={profile.name?.[0]?.toUpperCase()||"J"} onOpenPerfil={()=>setShowPerfil(true)} avatarUrl={profile.avatar_url}/>
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
+      {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV_RODAPE}/>}
       {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} isAdmin={true} onNavigate={(t)=>{setShowPerfil(false);setTab(t);}}/>}
     </>
   );
