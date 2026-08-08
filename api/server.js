@@ -1540,18 +1540,22 @@ app.get("/api/admin/ledger/balance", requireAuth, requireAdmin, async (req, res)
     const uid = req.user.id;
     const [{ data: sales }, { data: ledger }, { data: withdrawals }] = await Promise.all([
       supabase.from("sales").select("platform_fee,gross_amount,amount").in("status", ["recebido", "pago"]),
-      supabase.from("platform_ledger").select("amount"),
+      supabase.from("platform_ledger").select("amount,type"),
       supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
     ]);
     const totalTaxas = (sales || []).reduce((a, s) => a + Number(s.platform_fee ?? Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
     const totalLedger = (ledger || []).reduce((a, l) => a + Number(l.amount || 0), 0);
+    const totalMensalidade = (ledger || []).filter(l => l.type === "mensalidade").reduce((a, l) => a + Number(l.amount || 0), 0);
+    const totalAtivacao = (ledger || []).filter(l => l.type === "ativacao").reduce((a, l) => a + Number(l.amount || 0), 0);
     const totalWithdrawn = (withdrawals || []).reduce((a, w) => a + Number(w.amount), 0);
     const balance = Math.max(0, totalTaxas + totalLedger - totalWithdrawn);
     res.json({
-      balance:        Math.round(balance * 100) / 100,
-      totalTaxas:     Math.round(totalTaxas * 100) / 100,
-      totalLedger:    Math.round(totalLedger * 100) / 100,
-      totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
+      balance:           Math.round(balance * 100) / 100,
+      totalTaxas:        Math.round(totalTaxas * 100) / 100,
+      totalLedger:       Math.round(totalLedger * 100) / 100,
+      totalMensalidade:  Math.round(totalMensalidade * 100) / 100,
+      totalAtivacao:     Math.round(totalAtivacao * 100) / 100,
+      totalWithdrawn:    Math.round(totalWithdrawn * 100) / 100,
     });
   } catch (err) {
     console.error("[admin/ledger/balance]", err.message);

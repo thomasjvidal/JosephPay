@@ -821,10 +821,12 @@ function DashAdmin({onNav}){
   const [kpis,setKpis]=useState(null);
   const [recentSales,setRecentSales]=useState(null);
   const [clients,setClients]=useState(null);
+  const [ledger,setLedger]=useState(null);
   useEffect(()=>{
     apiCall('/api/admin/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     apiCall('/api/admin/sales?limit=4').then(d=>{if(d?.sales)setRecentSales(d.sales);});
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);});
+    apiCall('/api/admin/ledger/balance').then(d=>{if(d&&!d.error)setLedger(d);});
   },[]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -852,6 +854,8 @@ function DashAdmin({onNav}){
           <KPICard label="MRR" value={kpis?fmtBRL(kpis.mrr):"—"} accent={GOLD} icon="⟳" onClick={()=>onNav("assinaturas")}/>
           <KPICard label="Produtores" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◎" onClick={()=>onNav("clientes")}/>
           <KPICard label="Sites ativos" value={clients?String(clients.filter(c=>c.conn?.site).length):"—"} accent={GOLD} icon="◈" onClick={()=>onNav("site")}/>
+          <KPICard label="Mensalidades" value={ledger?fmtBRL(ledger.totalMensalidade):"—"} sub="total acumulado" accent={GOLD} icon="↺" onClick={()=>onNav("sacar")}/>
+          <KPICard label="Ativação" value={ledger?fmtBRL(ledger.totalAtivacao):"—"} sub="total acumulado" accent={GOLD} icon="◉" onClick={()=>onNav("sacar")}/>
         </div>
       </div>
       <div className="jp-promo-card" style={{marginBottom:10}}>
