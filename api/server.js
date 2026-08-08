@@ -1399,9 +1399,19 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     (loginRows || []).forEach(r => { loginsPorUsuario[r.user_id] = (loginsPorUsuario[r.user_id] || 0) + 1; });
 
     const enriched = await Promise.all((data || []).map(async (p) => {
-      const [salesSum, prodCount] = await Promise.all([
+      const [salesSum, prodCount, wapConnected] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
+        // whatsapp_instance só indica que a aba Disparos foi aberta uma vez (o nome da instância
+        // é criado automaticamente), não que o WhatsApp foi de fato conectado — por isso checamos
+        // o estado real na Evolution API em vez de confiar só na coluna estar preenchida.
+        (async () => {
+          if (!evo || !p.whatsapp_instance) return false;
+          try {
+            const { data: st } = await evo.get(`/instance/connectionState/${p.whatsapp_instance}`);
+            return st.instance?.state === "open";
+          } catch { return false; }
+        })(),
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
@@ -1413,7 +1423,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         last_login_at: p.last_login_at || null,
         logins_mes: loginsPorUsuario[p.id] || 0,
         conn: {
-          whatsapp: !!p.whatsapp_instance,
+          whatsapp: wapConnected,
           site:     !!p.site_url,
           email:    !!p.email_connected,
           minichat: !!p.minichat_config,
