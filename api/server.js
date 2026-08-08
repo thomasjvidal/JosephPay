@@ -197,6 +197,15 @@ async function getAccess(userId) {
 
 // Estende (ou renova) o acesso do usuário em N dias a partir do maior entre agora
 // e o vencimento atual — usado quando um pagamento de mensalidade é aprovado.
+async function logMensalidade(userId, amount = PLATFORM_SUB_PRICE) {
+  try {
+    await supabase.from("platform_ledger").insert({
+      type: "mensalidade", amount, related_profile_id: userId,
+      description: "Mensalidade da plataforma",
+    });
+  } catch (e) { console.error("[logMensalidade]", e.message); }
+}
+
 async function grantPlatformAccess(userId, days = PLATFORM_SUB_DAYS) {
   try {
     const { data } = await supabase.from("profiles")
@@ -218,6 +227,8 @@ async function grantPlatformAccess(userId, days = PLATFORM_SUB_DAYS) {
 // Middleware: bloqueia funcionalidades premium se o mês grátis acabou e não há
 // assinatura ativa. Responde 402 com uma mensagem para o front abrir o paywall.
 async function requireSubscription(req, res, next) {
+  // Admin não paga assinatura da própria plataforma
+  if (req.user.user_metadata?.role === "admin") return next();
   const acc = await getAccess(req.user.id);
   if (acc.active) return next();
   return res.status(402).json({
@@ -616,7 +627,7 @@ app.post("/api/mp/webhook", async (req, res) => {
         if (ap.status === "processed" || ap.payment?.status === "approved") {
           const { data: prof } = await supabase.from("profiles")
             .select("id").eq("mp_preapproval_id", ap.preapproval_id).maybeSingle();
-          if (prof) await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS);
+          if (prof) { await grantPlatformAccess(prof.id, PLATFORM_SUB_DAYS); await logMensalidade(prof.id); }
         }
       } catch (e) { console.error("[mp/webhook] sub_payment erro:", e.message); }
       return;
@@ -656,6 +667,7 @@ app.post("/api/mp/webhook", async (req, res) => {
       if (subRef.kind === "PLATFORM_SUB" && subRef.ownerId) {
         if (payment.status === "approved") {
           await grantPlatformAccess(subRef.ownerId, PLATFORM_SUB_DAYS);
+          await logMensalidade(subRef.ownerId, Number(payment.transaction_amount) || PLATFORM_SUB_PRICE);
         }
         return; // não é uma venda de produto — encerra aqui
       }
@@ -1465,6 +1477,34 @@ app.get("/api/admin/chart", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// Saldo geral do Admin: soma taxas de todas as vendas de todos os produtores
+// (sales.platform_fee) + mensalidades e ativações registradas no ledger,
+// menos o que o admin já sacou. Não mexe no saque em si (/api/asaas/withdraw
+// continua igual) — só mostra o total disponível pra saque.
+app.get("/api/admin/ledger/balance", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const [{ data: sales }, { data: ledger }, { data: withdrawals }] = await Promise.all([
+      supabase.from("sales").select("platform_fee,gross_amount,amount").in("status", ["recebido", "pago"]),
+      supabase.from("platform_ledger").select("amount"),
+      supabase.from("withdrawals").select("amount,status").eq("owner_id", uid).in("status", ["processando", "concluido"]),
+    ]);
+    const totalTaxas = (sales || []).reduce((a, s) => a + Number(s.platform_fee ?? Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
+    const totalLedger = (ledger || []).reduce((a, l) => a + Number(l.amount || 0), 0);
+    const totalWithdrawn = (withdrawals || []).reduce((a, w) => a + Number(w.amount), 0);
+    const balance = Math.max(0, totalTaxas + totalLedger - totalWithdrawn);
+    res.json({
+      balance:        Math.round(balance * 100) / 100,
+      totalTaxas:     Math.round(totalTaxas * 100) / 100,
+      totalLedger:    Math.round(totalLedger * 100) / 100,
+      totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
+    });
+  } catch (err) {
+    console.error("[admin/ledger/balance]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/subscriptions", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("subscriptions")
@@ -1485,7 +1525,7 @@ function generatePassword() {
 
 app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { tipo, name, email, password, phone, product_id, commission_rate } = req.body;
+    const { tipo, name, email, password, phone, product_id, commission_rate, ativacao_valor } = req.body;
     if (!["client", "afiliado"].includes(tipo)) return res.status(400).json({ error: "Tipo inválido" });
     if (!name?.trim() || !email?.trim()) return res.status(400).json({ error: "Nome e e-mail são obrigatórios" });
     const finalPassword = password?.trim() || generatePassword();
@@ -1510,6 +1550,14 @@ app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => 
         product_id, user_id: newId,
         commission_rate: Number(commission_rate) || 0,
         status: "ativo",
+      });
+    }
+
+    const ativacaoNum = Number(ativacao_valor) || 0;
+    if (ativacaoNum > 0) {
+      await supabase.from("platform_ledger").insert({
+        type: "ativacao", amount: ativacaoNum, related_profile_id: newId,
+        description: `Ativação de ${name.trim()}`,
       });
     }
 

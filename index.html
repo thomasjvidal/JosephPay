@@ -680,7 +680,7 @@ function Assinaturas({isAdmin}={}){
   );
 }
 
-function Sacar(){
+function Sacar({isAdmin}={}){
   const [val,setVal]=useState("");
   const [pixKey,setPixKey]=useState("");
   const [done,setDone]=useState(false);
@@ -688,8 +688,8 @@ function Sacar(){
   const [loading,setLoading]=useState(false);
   const [saqueErr,setSaqueErr]=useState("");
   useEffect(()=>{
-    apiCall('/api/ledger/balance').then(d=>{if(d?.balance!==undefined)setBalance(d.balance);});
-  },[]);
+    apiCall(isAdmin?'/api/admin/ledger/balance':'/api/ledger/balance').then(d=>{if(d?.balance!==undefined)setBalance(d.balance);});
+  },[isAdmin]);
   const doSaque=async()=>{
     if(!val||!pixKey){setSaqueErr("Preencha o valor e a chave PIX.");return;}
     setSaqueErr("");setLoading(true);
@@ -712,7 +712,7 @@ function Sacar(){
       <div className="jp-gold-card" style={{padding:"28px 24px 24px"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:`url(https://lh3.googleusercontent.com/aida-public/AB6AXuB9cISoBR5jYmhq-kbZT6VSfJyL83yuS9QOkQPnZ-bDs2lT321ae43ptiJIDBZ3SR2_xrL707Qkbk-cc3i-5qoyG9hl6w8OxByh6lcTUHfgjnxA4O4NrdaFCByErySPGVf1SOsw-jPoj9KnXYYPMSeTV4Pc2YkcXQ-3JNbfbEyI8dwPutd_yYPkpHy7wUj8WbXU-BudiWP0daFZHZ_lJB2Dlza5qPjnnPh4Rvs3tACaTyAQUew1WSJJNLWWaP_pCefWB-MjicBIh9s)`,backgroundSize:"cover",backgroundBlendMode:"soft-light",opacity:0.3,pointerEvents:"none"}}/>
         <div style={{marginBottom:32}}>
-          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",marginBottom:8}}>Disponível para saque</div>
+          <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",marginBottom:8}}>{isAdmin?"Disponível · Mensalidades + Taxas + Ativações":"Disponível para saque"}</div>
           <div style={{color:"rgba(12,12,12,0.9)",fontFamily:SF,fontWeight:600,fontSize:38,letterSpacing:"-0.01em"}}>{balance!==null?fmtBRL(balance):<div className="sk" style={{height:38,width:140,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>}</div>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
@@ -1716,7 +1716,7 @@ function AdminPanel({onLogout,userEmail}){
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
@@ -2117,6 +2117,7 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
   const [produtos,setProdutos]=useState(null);
   const [productId,setProductId]=useState("");
   const [comissao,setComissao]=useState("10");
+  const [ativacaoValor,setAtivacaoValor]=useState("");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [result,setResult]=useState(null); // {id,email,password,sensorSnippet}
@@ -2135,6 +2136,7 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
       tipo,name:nome.trim(),email:email.trim(),password:senha.trim(),phone:telefone.trim()||undefined,
       product_id:tipo==="afiliado"?(productId||undefined):undefined,
       commission_rate:tipo==="afiliado"?comissao:undefined,
+      ativacao_valor:ativacaoValor||undefined,
     })});
     setLoading(false);
     if(d.error){setError(d.error);return;}
@@ -2199,6 +2201,14 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
               <div>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Telefone (opcional)</div>
                 <input value={telefone} onChange={e=>setTelefone(e.target.value)} placeholder="(24) 99999-9999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              </div>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Valor da ativação (R$, opcional)</div>
+                <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12}}>
+                  <span style={{padding:"0 14px",color:GOLD,fontWeight:700,fontSize:16}}>R$</span>
+                  <input value={ativacaoValor} onChange={e=>setAtivacaoValor(e.target.value)} placeholder="300" style={{flex:1,background:"none",border:"none",padding:"13px 14px 13px 0",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+                </div>
+                <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se você já cobrou esse cliente pela ativação (fora da plataforma), registra aqui pra entrar no seu saldo de saque.</div>
               </div>
               {tipo==="afiliado"&&(
                 <>
