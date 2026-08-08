@@ -620,13 +620,17 @@ function Afiliados({isAdmin}){
   );
 }
 
-function Assinaturas(){
+function Assinaturas({isAdmin}={}){
   const [subs,setSubs]=useState(null);
   useEffect(()=>{
-    if(!_sb)return;
+    if(isAdmin){
+      apiCall('/api/admin/subscriptions').then(d=>{if(d?.subscriptions)setSubs(d.subscriptions);else setSubs([]);});
+      return;
+    }
+    if(!_sb){setSubs([]);return;}
     _sb.from('subscriptions').select('*,customers(name),products(name)').order('created_at',{ascending:false})
-      .then(({data})=>{if(data)setSubs(data);});
-  },[]);
+      .then(({data,error})=>{if(error)setSubs([]);else setSubs(data||[]);});
+  },[isAdmin]);
   const ativas=(subs||[]).filter(s=>s.status==='ativo').length;
   const canceladas=(subs||[]).filter(s=>s.status==='cancelado').length;
   const mrr=(subs||[]).filter(s=>s.status==='ativo').reduce((a,s)=>a+Number(s.amount),0);
@@ -659,7 +663,7 @@ function Assinaturas(){
           return(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(subs.length-1)?`1px solid ${BDR}`:"none"}}>
             <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{nome[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{produto} · {fmtBRL(s.amount)}/mês</div></div>
+            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{produto} · {fmtBRL(s.amount)}/mês{isAdmin&&s.profiles?.name?` · ${s.profiles.name}`:""}</div></div>
             <div style={{textAlign:"right",fontSize:11,color:MUTED,marginRight:8}}><div>Próx: {proxCobranca}</div></div>
             <Tag status={s.status}/>
           </div>
@@ -1677,8 +1681,19 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   );
 }
 
-function AdminPanel({onLogout}){
+function AdminPanel({onLogout,userEmail}){
   const [tab,setTab]=useState("dashboard");
+  const [showPerfil,setShowPerfil]=useState(false);
+  const [profile,setProfile]=useState({name:"Admin",company_name:"JosephPay",avatar_url:""});
+  const reloadProfile=async()=>{
+    try{
+      const tok=(await _sb?.auth?.getSession())?.data?.session?.access_token||"";
+      const rp=await fetch(`${RAILWAY}/api/user/profile`,{headers:{Authorization:`Bearer ${tok}`}});
+      const dp=await rp.json();
+      setProfile(p=>({...p,...dp}));
+    }catch{}
+  };
+  useEffect(()=>{reloadProfile();},[]);
   const NAV=[
     {id:"dashboard",icon:"⌂",label:"Dashboard"},
     {id:"clientes",icon:"◻",label:"Clientes"},
@@ -1691,15 +1706,16 @@ function AdminPanel({onLogout}){
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
   return(
     <>
-      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName="Joseph Admin" initial="J"/>
+      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
       <div className="jp-main">
-        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial="J"/>
+        <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial={profile.name?.[0]?.toUpperCase()||"J"} onOpenPerfil={()=>setShowPerfil(true)} avatarUrl={profile.avatar_url}/>
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
+      {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile}/>}
     </>
   );
 }
@@ -3586,7 +3602,7 @@ function App(){
   return(
     <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
       {!user&&<Login onLogin={handleLogin}/>}
-      {user?.role==="admin"&&<AdminPanel onLogout={handleLogout}/>}
+      {user?.role==="admin"&&<AdminPanel onLogout={handleLogout} userEmail={user.email}/>}
       {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout}/>}
       {user&&<Paywall/>}
     </div>

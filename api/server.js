@@ -1455,6 +1455,19 @@ app.get("/api/admin/chart", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/admin/subscriptions", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("subscriptions")
+      .select("*,customers(name),products(name),profiles!owner_id(name)")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json({ subscriptions: data || [] });
+  } catch (err) {
+    console.error("[admin/subscriptions]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Admin: cadastrar produtor/afiliado (cria a conta e define a senha) ──────
 function generatePassword() {
   return require("crypto").randomBytes(9).toString("base64").replace(/[+/=]/g, "x");
