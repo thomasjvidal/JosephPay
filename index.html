@@ -1564,7 +1564,7 @@ function CropModal({src,onConfirm,onCancel}){
     </div>
   );
 }
-function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected,siteActive,onSaved,onNavigate}){
+function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected,siteActive,onSaved,onNavigate,isAdmin}){
   const [senhaMsg,setSenhaMsg]=useState("");
   const [editing,setEditing]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -1628,6 +1628,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   const contaItems=[
     {icon:"📧",label:email||"—",onClick:null},
     {icon:"🔒",label:senhaMsg||"Alterar senha",onClick:handleSenha},
+    ...(isAdmin?[{icon:"⚙",label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")}]:[]),
     {icon:"📞",label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
   ];
   const initials=(profile?.name||"P")[0].toUpperCase();
@@ -1713,7 +1714,6 @@ function AdminPanel({onLogout,userEmail}){
     {id:"afiliados",icon:"⊙",label:"Afiliados"},
     {id:"assinaturas",icon:"↺",label:"Assinaturas"},
     {id:"chat",icon:"✧",label:"Chat IA"},
-    {id:"config",icon:"⚙",label:"Config"},
   ];
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
   const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
@@ -1725,7 +1725,7 @@ function AdminPanel({onLogout,userEmail}){
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
       {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV}/>}
-      {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile}/>}
+      {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} isAdmin={true} onNavigate={(t)=>{setShowPerfil(false);setTab(t);}}/>}
     </>
   );
 }
