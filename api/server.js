@@ -1373,7 +1373,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const owner = req.query.owner;
     let q = supabase.from("sales")
-      .select("*,customers(name),products(name),profiles!owner_id(name)")
+      .select("*,customers(name),products(name),profiles!owner_id(name,avatar_url)")
       .order("created_at", { ascending: false }).limit(limit);
     if (owner) q = q.eq("owner_id", owner);
     const { data, error } = await q;
@@ -1388,7 +1388,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at")
+      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1468,7 +1468,7 @@ app.get("/api/admin/chart", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/subscriptions", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("subscriptions")
-      .select("*,customers(name),products(name),profiles!owner_id(name)")
+      .select("*,customers(name),products(name),profiles!owner_id(name,avatar_url)")
       .order("created_at", { ascending: false });
     if (error) throw error;
     res.json({ subscriptions: data || [] });
@@ -2334,6 +2334,20 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
     .sort((a, b) => b.count - a.count);
 
   res.json({ total, daily, sources, devices });
+});
+
+app.get("/api/admin/analytics/visits", requireAuth, requireAdmin, async (req, res) => {
+  const days  = Math.min(parseInt(req.query.days) || 30, 30);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data: rows } = await supabase.from("visits").select("source").gte("created_at", since);
+  if (!rows) return res.json({ total: 0, sources: [] });
+  const bySrc = {};
+  rows.forEach(r => { bySrc[r.source] = (bySrc[r.source] || 0) + 1; });
+  const total = rows.length;
+  const sources = Object.entries(bySrc)
+    .map(([src, cnt]) => ({ source: src, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+  res.json({ total, sources });
 });
 
 // ── Perfil do produtor: ler e salvar nome/empresa/avatar ──────────────────────
