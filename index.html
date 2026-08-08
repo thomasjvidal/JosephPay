@@ -911,6 +911,41 @@ function DashAdmin({onNav}){
   );
 }
 
+function ProdutosDoCliente({ownerId,nome}){
+  const [produtos,setProdutos]=useState(null);
+  const [showCriar,setShowCriar]=useState(false);
+  const [refresh,setRefresh]=useState(0);
+  const [copiedId,setCopiedId]=useState(null);
+  useEffect(()=>{
+    if(!ownerId)return;
+    apiCall(`/api/admin/products?owner=${ownerId}`).then(d=>{if(d?.products)setProdutos(d.products);else setProdutos([]);});
+  },[ownerId,refresh]);
+  const copiar=(id)=>{
+    navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${id}`).then(()=>{setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);});
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      {showCriar&&<CriarProdutoModal ownerId={ownerId} onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
+      <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Produtos de {nome||"—"}</span>
+        <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Novo produto</Btn>
+      </div>
+      {produtos===null&&[1,2].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div></div>))}
+      {produtos!==null&&produtos.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produto cadastrado ainda.</div>}
+      {(produtos||[]).map((p,i)=>(
+        <div key={p.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(produtos.length-1)?`1px solid ${BDR}`:"none"}}>
+          <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(p.name||"?")[0]}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{p.name}</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{fmtBRL(p.price)} · {p.totalVendas||0} venda(s) · {fmtBRL(p.receitaMes)} este mês</div>
+          </div>
+          <button onClick={()=>copiar(p.id)} style={{background:copiedId===p.id?`${GREEN}18`:CARD2,border:`1px solid ${copiedId===p.id?GREEN+"40":BDR}`,color:copiedId===p.id?GREEN:MUTED,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{copiedId===p.id?"✓ Copiado":"Copiar link"}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AtivacaoAdmin({c}){
   const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
@@ -1003,6 +1038,7 @@ function ClientePerfilAdmin({c,onBack}){
         <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
       </div>
       <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
+      <ProdutosDoCliente ownerId={c.id} nome={nome}/>
       <AtivacaoAdmin c={c}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
@@ -1049,7 +1085,7 @@ function ClientesAdmin(){
   const [clients,setClients]=useState(null);
   const [showCriar,setShowCriar]=useState(false);
   const [refresh,setRefresh]=useState(0);
-  const [ordem,setOrdem]=useState("recentes");
+  const [ordem,setOrdem]=useState("volume");
   useEffect(()=>{
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
   },[refresh]);
@@ -1057,11 +1093,9 @@ function ClientesAdmin(){
     const c=clients?.find(x=>x.id===sel)||null;
     return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)}/>;
   }
-  const ORDENS=[{id:"recentes",label:"Recentes"},{id:"volume",label:"Maior volume"},{id:"taxas",label:"Maior taxas"},{id:"ativos",label:"Mais ativos"}];
+  const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
   const clientsOrdenados=[...(clients||[])].sort((a,b)=>{
     if(ordem==="volume")return Number(b.vol||0)-Number(a.vol||0);
-    if(ordem==="taxas")return Number(b.taxa||0)-Number(a.taxa||0);
-    if(ordem==="ativos")return Number(b.logins_mes||0)-Number(a.logins_mes||0);
     return new Date(b.created_at||0)-new Date(a.created_at||0);
   });
   return(
@@ -1983,7 +2017,7 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
   );
 }
 
-function CriarProdutoModal({onClose,onCreated}){
+function CriarProdutoModal({onClose,onCreated,ownerId}){
   const [nome,setNome]=useState("");
   const [preco,setPreco]=useState("");
   const [desc,setDesc]=useState("");
@@ -2002,7 +2036,7 @@ function CriarProdutoModal({onClose,onCreated}){
     setError("");setLoading(true);
     const val=parseFloat(preco.replace(/\./g,"").replace(",","."));
     if(isNaN(val)||val<=0){setError("Preço inválido.");setLoading(false);return;}
-    const d=await apiCall('/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined,upsellUrl:upsellUrl.trim()||undefined,downsellUrl:(upsellUrl.trim()&&downsellUrl.trim())?downsellUrl.trim():undefined,obrigadoUrl:obrigadoUrl.trim()||undefined})});
+    const d=await apiCall(ownerId?'/api/admin/products':'/api/products/create',{method:'POST',body:JSON.stringify({name:nome,description:desc,price:val,billingType:tipo,subscriptionCycle:tipo==="RECURRENT"?ciclo:undefined,upsellUrl:upsellUrl.trim()||undefined,downsellUrl:(upsellUrl.trim()&&downsellUrl.trim())?downsellUrl.trim():undefined,obrigadoUrl:obrigadoUrl.trim()||undefined,owner_id:ownerId||undefined})});
     setLoading(false);
     if(d.error){setError(d.error);return;}
     if(!d.paymentUrl){setError("Link não foi gerado. Verifique os logs do Railway e tente novamente.");return;}

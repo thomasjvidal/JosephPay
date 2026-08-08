@@ -316,89 +316,91 @@ async function requireAdmin(req, res, next) {
  *   → webhook extrai a diferença como platform_fee
  *   → produtor recebe o valor base exato
  */
+// Núcleo de criação de produto, reaproveitado tanto pelo produtor (dono cria pra si)
+// quanto pelo admin (cria em nome de um produtor específico).
+async function createProductForOwner(ownerId, body) {
+  const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
+          upsellUrl, downsellUrl, obrigadoUrl, gtmId } = body;
+  if (!name || !price) return { status: 400, error: "Nome e preço são obrigatórios" };
+
+  const basePrice   = Math.round(Number(price) * 100) / 100;
+  const clientPrice = Math.round(basePrice * (1 + PLATFORM_FEE_RATE) * 100) / 100;
+  const isRecurrent = billingType === "RECURRENT";
+
+  const { data: product, error: dbErr } = await supabase.from("products").insert({
+    name,
+    description:        description || "",
+    price:              basePrice,
+    asaas_price:        clientPrice,
+    asaas_link_id:      "",
+    status:             "ativo",
+    owner_id:           ownerId,
+    url:                "",
+    billing_type:       billingType || "UNDEFINED",
+    subscription_cycle: isRecurrent ? subscriptionCycle : null,
+    upsell_url:         upsellUrl   || null,
+    downsell_url:       downsellUrl || null,
+    obrigado_url:       obrigadoUrl || null,
+    gtm_id:             gtmId       || null,
+  }).select().single();
+
+  if (dbErr) {
+    console.error("[createProductForOwner] erro Supabase:", dbErr.message);
+    return { status: 500, error: `Erro ao salvar produto: ${dbErr.message}` };
+  }
+
+  const prefPayload = {
+    items: [{
+      title:       name,
+      description: description || name,
+      quantity:    1,
+      unit_price:  clientPrice,
+      currency_id: "BRL",
+    }],
+    external_reference: JSON.stringify({ ownerId, productId: product.id }),
+    notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
+    payment_methods: {
+      installments: isRecurrent ? 1 : 12,
+    },
+    statement_descriptor: "JosephPay",
+  };
+
+  let paymentUrl = "";
+  let mpPrefId   = "";
+
+  try {
+    const resp = await mp.post("/checkout/preferences", prefPayload);
+    mpPrefId   = resp.data.id || "";
+    paymentUrl = resp.data.init_point || resp.data.sandbox_init_point || "";
+    console.log(`[createProductForOwner] MP preference criada id=${mpPrefId} | titulo=${resp.data.items?.[0]?.title} | url=${paymentUrl}`);
+  } catch (mpErr) {
+    const errMsg = mpErr.response?.data?.message || mpErr.message;
+    console.error("[createProductForOwner] ERRO MP:", JSON.stringify(mpErr.response?.data));
+    await supabase.from("products").delete().eq("id", product.id);
+    return { status: 400, error: `Não foi possível criar o link no Mercado Pago: ${errMsg}` };
+  }
+
+  if (!mpPrefId) {
+    await supabase.from("products").delete().eq("id", product.id);
+    return { status: 400, error: "Mercado Pago retornou resposta sem ID. Verifique os logs." };
+  }
+
+  await supabase.from("products").update({
+    asaas_link_id: mpPrefId,
+    url:           paymentUrl,
+  }).eq("id", product.id);
+  product.asaas_link_id = mpPrefId;
+  product.url           = paymentUrl;
+
+  console.log(`[createProductForOwner] "${name}" salvo id=${product.id} owner=${ownerId} — base R$${basePrice}, cliente R$${clientPrice}`);
+  return { status: 200, product, paymentUrl, mpPrefId };
+}
+
 app.post("/api/products/create", requireAuth, async (req, res) => {
   try {
-    const { name, description, price, billingType = "UNDEFINED", subscriptionCycle = "MONTHLY",
-            upsellUrl, downsellUrl, obrigadoUrl, gtmId } = req.body;
-    if (!name || !price) return res.status(400).json({ error: "Nome e preço são obrigatórios" });
-
-    const basePrice   = Math.round(Number(price) * 100) / 100;
-    const clientPrice = Math.round(basePrice * (1 + PLATFORM_FEE_RATE) * 100) / 100;
-    const isRecurrent = billingType === "RECURRENT";
-
-    // 1. Insere produto no banco PRIMEIRO para obter o ID antes de criar a preference
-    const { data: product, error: dbErr } = await supabase.from("products").insert({
-      name,
-      description:        description || "",
-      price:              basePrice,
-      asaas_price:        clientPrice,
-      asaas_link_id:      "",   // preenchido após criar preference
-      status:             "ativo",
-      owner_id:           req.user.id,
-      url:                "",   // preenchido após criar preference
-      billing_type:       billingType || "UNDEFINED",
-      subscription_cycle: isRecurrent ? subscriptionCycle : null,
-      upsell_url:         upsellUrl   || null,
-      downsell_url:       downsellUrl || null,
-      obrigado_url:       obrigadoUrl || null,
-      gtm_id:             gtmId       || null,
-    }).select().single();
-
-    if (dbErr) {
-      console.error("[products/create] erro Supabase:", dbErr.message);
-      return res.status(500).json({ error: `Erro ao salvar produto: ${dbErr.message}` });
-    }
-
-    // 2. Cria Preference no MP com external_reference incluindo o productId
-    //    (necessário para o webhook identificar qual produto foi vendido via cartão)
-    const prefPayload = {
-      items: [{
-        title:       name,
-        description: description || name,
-        quantity:    1,
-        unit_price:  clientPrice,
-        currency_id: "BRL",
-      }],
-      external_reference: JSON.stringify({ ownerId: req.user.id, productId: product.id }),
-      notification_url:   `${PUBLIC_URL}/api/mp/webhook`,
-      payment_methods: {
-        installments: isRecurrent ? 1 : 12,
-      },
-      statement_descriptor: "JosephPay",
-    };
-
-    let paymentUrl  = "";
-    let mpPrefId    = "";
-
-    try {
-      const resp = await mp.post("/checkout/preferences", prefPayload);
-      mpPrefId   = resp.data.id || "";
-      // sandbox_init_point em teste, init_point em produção
-      paymentUrl = resp.data.init_point || resp.data.sandbox_init_point || "";
-      console.log(`[products/create] MP preference criada id=${mpPrefId} | titulo_retornado=${resp.data.items?.[0]?.title} | url=${paymentUrl}`);
-    } catch (mpErr) {
-      const errMsg = mpErr.response?.data?.message || mpErr.message;
-      console.error("[products/create] ERRO MP:", JSON.stringify(mpErr.response?.data));
-      // Remove produto órfão do banco
-      await supabase.from("products").delete().eq("id", product.id);
-      return res.status(400).json({ error: `Não foi possível criar o link no Mercado Pago: ${errMsg}` });
-    }
-
-    if (!mpPrefId) {
-      await supabase.from("products").delete().eq("id", product.id);
-      return res.status(400).json({ error: "Mercado Pago retornou resposta sem ID. Verifique os logs." });
-    }
-
-    // 3. Atualiza produto com o ID e URL da preference criada
-    await supabase.from("products").update({
-      asaas_link_id: mpPrefId,
-      url:           paymentUrl,
-    }).eq("id", product.id);
-    product.asaas_link_id = mpPrefId;
-    product.url           = paymentUrl;
-
-    console.log(`[products/create] "${name}" salvo id=${product.id} — base R$${basePrice}, cliente R$${clientPrice}`);
-    res.json({ product, paymentUrl, asaasLinkId: mpPrefId });
+    const r = await createProductForOwner(req.user.id, req.body);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ product: r.product, paymentUrl: r.paymentUrl, asaasLinkId: r.mpPrefId });
   } catch (err) {
     console.error("[products/create] erro geral:", err.message);
     res.status(500).json({ error: err.message });
@@ -1481,6 +1483,47 @@ app.get("/api/admin/chart", requireAuth, requireAdmin, async (req, res) => {
 // (sales.platform_fee) + mensalidades e ativações registradas no ledger,
 // menos o que o admin já sacou. Não mexe no saque em si (/api/asaas/withdraw
 // continua igual) — só mostra o total disponível pra saque.
+// Admin: lista os produtos de um produtor específico (?owner=<id>), com stats do mês.
+app.get("/api/admin/products", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const owner = req.query.owner;
+    if (!owner) return res.status(400).json({ error: "owner é obrigatório" });
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const { data: products, error } = await supabase
+      .from("products").select("*").eq("owner_id", owner).order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const enriched = await Promise.all((products || []).map(async (p) => {
+      const [salesMonth, totalSales] = await Promise.all([
+        supabase.from("sales").select("producer_amount,amount").eq("product_id", p.id).eq("status", "pago").gte("created_at", monthStart),
+        supabase.from("sales").select("id", { count: "exact", head: true }).eq("product_id", p.id).eq("status", "pago"),
+      ]);
+      const receitaMes = (salesMonth.data || []).reduce((a, s) => a + Number(s.producer_amount || s.amount || 0), 0);
+      return { ...p, receitaMes, totalVendas: totalSales.count || 0 };
+    }));
+    res.json({ products: enriched });
+  } catch (err) {
+    console.error("[admin/products]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: cria um produto em nome de um produtor específico (owner_id no corpo).
+app.post("/api/admin/products", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { owner_id } = req.body;
+    if (!owner_id) return res.status(400).json({ error: "owner_id é obrigatório" });
+    const r = await createProductForOwner(owner_id, req.body);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ product: r.product, paymentUrl: r.paymentUrl, asaasLinkId: r.mpPrefId });
+  } catch (err) {
+    console.error("[admin/products create]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/ledger/balance", requireAuth, requireAdmin, async (req, res) => {
   try {
     const uid = req.user.id;
