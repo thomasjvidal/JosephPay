@@ -1412,6 +1412,15 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     const loginsPorUsuario = {};
     (loginRows || []).forEach(r => { loginsPorUsuario[r.user_id] = (loginsPorUsuario[r.user_id] || 0) + 1; });
 
+    const { data: ledgerRows } = await supabase.from("platform_ledger")
+      .select("related_profile_id,type,amount").not("related_profile_id", "is", null);
+    const ledgerPorUsuario = {};
+    (ledgerRows || []).forEach(l => {
+      const acc = ledgerPorUsuario[l.related_profile_id] || (ledgerPorUsuario[l.related_profile_id] = { mensalidade: 0, ativacao: 0 });
+      if (l.type === "mensalidade") acc.mensalidade += Number(l.amount || 0);
+      if (l.type === "ativacao")    acc.ativacao    += Number(l.amount || 0);
+    });
+
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount, wapConnected] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
@@ -1436,6 +1445,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         produtos: prodCount.count || 0,
         last_login_at: p.last_login_at || null,
         logins_mes: loginsPorUsuario[p.id] || 0,
+        mensalidade_total: Math.round((ledgerPorUsuario[p.id]?.mensalidade || 0) * 100) / 100,
+        ativacao_total: Math.round((ledgerPorUsuario[p.id]?.ativacao || 0) * 100) / 100,
         conn: {
           whatsapp: wapConnected,
           site:     !!p.site_url,

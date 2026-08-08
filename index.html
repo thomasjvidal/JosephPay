@@ -1036,10 +1036,11 @@ function ClientePerfilAdmin({c,onBack}){
         <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
         <KPICard label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
         <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
+        <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
+        <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
       </div>
       <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
       <ProdutosDoCliente ownerId={c.id} nome={nome}/>
-      <AtivacaoAdmin c={c}/>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
         {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
@@ -1061,6 +1062,7 @@ function ClientePerfilAdmin({c,onBack}){
         <Btn sm outline color={GOLD}>Configurar taxa</Btn>
         <Btn sm outline color={RED}>Bloquear acesso</Btn>
       </div>
+      <AtivacaoAdmin c={c}/>
     </div>
   );
 }
