@@ -3246,6 +3246,18 @@ function MaquinaTab({onNav}){
             );
           });
         })()}
+        {!loadingFunnel&&((funnel?.cliquesLigar||0)>0||(funnel?.cliquesWhatsapp||0)>0)&&(
+          <div style={{display:"flex",gap:8,marginTop:14,paddingTop:14,borderTop:`1px solid ${BDR}`}}>
+            <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>📞 Cliques em Ligar</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesLigar||0}</div>
+            </div>
+            <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>💬 Cliques em WhatsApp</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesWhatsapp||0}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Origem de vendas */}

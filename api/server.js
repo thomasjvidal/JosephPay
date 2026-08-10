@@ -2315,7 +2315,7 @@ app.post("/api/track/visit", (req, res, next) => {
 }, async (req, res) => {
   res.json({ ok: true }); // responde imediatamente para não travar o site
   try {
-    const { user_id, domain, page, referrer, source, device } = req.body || {};
+    const { user_id, domain, page, referrer, source, device, event_type } = req.body || {};
     if (!user_id) return;
     // valida que o user_id existe (evita lixo no banco)
     const { data: profile } = await supabase
@@ -2330,6 +2330,7 @@ app.post("/api/track/visit", (req, res, next) => {
       if (["wa","wpp","whatsapp"].includes(l) || l.includes("whatsapp")) return "whatsapp";
       return l;
     };
+    const eventType = ["click_ligar", "click_whatsapp"].includes(event_type) ? event_type : "pageview";
     await supabase.from("visits").insert({
       owner_id: user_id,
       site_url: domain  || "",
@@ -2337,6 +2338,7 @@ app.post("/api/track/visit", (req, res, next) => {
       referrer: referrer|| "",
       source:   normalizeSource(source),
       device:   device  || "unknown",
+      event_type: eventType,
     }).then(null, e => console.warn("[track/visit]", e.message));
   } catch(e) { console.error("[track/visit]", e.message); }
 });
@@ -2362,6 +2364,15 @@ var q=new URLSearchParams(window.location.search);
 var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
 var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
 fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
+document.addEventListener("click",function(e){
+  var a=e.target&&e.target.closest?e.target.closest("a"):null;
+  if(!a||!a.href)return;
+  var href=a.href;var type=null;
+  if(href.indexOf("tel:")===0)type="click_ligar";
+  else if(href.indexOf("wa.me")>-1||href.indexOf("whatsapp.com")>-1)type="click_whatsapp";
+  if(!type)return;
+  fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev,event_type:type})}).catch(function(){});
+},true);
 })();`);
 });
 
@@ -2370,10 +2381,12 @@ app.get("/api/funnel", requireAuth, async (req, res) => {
   try {
     const uid  = req.user.id;
     const from = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [total, chatVisits, checkoutVisits, leads, salesRes, salesSrc] = await Promise.all([
-      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from),
-      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%minichat%"),
-      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).gte("created_at",from).ilike("page","%checkout%"),
+    const [total, chatVisits, checkoutVisits, cliquesLigar, cliquesWhats, leads, salesRes, salesSrc] = await Promise.all([
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("event_type","pageview").gte("created_at",from),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("event_type","pageview").gte("created_at",from).ilike("page","%minichat%"),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("event_type","pageview").gte("created_at",from).ilike("page","%checkout%"),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("event_type","click_ligar").gte("created_at",from),
+      supabase.from("visits").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("event_type","click_whatsapp").gte("created_at",from),
       supabase.from("customers").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("source","minichat").gte("created_at",from).is("deleted_at",null),
       supabase.from("sales").select("*",{count:"exact",head:true}).eq("owner_id",uid).eq("status","pago").gte("created_at",from),
       supabase.from("sales").select("producer_amount,amount,customers!customer_id(source)").eq("owner_id",uid).eq("status","pago").gte("created_at",from),
@@ -2394,6 +2407,8 @@ app.get("/api/funnel", requireAuth, async (req, res) => {
       chat:      chatVisits.count  || 0,
       leads:     leads.count       || 0,
       checkout:  checkoutVisits.count || 0,
+      cliquesLigar:    cliquesLigar.count || 0,
+      cliquesWhatsapp: cliquesWhats.count || 0,
       sales:     salesRes.count    || 0,
       salesBySource,
     });
@@ -2409,7 +2424,7 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const { data: rows } = await supabase
     .from("visits").select("created_at, source, device")
-    .eq("owner_id", req.user.id).gte("created_at", since);
+    .eq("owner_id", req.user.id).eq("event_type", "pageview").gte("created_at", since);
   if (!rows) return res.json({ total: 0, daily: [], sources: [] });
 
   // agrupamento diário
@@ -2445,7 +2460,7 @@ app.get("/api/analytics/visits", requireAuth, async (req, res) => {
 app.get("/api/admin/analytics/visits", requireAuth, requireAdmin, async (req, res) => {
   const days  = Math.min(parseInt(req.query.days) || 30, 30);
   const since = new Date(Date.now() - days * 86400000).toISOString();
-  const { data: rows } = await supabase.from("visits").select("source").gte("created_at", since);
+  const { data: rows } = await supabase.from("visits").select("source").eq("event_type", "pageview").gte("created_at", since);
   if (!rows) return res.json({ total: 0, sources: [] });
   const bySrc = {};
   rows.forEach(r => { bySrc[r.source] = (bySrc[r.source] || 0) + 1; });
