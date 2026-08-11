@@ -2068,7 +2068,10 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   const contaItems=[
     {icon:"📧",label:email||"—",onClick:null},
     {icon:"🔒",label:senhaMsg||"Alterar senha",onClick:handleSenha},
-    ...(isAdmin?[{icon:"⚙",label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")}]:[]),
+    ...(isAdmin?[
+      {icon:"⚙",label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")},
+      {icon:"⎈",label:"Integrações",onClick:()=>onNavigate&&onNavigate("integracoes")},
+    ]:[]),
     {icon:"📞",label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
   ];
   const initials=(profile?.name||"P")[0].toUpperCase();
