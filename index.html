@@ -972,6 +972,8 @@ function AtivacaoAdmin({c}){
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Ativação</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
+      <StatusBadges status={c.conn}/>
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
       <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
         <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
