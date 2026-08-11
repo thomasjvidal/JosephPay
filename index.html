@@ -777,25 +777,76 @@ function GoogleAdmin(){
     load();
   };
   return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Google</div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Google Tag Manager</div>
-        <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta Google uma única vez para instalar o sensor de visitas direto nos containers GTM dos seus clientes, sem colar código no site deles. Só o Admin vê essa tela — o produtor nunca participa desse fluxo.</div>
-        {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
-        {status&&!status.connected&&(
-          <button onClick={conectar} disabled={connecting} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:connecting?"default":"pointer",fontFamily:F,opacity:connecting?0.7:1}}>{connecting?"Aguardando confirmação no Google…":"Conectar Google Tag Manager"}</button>
-        )}
-        {status&&status.connected&&(
-          <div>
-            <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-              <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado como {status.email}</span>
-            </div>
-            <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Google Tag Manager</div>
+      <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta Google uma única vez para instalar o sensor de visitas direto nos containers GTM dos seus clientes, sem colar código no site deles. Só o Admin vê essa tela — o produtor nunca participa desse fluxo.</div>
+      {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
+      {status&&!status.connected&&(
+        <button onClick={conectar} disabled={connecting} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:connecting?"default":"pointer",fontFamily:F,opacity:connecting?0.7:1}}>{connecting?"Aguardando confirmação no Google…":"Conectar Google Tag Manager"}</button>
+      )}
+      {status&&status.connected&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado como {status.email}</span>
           </div>
-        )}
-      </div>
+          <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GithubAdmin(){
+  const [status,setStatus]=useState(null);
+  const [connecting,setConnecting]=useState(false);
+  const load=()=>apiCall('/api/admin/github/status').then(d=>{if(!d.error)setStatus(d);});
+  useEffect(()=>{load();},[]);
+  const conectar=async()=>{
+    const d=await apiCall('/api/admin/github/connect');
+    if(d.error||!d.url)return;
+    setConnecting(true);
+    window.open(d.url,'_blank','noopener');
+    let tentativas=0;
+    const iv=setInterval(async()=>{
+      tentativas++;
+      const s=await apiCall('/api/admin/github/status');
+      if(s?.connected){clearInterval(iv);setConnecting(false);setStatus(s);}
+      else if(tentativas>40){clearInterval(iv);setConnecting(false);}
+    },3000);
+  };
+  const desconectar=async()=>{
+    if(!window.confirm("Desconectar o GitHub? Sensores já instalados continuam no código dos clientes, mas você não vai conseguir instalar novos até reconectar."))return;
+    await apiCall('/api/admin/github/disconnect',{method:'POST'});
+    load();
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>GitHub</div>
+      <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta GitHub uma única vez para instalar o sensor direto no código dos sites que você (ou sua equipe) mantém em repositório — com um commit automático, sem abrir editor de código. Só pra clientes com site próprio em repositório; o produtor nunca participa desse fluxo.</div>
+      {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
+      {status&&!status.connected&&(
+        <button onClick={conectar} disabled={connecting} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:connecting?"default":"pointer",fontFamily:F,opacity:connecting?0.7:1}}>{connecting?"Aguardando confirmação no GitHub…":"Conectar GitHub"}</button>
+      )}
+      {status&&status.connected&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado como {status.login}</span>
+          </div>
+          <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntegracoesAdmin(){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Integrações</div>
+      <GoogleAdmin/>
+      <GithubAdmin/>
     </div>
   );
 }
@@ -843,7 +894,7 @@ function GtmInstalacao({c}){
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Instalar sensor via Google Tag Manager</div>
-      {!googleConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Google</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>}
+      {!googleConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>}
       {googleConnected&&(
         <>
           <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Escolha qual container GTM é o site deste cliente. Isso instala o mesmo sensor de sempre, só que remotamente.</div>
@@ -861,6 +912,61 @@ function GtmInstalacao({c}){
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={salvarVinculo} disabled={!accountId||!containerId||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||saving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{saving?"Salvando…":"Vincular container"}</button>
             <button onClick={instalar} disabled={!c.gtm_container_id&&!containerId||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!c.gtm_container_id&&!containerId)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
+          </div>
+          {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
+          {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function GithubInstalacao({c}){
+  const [githubConnected,setGithubConnected]=useState(null);
+  const [repos,setRepos]=useState(null);
+  const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
+  const [filePath,setFilePath]=useState(c.github_file_path||"index.html");
+  const [saving,setSaving]=useState(false);
+  const [installing,setInstalling]=useState(false);
+  const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||null);
+  const [msg,setMsg]=useState("");
+  useEffect(()=>{
+    apiCall('/api/admin/github/status').then(d=>{
+      setGithubConnected(!!d?.connected);
+      if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
+    });
+  },[]);
+  const salvarVinculo=async()=>{
+    if(!repoFullName||!filePath.trim())return;
+    setSaving(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
+    setSaving(false);
+    if(d.error){setMsg(d.error);}else{setMsg("Repositório vinculado.");setTimeout(()=>setMsg(""),2500);}
+  };
+  const instalar=async()=>{
+    setInstalling(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST'});
+    setInstalling(false);
+    if(d.error)setMsg(d.error);
+    else{setInstalledAt(new Date().toISOString());setMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");}
+  };
+  if(githubConnected===null)return null;
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Instalar sensor via GitHub</div>
+      {!githubConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor direto no código deste cliente.</div>}
+      {githubConnected&&(
+        <>
+          <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Só para clientes com site em código próprio, num repositório seu. Escolha o repositório e o arquivo onde o sensor deve entrar (precisa ter uma tag &lt;/head&gt;).</div>
+          <select value={repoFullName} onChange={e=>setRepoFullName(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
+            <option value="">{repos===null?"Carregando repositórios…":"Selecione o repositório"}</option>
+            {(repos||[]).map(r=>(<option key={r.fullName} value={r.fullName}>{r.fullName}</option>))}
+          </select>
+          <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder="Caminho do arquivo (ex: index.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+          {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
+          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+            <button onClick={salvarVinculo} disabled={!repoFullName||!filePath.trim()||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||saving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{saving?"Salvando…":"Vincular repositório"}</button>
+            <button onClick={instalar} disabled={(!c.github_repo&&!repoFullName)||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!c.github_repo&&!repoFullName)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
           </div>
           {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
           {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
@@ -1235,6 +1341,7 @@ function ClientePerfilAdmin({c,onBack}){
       </div>
       <AtivacaoAdmin c={c}/>
       <GtmInstalacao c={c}/>
+      <GithubInstalacao c={c}/>
     </div>
   );
 }
@@ -1935,12 +2042,12 @@ function AdminPanel({onLogout,userEmail}){
     {id:"afiliados",icon:"⊙",label:"Afiliados"},
     {id:"assinaturas",icon:"↺",label:"Assinaturas"},
     {id:"chat",icon:"✧",label:"Chat IA"},
-    {id:"google",icon:"⎈",label:"Google"},
+    {id:"integracoes",icon:"⎈",label:"Integrações"},
     {id:"config",icon:"⚙",label:"Config"},
   ];
-  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="google");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",google:"Google",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,google:<GoogleAdmin/>,config:<Config/>};
+  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>

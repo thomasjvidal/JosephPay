@@ -1403,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at")
+      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1889,6 +1889,154 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
   } catch (err) {
     console.error("[gtm/install-sensor]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar o sensor via GTM" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — Integração GitHub (admin-only) — instala o sensor com um commit
+// direto no repositório do site, pra quando o site do cliente é código
+// próprio mantido pelo admin/equipe (não pelo produtor).
+// ══════════════════════════════════════════════════════════════════════════════
+
+const GITHUB_CLIENT_ID     = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const GITHUB_REDIRECT_URI  = `${PUBLIC_URL}/api/admin/github/callback`;
+
+const githubOAuthStates = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, ts] of githubOAuthStates) if (now - ts > 10 * 60 * 1000) githubOAuthStates.delete(state);
+}, 5 * 60 * 1000);
+
+async function getGithubToken() {
+  const { data: row } = await supabase.from("platform_github_auth").select("access_token").eq("id", 1).maybeSingle();
+  return row?.access_token || null;
+}
+
+app.get("/api/admin/github/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data } = await supabase.from("platform_github_auth").select("connected_login,updated_at").eq("id", 1).maybeSingle();
+    res.json({ connected: !!data?.connected_login, login: data?.connected_login || null, connectedAt: data?.updated_at || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/github/connect", requireAuth, requireAdmin, (req, res) => {
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) return res.status(500).json({ error: "GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET não configurados no servidor" });
+  const state = crypto.randomBytes(16).toString("hex");
+  githubOAuthStates.set(state, Date.now());
+  const url = "https://github.com/login/oauth/authorize?" + new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    redirect_uri: GITHUB_REDIRECT_URI,
+    scope: "repo",
+    state,
+  });
+  res.json({ url });
+});
+
+app.get("/api/admin/github/callback", async (req, res) => {
+  const { code, state, error } = req.query;
+  res.header("Content-Type", "text/html; charset=utf-8");
+  if (error) return res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">Conexão cancelada (${error}). Pode fechar esta aba.</body></html>`);
+  if (!state || !githubOAuthStates.has(state)) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
+  githubOAuthStates.delete(state);
+  try {
+    const tokenResp = await axios.post("https://github.com/login/oauth/access_token", {
+      client_id: GITHUB_CLIENT_ID,
+      client_secret: GITHUB_CLIENT_SECRET,
+      code,
+      redirect_uri: GITHUB_REDIRECT_URI,
+    }, { headers: { Accept: "application/json" } });
+    const { access_token, error: tokenError } = tokenResp.data;
+    if (!access_token) throw new Error(tokenError || "Token não retornado pelo GitHub");
+    let login = null;
+    try {
+      const info = await axios.get("https://api.github.com/user", { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.github+json" } });
+      login = info.data?.login || null;
+    } catch {}
+    await supabase.from("platform_github_auth").upsert({
+      id: 1,
+      access_token,
+      connected_login: login,
+      updated_at: new Date().toISOString(),
+    });
+    res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ GitHub conectado${login ? ` (${login})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
+  } catch (err) {
+    console.error("[github/callback]", err.response?.data || err.message);
+    res.status(500).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Erro ao conectar com o GitHub. Volte ao JosephPay e tente de novo.</body></html>");
+  }
+});
+
+app.post("/api/admin/github/disconnect", requireAuth, requireAdmin, async (req, res) => {
+  await supabase.from("platform_github_auth").delete().eq("id", 1);
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const resp = await axios.get("https://api.github.com/user/repos", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      params: { per_page: 100, sort: "updated" },
+    });
+    res.json({ repos: (resp.data || []).map(r => ({ fullName: r.full_name, defaultBranch: r.default_branch })) });
+  } catch (err) {
+    console.error("[github/repos]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao buscar repositórios do GitHub" });
+  }
+});
+
+app.post("/api/admin/producers/:id/github", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { repo, file_path } = req.body;
+    if (!repo?.trim() || !file_path?.trim()) return res.status(400).json({ error: "repo e file_path são obrigatórios" });
+    const { error } = await supabase.from("profiles").update({
+      github_repo: repo.trim(),
+      github_file_path: file_path.trim(),
+    }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
+    if (!profile?.github_repo || !profile?.github_file_path) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const { github_repo: repo, github_file_path: filePath } = profile;
+
+    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    const sha = fileResp.data.sha;
+    const currentContent = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+
+    const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
+    if (currentContent.includes(`uid=${id}`)) {
+      await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
+      return res.json({ ok: true, already: true });
+    }
+    if (!currentContent.match(/<\/head>/i)) return res.status(400).json({ error: "Não encontrei uma tag </head> nesse arquivo — insira manualmente pra não arriscar quebrar o site" });
+    const newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
+
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: instala sensor de visitas",
+      content: Buffer.from(newContent, "utf8").toString("base64"),
+      sha,
+    }, { headers });
+
+    await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[github/install-sensor]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o sensor via GitHub" });
   }
 });
 
