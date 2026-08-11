@@ -753,6 +753,123 @@ function Sacar({isAdmin}={}){
   );
 }
 
+function GoogleAdmin(){
+  const [status,setStatus]=useState(null);
+  const [connecting,setConnecting]=useState(false);
+  const load=()=>apiCall('/api/admin/google/status').then(d=>{if(!d.error)setStatus(d);});
+  useEffect(()=>{load();},[]);
+  const conectar=async()=>{
+    const d=await apiCall('/api/admin/google/connect');
+    if(d.error||!d.url)return;
+    setConnecting(true);
+    window.open(d.url,'_blank','noopener');
+    let tentativas=0;
+    const iv=setInterval(async()=>{
+      tentativas++;
+      const s=await apiCall('/api/admin/google/status');
+      if(s?.connected){clearInterval(iv);setConnecting(false);setStatus(s);}
+      else if(tentativas>40){clearInterval(iv);setConnecting(false);}
+    },3000);
+  };
+  const desconectar=async()=>{
+    if(!window.confirm("Desconectar a conta Google? Sensores já instalados via GTM continuam funcionando, mas você não vai conseguir instalar novos até reconectar."))return;
+    await apiCall('/api/admin/google/disconnect',{method:'POST'});
+    load();
+  };
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Google</div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Google Tag Manager</div>
+        <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta Google uma única vez para instalar o sensor de visitas direto nos containers GTM dos seus clientes, sem colar código no site deles. Só o Admin vê essa tela — o produtor nunca participa desse fluxo.</div>
+        {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
+        {status&&!status.connected&&(
+          <button onClick={conectar} disabled={connecting} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:connecting?"default":"pointer",fontFamily:F,opacity:connecting?0.7:1}}>{connecting?"Aguardando confirmação no Google…":"Conectar Google Tag Manager"}</button>
+        )}
+        {status&&status.connected&&(
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+              <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado como {status.email}</span>
+            </div>
+            <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GtmInstalacao({c}){
+  const [googleConnected,setGoogleConnected]=useState(null);
+  const [accounts,setAccounts]=useState(null);
+  const [containers,setContainers]=useState(null);
+  const [accountId,setAccountId]=useState(c.gtm_account_id||"");
+  const [containerId,setContainerId]=useState(c.gtm_container_id||"");
+  const [containerName,setContainerName]=useState(c.gtm_container_name||"");
+  const [saving,setSaving]=useState(false);
+  const [installing,setInstalling]=useState(false);
+  const [installedAt,setInstalledAt]=useState(c.gtm_sensor_installed_at||null);
+  const [msg,setMsg]=useState("");
+  useEffect(()=>{
+    apiCall('/api/admin/google/status').then(d=>{
+      setGoogleConnected(!!d?.connected);
+      if(d?.connected)apiCall('/api/admin/google/tagmanager/accounts').then(a=>{if(a?.accounts)setAccounts(a.accounts);});
+    });
+  },[]);
+  const onAccountChange=async(val)=>{
+    setAccountId(val);setContainerId("");setContainers(null);
+    if(!val)return;
+    const d=await apiCall(`/api/admin/google/tagmanager/containers?accountId=${val}`);
+    if(d?.containers)setContainers(d.containers);
+  };
+  const salvarVinculo=async()=>{
+    if(!accountId||!containerId)return;
+    setSaving(true);setMsg("");
+    const nome=containers?.find(x=>x.id===containerId)?.name||containerName;
+    const d=await apiCall(`/api/admin/producers/${c.id}/gtm`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId,container_name:nome})});
+    setSaving(false);
+    if(d.error)setMsg(d.error);
+    else{setContainerName(nome);setMsg("Container vinculado.");setTimeout(()=>setMsg(""),2500);}
+  };
+  const instalar=async()=>{
+    setInstalling(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST'});
+    setInstalling(false);
+    if(d.error)setMsg(d.error);
+    else{setInstalledAt(new Date().toISOString());setMsg("Sensor instalado e publicado no GTM.");}
+  };
+  if(googleConnected===null)return null;
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Instalar sensor via Google Tag Manager</div>
+      {!googleConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Google</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>}
+      {googleConnected&&(
+        <>
+          <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Escolha qual container GTM é o site deste cliente. Isso instala o mesmo sensor de sempre, só que remotamente.</div>
+          <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
+            <option value="">{accounts===null?"Carregando contas…":"Selecione a conta GTM"}</option>
+            {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
+          </select>
+          {accountId&&(
+            <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
+              <option value="">{containers===null?"Carregando containers…":"Selecione o container deste cliente"}</option>
+              {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
+            </select>
+          )}
+          {containerName&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{containerName}</b></div>}
+          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+            <button onClick={salvarVinculo} disabled={!accountId||!containerId||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||saving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{saving?"Salvando…":"Vincular container"}</button>
+            <button onClick={instalar} disabled={!c.gtm_container_id&&!containerId||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!c.gtm_container_id&&!containerId)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
+          </div>
+          {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
+          {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Config(){
   const [fees,setFees]=useState({pct:"2",fixo:"1.99",recPct:"2",recFixo:"1.99"});
   const [saved,setSaved]=useState(false);
@@ -1110,6 +1227,7 @@ function ClientePerfilAdmin({c,onBack}){
         <Btn sm outline color={RED}>Bloquear acesso</Btn>
       </div>
       <AtivacaoAdmin c={c}/>
+      <GtmInstalacao c={c}/>
     </div>
   );
 }
@@ -1810,11 +1928,12 @@ function AdminPanel({onLogout,userEmail}){
     {id:"afiliados",icon:"⊙",label:"Afiliados"},
     {id:"assinaturas",icon:"↺",label:"Assinaturas"},
     {id:"chat",icon:"✧",label:"Chat IA"},
+    {id:"google",icon:"⎈",label:"Google"},
     {id:"config",icon:"⚙",label:"Config"},
   ];
-  const NAV_RODAPE=NAV.filter(n=>n.id!=="config");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,config:<Config/>};
+  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="google");
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",google:"Google",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,google:<GoogleAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>

@@ -10,6 +10,7 @@ try { require("dotenv").config(); } catch(e) {}
 const express    = require("express");
 const cors       = require("cors");
 const axios      = require("axios");
+const crypto     = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { Resend }       = require("resend");
 const nodemailer       = require("nodemailer");
@@ -1402,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url")
+      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1694,6 +1695,201 @@ app.get("/api/minichat/config", async (req, res) => {
   if (!uid) return res.status(400).json({ error: "uid ausente" });
   const { data } = await supabase.from("profiles").select("minichat_config").eq("id", uid).single();
   res.json({ config: data?.minichat_config || null });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — Integração Google Tag Manager (admin-only, uma conta Google só,
+// dona de todos os containers). O produtor nunca vê nem participa desse fluxo —
+// só o admin conecta a própria conta uma vez e instala o sensor remotamente.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI  = `${PUBLIC_URL}/api/admin/google/callback`;
+const GTM_SCOPE = "https://www.googleapis.com/auth/tagmanager.edit.containers https://www.googleapis.com/auth/tagmanager.publish https://www.googleapis.com/auth/tagmanager.readonly";
+
+// state do OAuth só precisa viver alguns minutos (tempo de o admin logar no Google) —
+// mapa em memória é suficiente, não precisa de tabela pra isso.
+const googleOAuthStates = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, ts] of googleOAuthStates) if (now - ts > 10 * 60 * 1000) googleOAuthStates.delete(state);
+}, 5 * 60 * 1000);
+
+async function getGoogleAccessToken() {
+  const { data: row } = await supabase.from("platform_google_auth").select("*").eq("id", 1).maybeSingle();
+  if (!row?.refresh_token) return null;
+  if (row.access_token && row.expires_at && new Date(row.expires_at) > new Date(Date.now() + 60000)) {
+    return row.access_token;
+  }
+  const resp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    refresh_token: row.refresh_token,
+    grant_type: "refresh_token",
+  }));
+  const { access_token, expires_in } = resp.data;
+  const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+  await supabase.from("platform_google_auth").update({ access_token, expires_at, updated_at: new Date().toISOString() }).eq("id", 1);
+  return access_token;
+}
+
+app.get("/api/admin/google/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data } = await supabase.from("platform_google_auth").select("connected_email,updated_at").eq("id", 1).maybeSingle();
+    res.json({ connected: !!data?.connected_email, email: data?.connected_email || null, connectedAt: data?.updated_at || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/google/connect", requireAuth, requireAdmin, (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(500).json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não configurados no servidor" });
+  const state = crypto.randomBytes(16).toString("hex");
+  googleOAuthStates.set(state, Date.now());
+  const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: GTM_SCOPE,
+    access_type: "offline",
+    prompt: "consent",
+    state,
+  });
+  res.json({ url });
+});
+
+app.get("/api/admin/google/callback", async (req, res) => {
+  const { code, state, error } = req.query;
+  res.header("Content-Type", "text/html; charset=utf-8");
+  if (error) return res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">Conexão cancelada (${error}). Pode fechar esta aba.</body></html>`);
+  if (!state || !googleOAuthStates.has(state)) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
+  googleOAuthStates.delete(state);
+  try {
+    const tokenResp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: GOOGLE_REDIRECT_URI,
+    }));
+    const { access_token, refresh_token, expires_in } = tokenResp.data;
+    const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+    let email = null;
+    try {
+      const info = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${access_token}` } });
+      email = info.data?.email || null;
+    } catch {}
+    // Google só manda refresh_token na primeira autorização — se reconectar depois, preserva o antigo.
+    const { data: existing } = await supabase.from("platform_google_auth").select("refresh_token").eq("id", 1).maybeSingle();
+    await supabase.from("platform_google_auth").upsert({
+      id: 1,
+      access_token,
+      refresh_token: refresh_token || existing?.refresh_token || null,
+      expires_at,
+      connected_email: email,
+      updated_at: new Date().toISOString(),
+    });
+    res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
+  } catch (err) {
+    console.error("[google/callback]", err.response?.data || err.message);
+    res.status(500).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Erro ao conectar com o Google. Volte ao JosephPay e tente de novo.</body></html>");
+  }
+});
+
+app.post("/api/admin/google/disconnect", requireAuth, requireAdmin, async (req, res) => {
+  await supabase.from("platform_google_auth").delete().eq("id", 1);
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/google/tagmanager/accounts", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = await getGoogleAccessToken();
+    if (!token) return res.status(400).json({ error: "Google ainda não conectado" });
+    const resp = await axios.get("https://www.googleapis.com/tagmanager/v2/accounts", { headers: { Authorization: `Bearer ${token}` } });
+    res.json({ accounts: (resp.data.account || []).map(a => ({ id: a.accountId, name: a.name })) });
+  } catch (err) {
+    console.error("[gtm/accounts]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao buscar contas do GTM" });
+  }
+});
+
+app.get("/api/admin/google/tagmanager/containers", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    if (!accountId) return res.status(400).json({ error: "accountId ausente" });
+    const token = await getGoogleAccessToken();
+    if (!token) return res.status(400).json({ error: "Google ainda não conectado" });
+    const resp = await axios.get(`https://www.googleapis.com/tagmanager/v2/accounts/${accountId}/containers`, { headers: { Authorization: `Bearer ${token}` } });
+    res.json({ containers: (resp.data.container || []).map(c => ({ id: c.containerId, name: c.name, publicId: c.publicId })) });
+  } catch (err) {
+    console.error("[gtm/containers]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao buscar containers do GTM" });
+  }
+});
+
+app.post("/api/admin/producers/:id/gtm", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { account_id, container_id, container_name } = req.body;
+    if (!account_id || !container_id) return res.status(400).json({ error: "account_id e container_id são obrigatórios" });
+    const { error } = await supabase.from("profiles").update({
+      gtm_account_id: account_id,
+      gtm_container_id: container_id,
+      gtm_container_name: container_name || null,
+    }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id").eq("id", id).maybeSingle();
+    if (!profile?.gtm_account_id || !profile?.gtm_container_id) return res.status(400).json({ error: "Vincule um container do GTM a este cliente primeiro" });
+    const token = await getGoogleAccessToken();
+    if (!token) return res.status(400).json({ error: "Google ainda não conectado" });
+    const { gtm_account_id: accountId, gtm_container_id: containerId } = profile;
+    const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+    // Toda conta GTM já vem com uma "Default Workspace" — usamos a primeira disponível.
+    const wsResp = await axios.get(`https://www.googleapis.com/tagmanager/v2/accounts/${accountId}/containers/${containerId}/workspaces`, { headers });
+    const workspace = (wsResp.data.workspace || [])[0];
+    if (!workspace) return res.status(500).json({ error: "Nenhuma workspace encontrada nesse container" });
+    const workspacePath = workspace.path;
+
+    // Trigger próprio em vez do "All Pages" nativo — evita depender do ID interno do container.
+    const triggerResp = await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/triggers`, {
+      name: "JosephPay — Todas as páginas",
+      type: "pageview",
+    }, { headers });
+    const triggerId = triggerResp.data.triggerId;
+
+    const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
+    await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/tags`, {
+      name: "JosephPay — Sensor de visitas",
+      type: "html",
+      parameter: [{ type: "template", key: "html", value: sensorSnippet }],
+      firingTriggerId: [triggerId],
+    }, { headers });
+
+    const versionResp = await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}:create_version`, {
+      name: `JosephPay — sensor instalado (${new Date().toLocaleDateString("pt-BR")})`,
+    }, { headers });
+    const containerVersionId = versionResp.data.containerVersion?.containerVersionId;
+    if (containerVersionId) {
+      await axios.post(`https://www.googleapis.com/tagmanager/v2/accounts/${accountId}/containers/${containerId}/versions/${containerVersionId}:publish`, {}, { headers });
+    }
+
+    await supabase.from("profiles").update({ gtm_sensor_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[gtm/install-sensor]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar o sensor via GTM" });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
