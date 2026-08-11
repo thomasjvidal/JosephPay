@@ -1403,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at")
+      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1646,6 +1646,70 @@ app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, a
     console.error("[admin/producers reset-password]", err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Admin edita nome/empresa/e-mail de qualquer cliente em nome dele.
+// Trocar o e-mail atualiza também o login (Auth), pra não ficar um mostrando
+// um e-mail e o login continuar sendo outro.
+app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, company_name, email } = req.body;
+    const updates = {};
+    if (name         !== undefined) updates.name         = name?.trim()         || null;
+    if (company_name !== undefined) updates.company_name = company_name?.trim() || null;
+    if (email?.trim()) {
+      const newEmail = email.trim();
+      const { data: current } = await supabase.from("profiles").select("email").eq("id", id).maybeSingle();
+      if (current?.email !== newEmail) {
+        const { error: authErr } = await supabase.auth.admin.updateUserById(id, { email: newEmail, email_confirm: true });
+        if (authErr) return res.status(400).json({ error: authErr.message });
+      }
+      updates.email = newEmail;
+    }
+    if (!Object.keys(updates).length) return res.json({ ok: true });
+    const { error } = await supabase.from("profiles").update(updates).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, ...updates });
+  } catch (err) {
+    console.error("[admin/producers profile]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin conecta/desconecta o e-mail (SMTP) de qualquer cliente em nome dele —
+// mesma lógica de /api/email/connect, só que escopada pelo :id em vez do usuário logado.
+app.get("/api/admin/producers/:id/email/status", requireAuth, requireAdmin, async (req, res) => {
+  const conn = await getUserEmailConn(req.params.id);
+  res.json({ connected: !!conn?.email_connected, email: conn?.email_smtp_user || null, fromName: conn?.email_from_name || null });
+});
+
+app.post("/api/admin/producers/:id/email/connect", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { host, port, user, pass, fromName } = req.body || {};
+  if (!host || !port || !user || !pass) return res.status(400).json({ error: "Preencha host, porta, e-mail e senha." });
+  try {
+    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: port, email_smtp_user: user, email_smtp_pass: pass });
+    await transporter.verify();
+    const { error } = await supabase.from("profiles").update({
+      email_smtp_host: host, email_smtp_port: Number(port), email_smtp_user: user,
+      email_smtp_pass: pass, email_from_name: fromName || null, email_connected: true,
+    }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ connected: true, email: user });
+  } catch (err) {
+    console.error("[admin/producers email/connect]", err.message);
+    res.status(400).json({ error: "Não foi possível conectar. Verifique os dados e a senha de app." });
+  }
+});
+
+app.post("/api/admin/producers/:id/email/disconnect", requireAuth, requireAdmin, async (req, res) => {
+  const { error } = await supabase.from("profiles").update({
+    email_smtp_host: null, email_smtp_port: null, email_smtp_user: null,
+    email_smtp_pass: null, email_from_name: null, email_connected: false,
+  }).eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ connected: false });
 });
 
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {

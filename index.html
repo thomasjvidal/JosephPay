@@ -976,6 +976,62 @@ function GithubInstalacao({c}){
   );
 }
 
+function EmailAdmin({c,onUpdated}){
+  const [status,setStatus]=useState(null);
+  const [host,setHost]=useState("");
+  const [port,setPort]=useState("465");
+  const [user,setUser]=useState("");
+  const [pass,setPass]=useState("");
+  const [fromName,setFromName]=useState("");
+  const [connecting,setConnecting]=useState(false);
+  const [msg,setMsg]=useState("");
+  const load=()=>apiCall(`/api/admin/producers/${c.id}/email/status`).then(d=>{if(!d.error)setStatus(d);});
+  useEffect(()=>{load();},[c.id]);
+  const conectar=async()=>{
+    if(!host.trim()||!port||!user.trim()||!pass.trim())return;
+    setConnecting(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/email/connect`,{method:'POST',body:JSON.stringify({host:host.trim(),port,user:user.trim(),pass,fromName:fromName.trim()})});
+    setConnecting(false);
+    if(d.error){setMsg(d.error);return;}
+    setPass("");
+    setMsg("E-mail conectado.");
+    load();
+    onUpdated&&onUpdated();
+  };
+  const desconectar=async()=>{
+    if(!window.confirm(`Desconectar o e-mail de ${c.name}? Os disparos por e-mail param de funcionar até reconectar.`))return;
+    await apiCall(`/api/admin/producers/${c.id}/email/disconnect`,{method:'POST'});
+    load();
+    onUpdated&&onUpdated();
+  };
+  if(status===null)return null;
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>E-mail (disparos)</div>
+      <div style={{color:MUTED,fontSize:12,marginBottom:14,lineHeight:1.5}}>Conecte o e-mail deste cliente (Gmail, Outlook etc — com senha de app) pra ele conseguir mandar e-mail em massa pro CRM. Você faz isso pelo cliente, sem ele precisar mexer em nada técnico.</div>
+      {status.connected?(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado: {status.email}</span>
+          </div>
+          <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
+        </div>
+      ):(
+        <>
+          <input value={host} onChange={e=>setHost(e.target.value)} placeholder="Servidor SMTP (ex: smtp.gmail.com)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+          <input value={port} onChange={e=>setPort(e.target.value)} placeholder="Porta (465 ou 587)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+          <input value={user} onChange={e=>setUser(e.target.value)} placeholder="E-mail" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+          <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="Senha de app" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+          <input value={fromName} onChange={e=>setFromName(e.target.value)} placeholder="Nome de exibição (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+          <button onClick={conectar} disabled={connecting} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:11,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:connecting?"default":"pointer",fontFamily:F,opacity:connecting?0.7:1}}>{connecting?"Conectando…":"Conectar e-mail"}</button>
+        </>
+      )}
+      {msg&&<div style={{color:MUTED,fontSize:11,marginTop:8}}>{msg}</div>}
+    </div>
+  );
+}
+
 function Config(){
   const [fees,setFees]=useState({pct:"2",fixo:"1.99",recPct:"2",recFixo:"1.99"});
   const [saved,setSaved]=useState(false);
@@ -1262,15 +1318,36 @@ function AtivacaoAdmin({c}){
   );
 }
 
-function ClientePerfilAdmin({c,onBack}){
+function ClientePerfilAdmin({c,onBack,onUpdated}){
   const accent=GOLD;
   const [sales,setSales]=useState(null);
   const [kpis,setKpis]=useState(null);
+  const [editing,setEditing]=useState(false);
+  const [editName,setEditName]=useState("");
+  const [editCompany,setEditCompany]=useState("");
+  const [editEmail,setEditEmail]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [saveErr,setSaveErr]=useState("");
   useEffect(()=>{
     if(!c)return;
     apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
     apiCall(`/api/admin/kpis`).then(d=>{if(d&&!d.error)setKpis(d);});
   },[c?.id]);
+  useEffect(()=>{
+    if(c){setEditName(c.name||"");setEditCompany(c.company_name||"");setEditEmail(c.email||"");}
+  },[c?.id]);
+  const cancelarEdicao=()=>{
+    setEditing(false);setSaveErr("");
+    setEditName(c?.name||"");setEditCompany(c?.company_name||"");setEditEmail(c?.email||"");
+  };
+  const salvarPerfil=async()=>{
+    setSaving(true);setSaveErr("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/profile`,{method:'PATCH',body:JSON.stringify({name:editName.trim(),company_name:editCompany.trim(),email:editEmail.trim()})});
+    setSaving(false);
+    if(d.error){setSaveErr(d.error);return;}
+    setEditing(false);
+    onUpdated&&onUpdated();
+  };
   if(!c) return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
@@ -1294,13 +1371,34 @@ function ClientePerfilAdmin({c,onBack}){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
           <Avatar url={c.avatar_url} name={nome} size={50} radius={16} fontSize={22}/>
-          <div style={{flex:1}}>
-            <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{nome}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email||"—"}</div>
-            <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
+          <div style={{flex:1,minWidth:0}}>
+            {!editing?(
+              <>
+                <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{nome}</div>
+                {c.company_name&&<div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.company_name}</div>}
+                <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email||"—"}</div>
+                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
+              </>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Nome" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editCompany} onChange={e=>setEditCompany(e.target.value)} placeholder="Nome da empresa" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="E-mail de login" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+              </div>
+            )}
           </div>
-          <Tag status="ativo"/>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+            <Tag status="ativo"/>
+            {!editing&&<button onClick={()=>setEditing(true)} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:20,padding:"5px 12px",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>✎ Editar</button>}
+          </div>
         </div>
+        {editing&&(
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            <button onClick={salvarPerfil} disabled={saving} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:10,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F,opacity:saving?0.7:1}}>{saving?"Salvando…":"Salvar"}</button>
+            <button onClick={cancelarEdicao} style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:10,color:MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>
+          </div>
+        )}
+        {saveErr&&<div style={{color:RED,fontSize:11,marginBottom:10}}>{saveErr}</div>}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Volume: {volFmt}</span>
           <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {taxaFmt}</span>
@@ -1339,6 +1437,7 @@ function ClientePerfilAdmin({c,onBack}){
         <Btn sm outline color={GOLD}>Configurar taxa</Btn>
         <Btn sm outline color={RED}>Bloquear acesso</Btn>
       </div>
+      <EmailAdmin c={c} onUpdated={onUpdated}/>
       <AtivacaoAdmin c={c}/>
       <GtmInstalacao c={c}/>
       <GithubInstalacao c={c}/>
@@ -1372,7 +1471,7 @@ function ClientesAdmin(){
   },[refresh]);
   if(sel!==null){
     const c=clients?.find(x=>x.id===sel)||null;
-    return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)}/>;
+    return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)} onUpdated={()=>setRefresh(r=>r+1)}/>;
   }
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
   const clientsOrdenados=[...(clients||[])].sort((a,b)=>{
