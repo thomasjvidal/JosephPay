@@ -1650,12 +1650,28 @@ app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, a
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, questions } = req.body;
     if (!whatsapp_number?.trim()) return res.status(400).json({ error: "Número de WhatsApp é obrigatório" });
+    // Perguntas personalizadas são opcionais — só aceita perguntas com texto e pelo menos 2 opções válidas.
+    // Se vier vazio/ inválido, o widget usa as 4 perguntas padrão (não quebra o cliente).
+    let cleanQuestions = null;
+    if (Array.isArray(questions)) {
+      cleanQuestions = questions
+        .map(q => ({
+          text: String(q?.text || "").trim(),
+          subtext: String(q?.subtext || "").trim(),
+          options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [],
+        }))
+        .filter(q => q.text && q.options.length >= 2);
+      if (!cleanQuestions.length) cleanQuestions = null;
+    }
     const minichat_config = {
       whatsapp_number: whatsapp_number.trim(),
       brand_name: brand_name?.trim() || null,
       greeting_name: greeting_name?.trim() || brand_name?.trim() || null,
+      avatar_url: avatar_url?.trim() || null,
+      redirect_link: redirect_link?.trim() || null,
+      questions: cleanQuestions,
     };
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });

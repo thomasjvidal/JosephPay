@@ -516,7 +516,10 @@
 <div class="app-container">
     <header class="header">
         <div class="brand">
-            <div class="brand-mark" id="brandMark">v</div>
+            <div class="brand-mark" id="brandMark">
+                <img id="brandMarkImg" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:8px">
+                <span id="brandMarkLetter">v</span>
+            </div>
             <div class="brand-name" id="brandName">vJoseph</div>
         </div>
         <div class="header-subtitle">Diagnóstico Digital</div>
@@ -564,7 +567,19 @@
     let WHATSAPP_NUMBER = "5524999829182"; // Nexy
     let BRAND_NAME = "vJoseph";
     let GREETING_NAME = "Nexy";
+    let AVATAR_URL = "";
+    let REDIRECT_LINK = "";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
+
+    function applyAvatar() {
+        const img = document.getElementById("brandMarkImg");
+        const letter = document.getElementById("brandMarkLetter");
+        if (AVATAR_URL && img) {
+            img.src = AVATAR_URL;
+            img.style.display = "block";
+            if (letter) letter.style.display = "none";
+        }
+    }
 
     // Carrega configuração do produtor via ?uid= (multi-cliente).
     // Se ausente ou falhar, mantém os valores padrão acima — não quebra o widget.
@@ -579,10 +594,24 @@
             if (cfg.whatsapp_number) WHATSAPP_NUMBER = cfg.whatsapp_number;
             if (cfg.brand_name) BRAND_NAME = cfg.brand_name;
             GREETING_NAME = cfg.greeting_name || cfg.brand_name || GREETING_NAME;
-            const mark = document.getElementById("brandMark");
+            if (cfg.avatar_url) AVATAR_URL = cfg.avatar_url;
+            if (cfg.redirect_link) REDIRECT_LINK = cfg.redirect_link;
+            if (Array.isArray(cfg.questions) && cfg.questions.length) {
+                const custom = cfg.questions
+                    .map((q, i) => ({
+                        id: `q${i}`,
+                        text: q.text || "",
+                        subtext: q.subtext || "",
+                        options: (q.options || []).filter(Boolean),
+                    }))
+                    .filter(q => q.text && q.options.length >= 2);
+                if (custom.length) questions = custom;
+            }
+            const letter = document.getElementById("brandMarkLetter");
             const name = document.getElementById("brandName");
-            if (mark) mark.textContent = BRAND_NAME[0] || "v";
+            if (letter) letter.textContent = BRAND_NAME[0] || "v";
             if (name) name.textContent = BRAND_NAME;
+            applyAvatar();
             document.title = `${BRAND_NAME} — Diagnóstico Digital`;
         } catch (e) {
             console.warn("[minichat] config remota indisponível, usando padrão", e.message);
@@ -609,22 +638,17 @@
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Owner-Key": uid },
             body: JSON.stringify({
-                name: `Lead Mini Chat (${userData.objetivo || "diagnóstico"})`,
+                name: `Lead Mini Chat (${userData[questions[0]?.id] || "diagnóstico"})`,
             }),
         }).catch(() => {});
     }
 
     // ESTADO
     let currentStep = 0;
-    let userData = {
-        objetivo: '',
-        situacao: '',
-        problema: '',
-        prioridade: ''
-    };
+    let userData = {};
 
-    // FLUXO OTIMIZADO - APENAS 4 PERGUNTAS
-    const questions = [
+    // FLUXO PADRÃO — usado quando o cliente não configurou perguntas próprias no admin
+    let questions = [
         {
             id: 'objetivo',
             text: "Olá. Vamos fazer um diagnóstico rápido da sua presença digital.\n\nLeva menos de 1 minuto.",
@@ -778,29 +802,31 @@
     }
 
     function showCompletionScreen() {
-        // Preenche card de diagnóstico
+        // Preenche card de diagnóstico a partir das perguntas em uso (padrão ou personalizadas)
         diagnosticCard.innerHTML = `
             <div class="diagnostic-title">Seu Perfil</div>
-            <div class="diagnostic-item">
-                <span class="diagnostic-label">Objetivo</span>
-                <span class="diagnostic-value">${userData.objetivo}</span>
-            </div>
-            <div class="diagnostic-item">
-                <span class="diagnostic-label">Situação</span>
-                <span class="diagnostic-value">${userData.situacao}</span>
-            </div>
-            <div class="diagnostic-item">
-                <span class="diagnostic-label">Dor Principal</span>
-                <span class="diagnostic-value">${userData.problema}</span>
-            </div>
-            <div class="diagnostic-item">
-                <span class="diagnostic-label">Prioridade</span>
-                <span class="diagnostic-value">${userData.prioridade}</span>
-            </div>
+            ${questions.map(q => `
+                <div class="diagnostic-item">
+                    <span class="diagnostic-label">${q.subtext || q.text}</span>
+                    <span class="diagnostic-value">${userData[q.id] || ''}</span>
+                </div>
+            `).join('')}
         `;
 
         // Mostra overlay
         completionOverlay.classList.add('active');
+    }
+
+    function buildMessage() {
+        const linhas = questions.map(q => `• ${q.subtext || q.text}: ${userData[q.id] || ''}`).join('\n');
+        return `Olá ${GREETING_NAME},
+
+Acabei de fazer o pré diagnóstico digital.
+
+*Meu perfil:*
+${linhas}
+
+Podemos conversar?`;
     }
 
     function sendToWhatsApp() {
@@ -808,41 +834,32 @@
         whatsappBtn.classList.add('sending');
         whatsappBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
 
-        // Monta mensagem completa para o produtor
-        const message = `Olá ${GREETING_NAME},
-
-Acabei de fazer o pré diagnóstico digital.
-
-*Meu perfil:*
-• Objetivo: ${userData.objetivo}
-• Situação atual: ${userData.situacao}
-• Maior dificuldade: ${userData.problema}
-• Prioridade: ${userData.prioridade}
-
-Podemos conversar?`;
-
-        const encodedMessage = encodeURIComponent(message);
-        const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedMessage}`;
         sendLeadToCRM();
+
+        // Se o cliente configurou um link de redirecionamento próprio, usa ele.
+        // Senão, cai no comportamento padrão: abrir o WhatsApp com a mensagem do diagnóstico.
+        const targetUrl = REDIRECT_LINK || `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
+        const abrindoTexto = REDIRECT_LINK ? 'Abrindo...' : 'Abrindo WhatsApp...';
+        const btnFinalHtml = REDIRECT_LINK ? '<span>↗</span><span>Continuar</span>' : '<span class="whatsapp-icon">📱</span><span>Abrir WhatsApp</span>';
 
         // Feedback visual
         setTimeout(() => {
             whatsappBtn.classList.remove('sending');
-            whatsappBtn.innerHTML = '<span>✓</span><span>Mensagem pronta!</span>';
+            whatsappBtn.innerHTML = '<span>✓</span><span>Pronto!</span>';
             whatsappBtn.style.background = 'var(--success-dark)';
 
-            redirectStatus.textContent = 'Abrindo WhatsApp...';
+            redirectStatus.textContent = abrindoTexto;
             redirectStatus.style.opacity = '1';
 
             // Redireciona após breve delay para ver o check
             setTimeout(() => {
-                window.open(whatsappUrl, '_blank');
+                window.open(targetUrl, '_blank');
 
                 // Atualiza status
                 setTimeout(() => {
                     redirectStatus.textContent = 'Se não abrir automaticamente, clique novamente no botão acima.';
-                    whatsappBtn.innerHTML = '<span class="whatsapp-icon">📱</span><span>Abrir WhatsApp</span>';
-                    whatsappBtn.onclick = () => window.open(whatsappUrl, '_blank');
+                    whatsappBtn.innerHTML = btnFinalHtml;
+                    whatsappBtn.onclick = () => window.open(targetUrl, '_blank');
                 }, 1000);
 
             }, 800);
