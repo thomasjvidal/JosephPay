@@ -1067,13 +1067,20 @@ function ProdutosDoCliente({ownerId,nome}){
   );
 }
 
+const DEFAULT_MINICHAT_QUESTIONS=[
+  {text:"Olá. Vamos fazer um diagnóstico rápido da sua presença digital.\n\nLeva menos de 1 minuto.",subtext:"Qual seu principal objetivo hoje?",options:["Conseguir mais clientes","Passar mais credibilidade","Ter um link profissional","Receber agendamentos"]},
+  {text:"Perfeito.",subtext:"Qual sua situação atual?",options:["Não tenho site","Só tenho Instagram","Site antigo/desatualizado","Site não converte"]},
+  {text:"Entendido.",subtext:"Qual sua maior dificuldade hoje?",options:["Perguntam preço e somem","Explico tudo no WhatsApp","Não pareço profissional","Não tenho autoridade digital"]},
+  {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
+];
 function AtivacaoAdmin({c}){
   const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
-  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:[]);
+  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
+  const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
@@ -1120,7 +1127,7 @@ function AtivacaoAdmin({c}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, o botão final abre o WhatsApp com a mensagem do diagnóstico. Se preencher, o botão abre esse link no lugar (ex: uma página de agendamento).</div>
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Perguntas do diagnóstico</div>
-      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{questions.length?"Perguntas personalizadas para este cliente.":"Sem perguntas personalizadas — o Mini Chat usa as 4 perguntas padrão."}</div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
       {questions.map((q,qi)=>(
         <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
