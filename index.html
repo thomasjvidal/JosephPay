@@ -1447,7 +1447,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
 
 function StatusBadges({status}){
   if(!status)return null;
-  const items=[["WhatsApp",status.whatsapp],["Site",status.site],["E-mail",status.email],["Mini Chat",status.minichat]];
+  const items=[["WhatsApp",status.whatsapp],["Site",status.site],["E-mail",status.email],["Mini Chat",status.minichat],["Google Ads",status.googleAds]];
   return(
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
       {items.map(([label,on])=>(
@@ -1456,6 +1456,18 @@ function StatusBadges({status}){
           <span style={{color:on?TEXT:MUTED,fontSize:10,fontWeight:600}}>{label}</span>
         </span>
       ))}
+    </div>
+  );
+}
+
+function QuickStats({c}){
+  const leadsHoje=c.leads_hoje||0;
+  const visitasHoje=c.visitas_hoje||0;
+  return(
+    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14,fontSize:11,color:MUTED}}>
+      <span>👥 <b style={{color:TEXT}}>{c.leads_total||0}</b> interessado(s){leadsHoje>0&&<span style={{color:GREEN}}> · +{leadsHoje} hoje</span>}</span>
+      <span>✅ <b style={{color:TEXT}}>{c.clientes_total||0}</b> cliente(s)</span>
+      <span>👁 <b style={{color:TEXT}}>{c.visitas_total||0}</b> visita(s){visitasHoje>0&&<span style={{color:GREEN}}> · +{visitasHoje} hoje</span>}</span>
     </div>
   );
 }
@@ -1516,6 +1528,7 @@ function ClientesAdmin(){
             <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
           </div>
           <StatusBadges status={c.conn}/>
+          <QuickStats c={c}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
             {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
               <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>

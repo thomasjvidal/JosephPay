@@ -1429,6 +1429,31 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     const minichatAtivoPorUsuario = {};
     (minichatVisits || []).forEach(v => { minichatAtivoPorUsuario[v.owner_id] = true; });
 
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
+    // Interessados (lead) x Clientes convertidos (cliente/assinante) do CRM de cada produtor.
+    const { data: customerRows } = await supabase.from("customers").select("owner_id,status,created_at");
+    const leadsPorUsuario = {};
+    const clientesPorUsuario = {};
+    (customerRows || []).forEach(row => {
+      const hoje = new Date(row.created_at) >= todayStart;
+      const alvo = row.status === "lead" ? leadsPorUsuario : (row.status === "cliente" || row.status === "assinante") ? clientesPorUsuario : null;
+      if (!alvo) return;
+      const acc = alvo[row.owner_id] || (alvo[row.owner_id] = { total: 0, hoje: 0 });
+      acc.total++; if (hoje) acc.hoje++;
+    });
+
+    // Visitas ao site (sensor) e detecção real de Google Ads via gclid —
+    // gclid só existe na URL quando o clique veio de um anúncio pago do Google.
+    const { data: visitRows } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview");
+    const visitasPorUsuario = {};
+    const googleAdsPorUsuario = {};
+    (visitRows || []).forEach(v => {
+      const acc = visitasPorUsuario[v.owner_id] || (visitasPorUsuario[v.owner_id] = { total: 0, hoje: 0 });
+      acc.total++; if (new Date(v.created_at) >= todayStart) acc.hoje++;
+      if (v.has_gclid) googleAdsPorUsuario[v.owner_id] = true;
+    });
+
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount, wapConnected] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
@@ -1455,11 +1480,17 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         logins_mes: loginsPorUsuario[p.id] || 0,
         mensalidade_total: Math.round((ledgerPorUsuario[p.id]?.mensalidade || 0) * 100) / 100,
         ativacao_total: Math.round((ledgerPorUsuario[p.id]?.ativacao || 0) * 100) / 100,
+        leads_total: leadsPorUsuario[p.id]?.total || 0,
+        leads_hoje: leadsPorUsuario[p.id]?.hoje || 0,
+        clientes_total: clientesPorUsuario[p.id]?.total || 0,
+        visitas_total: visitasPorUsuario[p.id]?.total || 0,
+        visitas_hoje: visitasPorUsuario[p.id]?.hoje || 0,
         conn: {
           whatsapp: wapConnected,
           site:     !!p.site_url,
           email:    !!p.email_connected,
           minichat: !!minichatAtivoPorUsuario[p.id],
+          googleAds: !!googleAdsPorUsuario[p.id],
         },
       };
     }));
@@ -2746,7 +2777,7 @@ app.post("/api/track/visit", (req, res, next) => {
 }, async (req, res) => {
   res.json({ ok: true }); // responde imediatamente para não travar o site
   try {
-    const { user_id, domain, page, referrer, source, device, event_type } = req.body || {};
+    const { user_id, domain, page, referrer, source, device, event_type, gclid } = req.body || {};
     if (!user_id) return;
     // valida que o user_id existe (evita lixo no banco)
     const { data: profile } = await supabase
@@ -2770,6 +2801,7 @@ app.post("/api/track/visit", (req, res, next) => {
       source:   normalizeSource(source),
       device:   device  || "unknown",
       event_type: eventType,
+      has_gclid: !!gclid, // gclid só existe na URL quando o clique veio de um anúncio pago do Google Ads
     }).then(null, e => console.warn("[track/visit]", e.message));
   } catch(e) { console.error("[track/visit]", e.message); }
 });
@@ -2794,7 +2826,8 @@ var p=window.location.pathname;var ref=document.referrer;
 var q=new URLSearchParams(window.location.search);
 var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
 var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
-fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev})}).catch(function(){});
+var gclid=q.get("gclid")?1:0;
+fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev,gclid:gclid})}).catch(function(){});
 document.addEventListener("click",function(e){
   var a=e.target&&e.target.closest?e.target.closest("a"):null;
   if(!a||!a.href)return;
