@@ -589,6 +589,18 @@
         }
     }
 
+    // Avisa que alguém abriu o Mini Chat de verdade — é o sinal real de "está ativo",
+    // diferente de só ter uma configuração salva no admin.
+    function reportMinichatOpen() {
+        const uid = new URLSearchParams(location.search).get("uid");
+        if (!uid) return;
+        fetch(`${JOSEPHPAY_API}/api/track/visit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: uid, domain: "minichat", page: "/minichat", source: "minichat", device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop" }),
+        }).catch(() => {});
+    }
+
     // Envia o lead capturado para o CRM do produtor (fire-and-forget)
     function sendLeadToCRM() {
         const uid = new URLSearchParams(location.search).get("uid");
@@ -840,6 +852,7 @@ Podemos conversar?`;
 
     // Inicialização
     window.onload = () => {
+        reportMinichatOpen();
         loadMinichatConfig().finally(() => {
             setTimeout(() => {
                 showQuestion();

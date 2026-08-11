@@ -1421,6 +1421,13 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
       if (l.type === "ativacao")    acc.ativacao    += Number(l.amount || 0);
     });
 
+    // Mini Chat "ativo" não pode significar "o admin preencheu o formulário de config" —
+    // só é ativo de verdade se alguém abriu o widget pelo menos uma vez (visits.page ilike %minichat%).
+    const { data: minichatVisits } = await supabase.from("visits")
+      .select("owner_id").ilike("page", "%minichat%");
+    const minichatAtivoPorUsuario = {};
+    (minichatVisits || []).forEach(v => { minichatAtivoPorUsuario[v.owner_id] = true; });
+
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount, wapConnected] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
@@ -1451,7 +1458,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
           whatsapp: wapConnected,
           site:     !!p.site_url,
           email:    !!p.email_connected,
-          minichat: !!p.minichat_config,
+          minichat: !!minichatAtivoPorUsuario[p.id],
         },
       };
     }));
