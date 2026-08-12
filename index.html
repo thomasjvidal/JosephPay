@@ -1328,6 +1328,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
   const [editEmail,setEditEmail]=useState("");
   const [saving,setSaving]=useState(false);
   const [saveErr,setSaveErr]=useState("");
+  const [subTab,setSubTab]=useState("geral");
   useEffect(()=>{
     if(!c)return;
     apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
@@ -1404,43 +1405,56 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {taxaFmt}</span>
         </div>
       </div>
-      <div className="two-col">
-        <KPICard label="Volume total" value={volFmt} accent={accent} icon="◈"/>
-        <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
-        <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
-        <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
-        <KPICard label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
-        <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
-        <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
-        <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
+      <div style={{display:"flex",gap:6}}>
+        {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"}].map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:CARD,color:t.id===subTab?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
+        ))}
       </div>
-      <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
-      <ProdutosDoCliente ownerId={c.id} nome={nome}/>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
-        {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
-        {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
-        {(sales||[]).map((s,i)=>{
-          const nome2=s.customers?.name||"Cliente";
-          const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
-          const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-          return(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(sales.length-1)?`1px solid ${BDR}`:"none"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome2[0]}</div>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome2}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora}</div></div>
-            <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
+      {subTab==="geral"&&(
+        <>
+          <div className="two-col">
+            <KPICard label="Volume total" value={volFmt} accent={accent} icon="◈"/>
+            <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
+            <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
+            <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
+            <KPICard label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
+            <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
+            <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
+            <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
           </div>
-          );
-        })}
-      </div>
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        <Btn sm outline color={GOLD}>Configurar taxa</Btn>
-        <Btn sm outline color={RED}>Bloquear acesso</Btn>
-      </div>
-      <EmailAdmin c={c} onUpdated={onUpdated}/>
-      <AtivacaoAdmin c={c}/>
-      <GtmInstalacao c={c}/>
-      <GithubInstalacao c={c}/>
+          <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
+          <ProdutosDoCliente ownerId={c.id} nome={nome}/>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+            <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
+            {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
+            {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
+            {(sales||[]).map((s,i)=>{
+              const nome2=s.customers?.name||"Cliente";
+              const dt=new Date(s.created_at).toLocaleDateString('pt-BR');
+              const hora=new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+              return(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(sales.length-1)?`1px solid ${BDR}`:"none"}}>
+                <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome2[0]}</div>
+                <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome2}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora}</div></div>
+                <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
+              </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <Btn sm outline color={GOLD}>Configurar taxa</Btn>
+            <Btn sm outline color={RED}>Bloquear acesso</Btn>
+          </div>
+        </>
+      )}
+      {subTab==="ativacao"&&(
+        <>
+          <EmailAdmin c={c} onUpdated={onUpdated}/>
+          <AtivacaoAdmin c={c}/>
+          <GtmInstalacao c={c}/>
+          <GithubInstalacao c={c}/>
+        </>
+      )}
     </div>
   );
 }
