@@ -994,7 +994,7 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
 }
 
 function GtmInstalacao({c,onUpdated}){
-  const [open,setOpen]=useState(true);
+  const [open,setOpen]=useState(false);
   const [googleConnected,setGoogleConnected]=useState(null);
   const [accounts,setAccounts]=useState(null);
   const [containers,setContainers]=useState(null);
@@ -1069,7 +1069,7 @@ function GtmInstalacao({c,onUpdated}){
 }
 
 function GithubInstalacao({c,onUpdated}){
-  const [open,setOpen]=useState(true);
+  const [open,setOpen]=useState(false);
   const [githubConnected,setGithubConnected]=useState(null);
   const [repos,setRepos]=useState(null);
   const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
@@ -1155,7 +1155,7 @@ function GithubInstalacao({c,onUpdated}){
 }
 
 function EmailAdmin({c,onUpdated}){
-  const [open,setOpen]=useState(true);
+  const [open,setOpen]=useState(false);
   const [status,setStatus]=useState(null);
   const [host,setHost]=useState("");
   const [port,setPort]=useState("465");
@@ -1452,7 +1452,7 @@ function AtivacaoAdmin({c}){
     setResetting(false);
     if(!d.error)setResetResult(d.password);
   };
-  const [open,setOpen]=useState(true);
+  const [open,setOpen]=useState(false);
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Ativação" open={open} onToggle={()=>setOpen(o=>!o)}/>
