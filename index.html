@@ -926,7 +926,9 @@ function GithubInstalacao({c}){
   const [repos,setRepos]=useState(null);
   const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
   const [repoBusca,setRepoBusca]=useState("");
-  const [filePath,setFilePath]=useState(c.github_file_path||"index.html");
+  const [files,setFiles]=useState(null);
+  const [fileBusca,setFileBusca]=useState("");
+  const [filePath,setFilePath]=useState(c.github_file_path||"");
   const [saving,setSaving]=useState(false);
   const [installing,setInstalling]=useState(false);
   const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||null);
@@ -937,6 +939,19 @@ function GithubInstalacao({c}){
       if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
     });
   },[]);
+  useEffect(()=>{
+    if(!repoFullName){setFiles(null);return;}
+    setFiles(null);setFileBusca("");
+    apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(repoFullName)}`).then(d=>{
+      const list=d?.files||[];
+      setFiles(list);
+      // pré-seleciona index.html na raiz se existir; senão mantém o que já estava salvo pra esse cliente
+      if(list.includes("index.html"))setFilePath("index.html");
+      else if(c.github_repo===repoFullName&&c.github_file_path)setFilePath(c.github_file_path);
+      else if(list.length===1)setFilePath(list[0]);
+      else setFilePath("");
+    });
+  },[repoFullName]);
   const salvarVinculo=async()=>{
     if(!repoFullName||!filePath.trim())return;
     setSaving(true);setMsg("");
@@ -969,7 +984,22 @@ function GithubInstalacao({c}){
             <option value="">{repos===null?"Carregando repositórios…":"Selecione o repositório"}</option>
             {(repos||[]).filter(r=>r.fullName.toLowerCase().includes(repoBusca.toLowerCase())).map(r=>(<option key={r.fullName} value={r.fullName}>{r.fullName}</option>))}
           </select>
-          <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder="Caminho do arquivo (ex: index.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+          {repoFullName&&files&&files.length>0?(
+            <>
+              {files.length>5&&(
+                <div style={{position:"relative",marginBottom:8}}>
+                  <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MUTED,fontSize:12,pointerEvents:"none"}}>🔍</span>
+                  <input value={fileBusca} onChange={e=>setFileBusca(e.target.value)} placeholder="Buscar arquivo…" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"9px 14px 9px 30px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8}}/>
+                </div>
+              )}
+              <select value={filePath} onChange={e=>setFilePath(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
+                <option value="">Selecione o arquivo</option>
+                {files.filter(f=>f.toLowerCase().includes(fileBusca.toLowerCase())).map(f=>(<option key={f} value={f}>{f}</option>))}
+              </select>
+            </>
+          ):(
+            <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum .html encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+          )}
           {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={salvarVinculo} disabled={!repoFullName||!filePath.trim()||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||saving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{saving?"Salvando…":"Vincular repositório"}</button>

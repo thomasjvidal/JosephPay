@@ -2083,6 +2083,28 @@ app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+// Lista os arquivos .html do repositório (recursivo), pra escolher clicando em vez de digitar o caminho.
+app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { repo } = req.query;
+    if (!repo) return res.status(400).json({ error: "repo ausente" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+    const branch = repoInfo.data.default_branch;
+    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+    const files = (treeResp.data.tree || [])
+      .filter(item => item.type === "blob" && /\.html?$/i.test(item.path))
+      .map(item => item.path)
+      .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+    res.json({ files });
+  } catch (err) {
+    console.error("[github/repo-files]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao listar os arquivos do repositório" });
+  }
+});
+
 app.post("/api/admin/producers/:id/github", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
