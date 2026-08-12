@@ -1943,11 +1943,19 @@ app.post("/api/admin/producers/:id/gtm", requireAuth, requireAdmin, async (req, 
 app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id").eq("id", id).maybeSingle();
-    if (!profile?.gtm_account_id || !profile?.gtm_container_id) return res.status(400).json({ error: "Vincule um container do GTM a este cliente primeiro" });
+    // Aceita account_id/container_id direto do corpo (o que está selecionado na tela agora) — evita
+    // instalar num container antigo caso o admin tenha trocado a seleção sem clicar em "Vincular" de novo.
+    let { account_id: accountId, container_id: containerId } = req.body || {};
+    if (!accountId || !containerId) {
+      const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id").eq("id", id).maybeSingle();
+      accountId = accountId || profile?.gtm_account_id;
+      containerId = containerId || profile?.gtm_container_id;
+    } else {
+      await supabase.from("profiles").update({ gtm_account_id: accountId, gtm_container_id: containerId }).eq("id", id);
+    }
+    if (!accountId || !containerId) return res.status(400).json({ error: "Vincule um container do GTM a este cliente primeiro" });
     const token = await getGoogleAccessToken();
     if (!token) return res.status(400).json({ error: "Google ainda não conectado" });
-    const { gtm_account_id: accountId, gtm_container_id: containerId } = profile;
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
     // Toda conta GTM já vem com uma "Default Workspace" — usamos a primeira disponível.
@@ -2124,12 +2132,21 @@ app.post("/api/admin/producers/:id/github", requireAuth, requireAdmin, async (re
 app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
-    if (!profile?.github_repo || !profile?.github_file_path) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
+    // Aceita repo/file_path direto do corpo (o que está selecionado na tela agora) — evita instalar
+    // num caminho antigo caso o admin tenha trocado a seleção sem clicar em "Vincular" de novo.
+    let { repo, file_path: filePath } = req.body || {};
+    if (!repo?.trim() || !filePath?.trim()) {
+      const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
+      repo = repo?.trim() || profile?.github_repo;
+      filePath = filePath?.trim() || profile?.github_file_path;
+    } else {
+      repo = repo.trim(); filePath = filePath.trim();
+      await supabase.from("profiles").update({ github_repo: repo, github_file_path: filePath }).eq("id", id);
+    }
+    if (!repo || !filePath) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const { github_repo: repo, github_file_path: filePath } = profile;
 
     const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
     const sha = fileResp.data.sha;

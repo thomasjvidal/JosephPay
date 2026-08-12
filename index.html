@@ -860,7 +860,7 @@ function CardHeader({title,open,onToggle}){
   );
 }
 
-function GtmInstalacao({c}){
+function GtmInstalacao({c,onUpdated}){
   const [open,setOpen]=useState(true);
   const [googleConnected,setGoogleConnected]=useState(null);
   const [accounts,setAccounts]=useState(null);
@@ -891,14 +891,16 @@ function GtmInstalacao({c}){
     const d=await apiCall(`/api/admin/producers/${c.id}/gtm`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId,container_name:nome})});
     setSaving(false);
     if(d.error)setMsg(d.error);
-    else{setContainerName(nome);setMsg("Container vinculado.");setTimeout(()=>setMsg(""),2500);}
+    else{setContainerName(nome);setMsg("Container vinculado.");setTimeout(()=>setMsg(""),2500);onUpdated&&onUpdated();}
   };
   const instalar=async()=>{
+    if(!accountId||!containerId)return;
     setInstalling(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST'});
+    // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
+    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId})});
     setInstalling(false);
     if(d.error)setMsg(d.error);
-    else{setInstalledAt(new Date().toISOString());setMsg("Sensor instalado e publicado no GTM.");}
+    else{setInstalledAt(new Date().toISOString());setMsg("Sensor instalado e publicado no GTM.");onUpdated&&onUpdated();}
   };
   if(googleConnected===null)return null;
   return(
@@ -922,7 +924,7 @@ function GtmInstalacao({c}){
           {containerName&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{containerName}</b></div>}
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={salvarVinculo} disabled={!accountId||!containerId||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||saving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{saving?"Salvando…":"Vincular container"}</button>
-            <button onClick={instalar} disabled={!c.gtm_container_id&&!containerId||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!c.gtm_container_id&&!containerId)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
+            <button onClick={instalar} disabled={!accountId||!containerId||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
           </div>
           {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
           {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
@@ -933,7 +935,7 @@ function GtmInstalacao({c}){
   );
 }
 
-function GithubInstalacao({c}){
+function GithubInstalacao({c,onUpdated}){
   const [open,setOpen]=useState(true);
   const [githubConnected,setGithubConnected]=useState(null);
   const [repos,setRepos]=useState(null);
@@ -970,14 +972,16 @@ function GithubInstalacao({c}){
     setSaving(true);setMsg("");
     const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
     setSaving(false);
-    if(d.error){setMsg(d.error);}else{setMsg("Repositório vinculado.");setTimeout(()=>setMsg(""),2500);}
+    if(d.error){setMsg(d.error);}else{setMsg("Repositório vinculado.");setTimeout(()=>setMsg(""),2500);onUpdated&&onUpdated();}
   };
   const instalar=async()=>{
+    if(!repoFullName||!filePath.trim())return;
     setInstalling(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST'});
+    // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
     setInstalling(false);
     if(d.error)setMsg(d.error);
-    else{setInstalledAt(new Date().toISOString());setMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");}
+    else{setInstalledAt(new Date().toISOString());setMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");onUpdated&&onUpdated();}
   };
   if(githubConnected===null)return null;
   return(
@@ -1017,7 +1021,7 @@ function GithubInstalacao({c}){
           {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
           <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={salvarVinculo} disabled={!repoFullName||!filePath.trim()||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||saving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{saving?"Salvando…":"Vincular repositório"}</button>
-            <button onClick={instalar} disabled={(!c.github_repo&&!repoFullName)||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!c.github_repo&&!repoFullName)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
+            <button onClick={instalar} disabled={!repoFullName||!filePath.trim()||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
           </div>
           {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
           {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
@@ -1509,8 +1513,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
         <>
           <EmailAdmin c={c} onUpdated={onUpdated}/>
           <AtivacaoAdmin c={c}/>
-          <GtmInstalacao c={c}/>
-          <GithubInstalacao c={c}/>
+          <GtmInstalacao c={c} onUpdated={onUpdated}/>
+          <GithubInstalacao c={c} onUpdated={onUpdated}/>
         </>
       )}
     </div>
