@@ -2977,6 +2977,72 @@ app.get("/api/admin/analytics/visits", requireAuth, requireAdmin, async (req, re
   res.json({ total, sources });
 });
 
+// Mesma coisa que /api/analytics/visits (usada pelo produtor na aba Máquina), só que o admin
+// escolhe de qual cliente via ?owner= — pra ver o gráfico de visitas de qualquer cliente.
+app.get("/api/admin/client-analytics", requireAuth, requireAdmin, async (req, res) => {
+  const owner = req.query.owner;
+  if (!owner) return res.status(400).json({ error: "owner ausente" });
+  const days  = Math.min(parseInt(req.query.days) || 30, 30);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data: rows } = await supabase
+    .from("visits").select("created_at, source, device")
+    .eq("owner_id", owner).eq("event_type", "pageview").gte("created_at", since);
+  if (!rows) return res.json({ total: 0, daily: [], sources: [], devices: [] });
+
+  const byDay = {};
+  rows.forEach(r => { const d = r.created_at.slice(0, 10); byDay[d] = (byDay[d] || 0) + 1; });
+  const daily = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    daily.push({ date: d, count: byDay[d] || 0 });
+  }
+
+  const bySrc = {};
+  rows.forEach(r => { bySrc[r.source] = (bySrc[r.source] || 0) + 1; });
+  const total = rows.length;
+  const sources = Object.entries(bySrc)
+    .map(([src, cnt]) => ({ source: src, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  const byDevice = {};
+  rows.forEach(r => { byDevice[r.device || 'unknown'] = (byDevice[r.device || 'unknown'] || 0) + 1; });
+  const devices = Object.entries(byDevice)
+    .map(([device, cnt]) => ({ device, count: cnt, pct: total ? Math.round(cnt * 100 / total) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
+  res.json({ total, daily, sources, devices });
+});
+
+// Mesma coisa que /api/funnel (produtor, aba Máquina), só que o admin escolhe o cliente via ?owner=.
+app.get("/api/admin/funnel", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const uid = req.query.owner;
+    if (!uid) return res.status(400).json({ error: "owner ausente" });
+    const from = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [total, chatVisits, checkoutVisits, cliquesLigar, cliquesWhats, leads, salesRes] = await Promise.all([
+      supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("event_type", "pageview").gte("created_at", from),
+      supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("event_type", "pageview").gte("created_at", from).ilike("page", "%minichat%"),
+      supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("event_type", "pageview").gte("created_at", from).ilike("page", "%checkout%"),
+      supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("event_type", "click_ligar").gte("created_at", from),
+      supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("event_type", "click_whatsapp").gte("created_at", from),
+      supabase.from("customers").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("source", "minichat").gte("created_at", from).is("deleted_at", null),
+      supabase.from("sales").select("*", { count: "exact", head: true }).eq("owner_id", uid).eq("status", "pago").gte("created_at", from),
+    ]);
+    res.json({
+      visitors: total.count || 0,
+      chat: chatVisits.count || 0,
+      leads: leads.count || 0,
+      checkout: checkoutVisits.count || 0,
+      cliquesLigar: cliquesLigar.count || 0,
+      cliquesWhatsapp: cliquesWhats.count || 0,
+      sales: salesRes.count || 0,
+    });
+  } catch (err) {
+    console.error("[admin/funnel]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Perfil do produtor: ler e salvar nome/empresa/avatar ──────────────────────
 app.get("/api/user/profile", requireAuth, async (req, res) => {
   const { data } = await supabase.from("profiles")

@@ -484,6 +484,108 @@ function VisitorChart({analytics,loadingAnalytics}){
   );
 }
 
+// Mesmo gráfico de visitantes da aba Máquina do produtor, só que o admin escolhe o cliente.
+function VisitasClienteAdmin({ownerId}){
+  const [analytics,setAnalytics]=useState(null);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    setLoading(true);
+    apiCall(`/api/admin/client-analytics?owner=${ownerId}&days=30`).then(d=>{if(!d.error)setAnalytics(d);setLoading(false);});
+  },[ownerId]);
+  const hasData=analytics&&analytics.total>0;
+  const DAYS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const chartRows=(analytics?.daily||[]).map(d=>({...d,label:DAYS[new Date(d.date+"T12:00:00").getDay()]}));
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
+        {hasData&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{analytics.total} visitas</span>}
+      </div>
+      {hasData?(
+        <>
+          <div style={{color:MUTED,fontSize:12,marginBottom:10}}>Últimos 30 dias</div>
+          <div style={{height:110}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartRows} margin={{top:4,right:4,left:-32,bottom:0}}>
+                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.03)" vertical={false}/>
+                <XAxis dataKey="label" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+                <YAxis hide/>
+                <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} formatter={v=>[v+" visitantes",""]}/>
+                <Bar dataKey="count" fill={`${GOLD}88`} radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      ):(
+        <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
+          {loading?<div style={{display:"flex",alignItems:"flex-end",gap:3,height:50}}>{[40,25,60,35,55,30,75,20,50,45,65,30,45,25,55].map((h,i)=>(<div key={i} className="sk" style={{flex:1,height:`${h}%`,borderRadius:"3px 3px 0 0"}}/>))}</div>:<div style={{color:MUTED,fontSize:12}}>Aguardando primeiras visitas</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mesmo funil de conversão da aba Máquina do produtor (visitantes → MiniChat → interessados →
+// link de pagamento → viraram clientes), só que o admin escolhe o cliente.
+function FunilClienteAdmin({ownerId}){
+  const [funnel,setFunnel]=useState(null);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    setLoading(true);
+    apiCall(`/api/admin/funnel?owner=${ownerId}`).then(d=>{if(!d.error)setFunnel(d);setLoading(false);});
+  },[ownerId]);
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px 18px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Funil de conversão</div>
+        <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
+      </div>
+      {loading?[1,2,3,4,5].map(i=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<5?9:0}}>
+          <div className="sk" style={{height:11,width:110,borderRadius:5,flexShrink:0}}/>
+          <div className="sk" style={{height:4,flex:1,borderRadius:2}}/>
+          <div className="sk" style={{height:11,width:28,borderRadius:5}}/>
+          <div className="sk" style={{height:11,width:28,borderRadius:5}}/>
+        </div>
+      )):(()=>{
+        const steps=[
+          {label:"Visitaram o site",value:funnel?.visitors||0,color:GOLD},
+          {label:"MiniChat",value:funnel?.chat||0,color:"rgba(212,175,55,0.75)"},
+          {label:"Interessados",value:funnel?.leads||0,color:"rgba(212,175,55,0.55)"},
+          {label:"Link de pagamento",value:funnel?.checkout||0,color:"rgba(212,175,55,0.4)"},
+          {label:"Viraram clientes",value:funnel?.sales||0,color:"#22c55e"},
+        ];
+        const base=Math.max(...steps.map(s=>s.value),1);
+        return steps.map((step,i)=>{
+          const pct=Math.min(Math.round(step.value/base*100),100);
+          return(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<4?9:0}}>
+              <span style={{color:MUTED,fontSize:12,width:112,flexShrink:0}}>{step.label}</span>
+              <div style={{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}>
+                <div style={{height:"100%",borderRadius:2,background:step.color,width:pct>0?`${pct}%`:"0%",transition:"width 0.5s"}}/>
+              </div>
+              <span style={{color:TEXT,fontWeight:700,fontSize:12,minWidth:22,textAlign:"right"}}>{step.value}</span>
+              <span style={{color:MUTED,fontSize:11,minWidth:30,textAlign:"right"}}>{i>0?`${pct}%`:""}</span>
+            </div>
+          );
+        });
+      })()}
+      {!loading&&((funnel?.cliquesLigar||0)>0||(funnel?.cliquesWhatsapp||0)>0)&&(
+        <div style={{display:"flex",gap:8,marginTop:14,paddingTop:14,borderTop:`1px solid ${BDR}`}}>
+          <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>📞 Cliques em Ligar</div>
+            <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesLigar||0}</div>
+          </div>
+          <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>💬 Cliques em WhatsApp</div>
+            <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesWhatsapp||0}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const QQ=["📊 Vendas hoje?","💰 Receita da semana?","🔗 Gerar link de afiliado","📈 Minha conversão?","❓ Configurar checkout","🆘 Suporte"];
 // AR removido — chat IA sempre chama a API real (Anthropic), respostas hardcoded não são usadas
 
@@ -1504,6 +1606,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
             <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
             <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
           </div>
+          <VisitasClienteAdmin ownerId={c.id}/>
+          <FunilClienteAdmin ownerId={c.id}/>
           <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
           <ProdutosDoCliente ownerId={c.id} nome={nome}/>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
