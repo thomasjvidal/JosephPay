@@ -2131,6 +2131,9 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
     res.json({ ok: true });
   } catch (err) {
     console.error("[github/install-sensor]", err.response?.data || err.message);
+    if (err.response?.status === 404) {
+      return res.status(400).json({ error: "Não encontrei esse arquivo nesse repositório. Confira se o caminho está certo (ex: index.html, ou public/index.html se o arquivo estiver dentro de uma pasta) e se o repositório já tem algum código enviado." });
+    }
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o sensor via GitHub" });
   }
 });
