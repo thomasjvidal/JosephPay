@@ -1157,6 +1157,70 @@ function GithubInstalacao({c,onUpdated}){
   );
 }
 
+function BotoesMinichatAdmin({c}){
+  const [open,setOpen]=useState(false);
+  const [links,setLinks]=useState(null);
+  const [selected,setSelected]=useState({});
+  const [applying,setApplying]=useState(false);
+  const [msg,setMsg]=useState("");
+  const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+  const carregar=()=>{
+    if(!c.github_repo||!c.github_file_path)return;
+    setLinks(null);setMsg("");setSelected({});
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+      if(d.error){setMsg(d.error);setLinks([]);return;}
+      setLinks(d.links||[]);
+    });
+  };
+  useEffect(()=>{if(open&&links===null)carregar();},[open]);
+  const toggle=href=>setSelected(s=>({...s,[href]:!s[href]}));
+  const selecionados=Object.keys(selected).filter(h=>selected[h]);
+  const aplicar=async()=>{
+    if(!selecionados.length)return;
+    setApplying(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({hrefs:selecionados})});
+    setApplying(false);
+    if(d.error){setMsg(d.error);return;}
+    setMsg(`✓ ${d.changed} link(s) atualizado(s) no repositório.`);
+    carregar();
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Botões do site → Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
+      {open&&(<div style={{marginTop:8}}>
+        {(!c.github_repo||!c.github_file_path)?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Vincule primeiro um repositório e um arquivo no card <b style={{color:TEXT}}>Instalar sensor via GitHub</b> acima.</div>
+        ):(
+          <>
+            <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</div>
+            {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
+            {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
+            {links&&links.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
+                {links.map(l=>{
+                  const isMinichat=l.href===minichatLink;
+                  const checked=!!selected[l.href];
+                  return(
+                    <label key={l.href} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
+                      <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggle(l.href)} style={{marginTop:3}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
+                        <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
+            <button onClick={aplicar} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
+          </>
+        )}
+      </div>)}
+    </div>
+  );
+}
+
 function EmailAdmin({c,onUpdated}){
   const [open,setOpen]=useState(false);
   const [status,setStatus]=useState(null);
@@ -1749,6 +1813,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           <AtivacaoAdmin c={c}/>
           <GtmInstalacao c={c} onUpdated={onUpdated}/>
           <GithubInstalacao c={c} onUpdated={onUpdated}/>
+          <BotoesMinichatAdmin c={c}/>
         </>
       )}
     </div>

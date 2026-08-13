@@ -2160,6 +2160,78 @@ app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, r
   }
 });
 
+// Lê os links (<a href>) que existem de verdade num arquivo do repositório — pra mostrar
+// pro admin escolher quais devem passar a apontar pro Mini Chat, antes de aplicar qualquer coisa.
+app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { repo, file } = req.query;
+    if (!repo || !file) return res.status(400).json({ error: "repo e file são obrigatórios" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(file)}`, { headers });
+    const content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    const groups = {};
+    let m;
+    while ((m = re.exec(content))) {
+      const href = m[1].trim();
+      const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+      if (!href || href.startsWith("#")) continue;
+      if (!groups[href]) groups[href] = { href, count: 0, samples: [] };
+      groups[href].count++;
+      if (text && groups[href].samples.length < 3 && !groups[href].samples.includes(text)) groups[href].samples.push(text);
+    }
+    const links = Object.values(groups).sort((a, b) => b.count - a.count);
+    res.json({ links });
+  } catch (err) {
+    console.error("[github/scan-links]", err.response?.data || err.message);
+    if (err.response?.status === 404) return res.status(400).json({ error: "Não encontrei esse arquivo nesse repositório." });
+    res.status(500).json({ error: "Falha ao ler os links do repositório" });
+  }
+});
+
+// Aplica só os links escolhidos pelo admin, trocando o href exato de cada um pro link do
+// Mini Chat desse cliente — substituição direta de texto, sem adivinhar nada.
+app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { hrefs } = req.body;
+    if (!Array.isArray(hrefs) || !hrefs.length) return res.status(400).json({ error: "Nenhum link selecionado" });
+    const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
+    if (!profile?.github_repo || !profile?.github_file_path) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const { github_repo: repo, github_file_path: filePath } = profile;
+
+    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    const sha = fileResp.data.sha;
+    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    let changed = 0;
+    hrefs.forEach(href => {
+      const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`href\\s*=\\s*(["'])${escaped}\\1`, "g");
+      const before = content;
+      content = content.replace(re, `href="${minichatLink}"`);
+      if (content !== before) changed++;
+    });
+    if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
+
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: aponta botões do site pro Mini Chat",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      sha,
+    }, { headers });
+
+    res.json({ ok: true, changed });
+  } catch (err) {
+    console.error("[github/apply-links]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao aplicar os links no repositório" });
+  }
+});
+
 app.post("/api/admin/producers/:id/github", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
