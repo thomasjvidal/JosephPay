@@ -1403,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at")
+      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -2236,6 +2236,55 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
   } catch (err) {
     console.error("[github/apply-links]", err.response?.data || err.message);
     res.status(500).json({ error: "Falha ao aplicar os links no repositório" });
+  }
+});
+
+// Instala uma "porta de entrada" do Mini Chat dentro do repositório do cliente — um arquivo
+// leve que só abre o Mini Chat central do JosephPay. Assim o arquivo existe de verdade no
+// repositório, mas o motor continua um só: melhorias futuras chegam pra todos sozinhas.
+app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let filePath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "");
+    if (!filePath) return res.status(400).json({ error: "Caminho do arquivo é obrigatório" });
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    const loaderHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="0;url=${minichatLink}">
+<title>Mini Chat</title>
+<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">
+<p>Redirecionando…</p>
+</body>
+</html>
+`;
+    let sha;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      sha = existing.data.sha;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: instala página do Mini Chat",
+      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }, { headers });
+    await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true, file_path: filePath });
+  } catch (err) {
+    console.error("[github/install-minichat]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
   }
 });
 

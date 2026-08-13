@@ -1086,7 +1086,21 @@ function GithubInstalacao({c,onUpdated}){
   const [selected,setSelected]=useState({});
   const [applying,setApplying]=useState(false);
   const [msgLinks,setMsgLinks]=useState("");
+  const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
+  const [installingMinichat,setInstallingMinichat]=useState(false);
+  const [minichatInstalledAt,setMinichatInstalledAt]=useState(c.github_minichat_installed_at||null);
+  const [msgMinichat,setMsgMinichat]=useState("");
   const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+  const instalarMinichat=async()=>{
+    if(!repoFullName||!minichatPath.trim())return;
+    setInstallingMinichat(true);setMsgMinichat("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
+    setInstallingMinichat(false);
+    if(d.error){setMsgMinichat(d.error);return;}
+    setMinichatInstalledAt(new Date().toISOString());
+    setMsgMinichat(`✓ Página criada em ${d.file_path}.`);
+    onUpdated&&onUpdated();
+  };
   const carregarLinks=()=>{
     if(!c.github_repo||!c.github_file_path)return;
     setLinks(null);setMsgLinks("");setSelected({});
@@ -1175,6 +1189,18 @@ function GithubInstalacao({c,onUpdated}){
           </div>
           {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
           {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
+
+          {repoFullName&&(
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Instalar Mini Chat no repositório</div>
+              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página dentro do repositório do cliente que abre o Mini Chat. O conteúdo continua vindo do JosephPay — quando eu melhorar o Mini Chat, todos os clientes recebem a atualização sozinhos, sem precisar reinstalar nada aqui.</div>
+              <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+              {c.github_minichat_path&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Instalado hoje em: <b style={{color:TEXT}}>{c.github_minichat_path}</b></div>}
+              <button onClick={instalarMinichat} disabled={!repoFullName||!minichatPath.trim()||installingMinichat} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installingMinichat?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!minichatPath.trim())?0.5:1,marginBottom:8}}>{installingMinichat?"Instalando…":"Instalar Mini Chat"}</button>
+              {minichatInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(minichatInstalledAt).toLocaleString('pt-BR')}</div>}
+              {msgMinichat&&<div style={{color:MUTED,fontSize:11}}>{msgMinichat}</div>}
+            </div>
+          )}
 
           {c.github_repo&&c.github_file_path&&(
             <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
