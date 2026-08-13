@@ -1793,29 +1793,36 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
   try {
     const { id } = req.params;
     const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions } = req.body;
-    if (!whatsapp_number?.trim()) return res.status(400).json({ error: "Número de WhatsApp é obrigatório" });
-    // Perguntas personalizadas são opcionais — só aceita perguntas com texto e pelo menos 2 opções válidas.
-    // Se vier vazio/ inválido, o widget usa as 4 perguntas padrão (não quebra o cliente).
-    let cleanQuestions = null;
-    if (Array.isArray(questions)) {
-      cleanQuestions = questions
-        .map(q => ({
-          text: String(q?.text || "").trim(),
-          subtext: String(q?.subtext || "").trim(),
-          options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [],
-        }))
-        .filter(q => q.text && q.options.length >= 2);
+    // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
+    // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
+    // sem uma apagar o que a outra já tinha configurado.
+    const { data: current } = await supabase.from("profiles").select("minichat_config").eq("id", id).maybeSingle();
+    const existing = current?.minichat_config || {};
+    let cleanQuestions = existing.questions ?? null;
+    if (questions !== undefined) {
+      // Perguntas personalizadas são opcionais — só aceita perguntas com texto e pelo menos 2 opções válidas.
+      // Se vier vazio/inválido, o widget usa as 4 perguntas padrão (não quebra o cliente).
+      cleanQuestions = Array.isArray(questions)
+        ? questions
+            .map(q => ({
+              text: String(q?.text || "").trim(),
+              subtext: String(q?.subtext || "").trim(),
+              options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [],
+            }))
+            .filter(q => q.text && q.options.length >= 2)
+        : [];
       if (!cleanQuestions.length) cleanQuestions = null;
     }
     const minichat_config = {
-      whatsapp_number: whatsapp_number.trim(),
-      brand_name: brand_name?.trim() || null,
-      greeting_name: greeting_name?.trim() || brand_name?.trim() || null,
-      avatar_url: avatar_url?.trim() || null,
-      redirect_link: redirect_link?.trim() || null,
-      email_destino: email_destino?.trim() || null,
+      whatsapp_number: whatsapp_number !== undefined ? whatsapp_number.trim() : existing.whatsapp_number,
+      brand_name: brand_name !== undefined ? (brand_name?.trim() || null) : (existing.brand_name ?? null),
+      greeting_name: greeting_name !== undefined ? (greeting_name?.trim() || brand_name?.trim() || null) : (existing.greeting_name ?? null),
+      avatar_url: avatar_url !== undefined ? (avatar_url?.trim() || null) : (existing.avatar_url ?? null),
+      redirect_link: redirect_link !== undefined ? (redirect_link?.trim() || null) : (existing.redirect_link ?? null),
+      email_destino: email_destino !== undefined ? (email_destino?.trim() || null) : (existing.email_destino ?? null),
       questions: cleanQuestions,
     };
+    if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, minichat_config });

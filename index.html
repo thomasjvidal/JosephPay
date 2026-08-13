@@ -1082,6 +1082,31 @@ function GithubInstalacao({c,onUpdated}){
   const [installing,setInstalling]=useState(false);
   const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||null);
   const [msg,setMsg]=useState("");
+  const [links,setLinks]=useState(null);
+  const [selected,setSelected]=useState({});
+  const [applying,setApplying]=useState(false);
+  const [msgLinks,setMsgLinks]=useState("");
+  const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+  const carregarLinks=()=>{
+    if(!c.github_repo||!c.github_file_path)return;
+    setLinks(null);setMsgLinks("");setSelected({});
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+      if(d.error){setMsgLinks(d.error);setLinks([]);return;}
+      setLinks(d.links||[]);
+    });
+  };
+  useEffect(()=>{if(open&&links===null&&c.github_repo&&c.github_file_path)carregarLinks();},[open]);
+  const toggleLink=href=>setSelected(s=>({...s,[href]:!s[href]}));
+  const selecionados=Object.keys(selected).filter(h=>selected[h]);
+  const aplicarLinks=async()=>{
+    if(!selecionados.length)return;
+    setApplying(true);setMsgLinks("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({hrefs:selecionados})});
+    setApplying(false);
+    if(d.error){setMsgLinks(d.error);return;}
+    setMsgLinks(`✓ ${d.changed} link(s) atualizado(s) no repositório.`);
+    carregarLinks();
+  };
   useEffect(()=>{
     apiCall('/api/admin/github/status').then(d=>{
       setGithubConnected(!!d?.connected);
@@ -1150,73 +1175,37 @@ function GithubInstalacao({c,onUpdated}){
           </div>
           {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
           {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
+
+          {c.github_repo&&c.github_file_path&&(
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Botões do site → Mini Chat</div>
+              <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</div>
+              {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
+              {links&&links.length===0&&!msgLinks&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
+              {links&&links.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
+                  {links.map(l=>{
+                    const isMinichat=l.href===minichatLink;
+                    const checked=!!selected[l.href];
+                    return(
+                      <label key={l.href} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
+                        <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l.href)} style={{marginTop:3}}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
+                          <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {msgLinks&&<div style={{color:msgLinks.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msgLinks}</div>}
+              <button onClick={aplicarLinks} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
+            </div>
+          )}
         </>
       )}
       </>)}
-    </div>
-  );
-}
-
-function BotoesMinichatAdmin({c}){
-  const [open,setOpen]=useState(false);
-  const [links,setLinks]=useState(null);
-  const [selected,setSelected]=useState({});
-  const [applying,setApplying]=useState(false);
-  const [msg,setMsg]=useState("");
-  const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
-  const carregar=()=>{
-    if(!c.github_repo||!c.github_file_path)return;
-    setLinks(null);setMsg("");setSelected({});
-    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
-      if(d.error){setMsg(d.error);setLinks([]);return;}
-      setLinks(d.links||[]);
-    });
-  };
-  useEffect(()=>{if(open&&links===null)carregar();},[open]);
-  const toggle=href=>setSelected(s=>({...s,[href]:!s[href]}));
-  const selecionados=Object.keys(selected).filter(h=>selected[h]);
-  const aplicar=async()=>{
-    if(!selecionados.length)return;
-    setApplying(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({hrefs:selecionados})});
-    setApplying(false);
-    if(d.error){setMsg(d.error);return;}
-    setMsg(`✓ ${d.changed} link(s) atualizado(s) no repositório.`);
-    carregar();
-  };
-  return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Botões do site → Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
-      {open&&(<div style={{marginTop:8}}>
-        {(!c.github_repo||!c.github_file_path)?(
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Vincule primeiro um repositório e um arquivo no card <b style={{color:TEXT}}>Instalar sensor via GitHub</b> acima.</div>
-        ):(
-          <>
-            <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</div>
-            {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
-            {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
-            {links&&links.length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
-                {links.map(l=>{
-                  const isMinichat=l.href===minichatLink;
-                  const checked=!!selected[l.href];
-                  return(
-                    <label key={l.href} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
-                      <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggle(l.href)} style={{marginTop:3}}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
-                        <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-            {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
-            <button onClick={aplicar} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
-          </>
-        )}
-      </div>)}
     </div>
   );
 }
@@ -1569,8 +1558,6 @@ function AtivacaoAdmin({c}){
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
-  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
-  const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
@@ -1586,12 +1573,6 @@ function AtivacaoAdmin({c}){
     };
     reader.readAsDataURL(file);
   };
-  const addQuestion=()=>setQuestions(qs=>[...qs,{text:"",subtext:"",options:["","","",""]}]);
-  const removeQuestion=i=>setQuestions(qs=>qs.filter((_,idx)=>idx!==i));
-  const updateQuestion=(i,field,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===i?{...q,[field]:val}:q));
-  const updateOption=(qi,oi,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.map((o,oidx)=>oidx===oi?val:o)}:q));
-  const addOption=qi=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:[...q.options,""]}:q));
-  const removeOption=(qi,oi)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.filter((_,oidx)=>oidx!==oi)}:q));
   const salvarMinichat=async()=>{
     if(!wapNum.trim())return;
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({
@@ -1601,7 +1582,6 @@ function AtivacaoAdmin({c}){
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
       email_destino:emailDestino.trim(),
-      questions,
     })});
     if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
   };
@@ -1640,32 +1620,61 @@ function AtivacaoAdmin({c}){
       <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail da empresa (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
 
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Perguntas do diagnóstico</div>
-      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
-      {questions.map((q,qi)=>(
-        <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <span style={{color:MUTED,fontSize:11,fontWeight:700}}>Pergunta {qi+1}</span>
-            <button onClick={()=>removeQuestion(qi)} style={{background:"none",border:"none",color:RED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Remover</button>
-          </div>
-          <textarea value={q.text} onChange={e=>updateQuestion(qi,"text",e.target.value)} placeholder="Texto da mensagem (ex: Vamos fazer um diagnóstico rápido)" rows={2} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8,resize:"vertical"}}/>
-          <input value={q.subtext} onChange={e=>updateQuestion(qi,"subtext",e.target.value)} placeholder="Pergunta objetiva (ex: Qual seu principal objetivo hoje?)" style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8}}/>
-          {q.options.map((opt,oi)=>(
-            <div key={oi} style={{display:"flex",gap:6,marginBottom:6}}>
-              <input value={opt} onChange={e=>updateOption(qi,oi,e.target.value)} placeholder={`Opção ${oi+1}`} style={{flex:1,background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F}}/>
-              {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} style={{background:"none",border:"none",color:MUTED,fontSize:14,cursor:"pointer",padding:"0 6px"}}>✕</button>}
-            </div>
-          ))}
-          <button onClick={()=>addOption(qi)} style={{background:"none",border:`1px dashed ${BDR}`,borderRadius:8,padding:"5px 10px",color:MUTED,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,marginTop:2}}>+ Opção</button>
-        </div>
-      ))}
-      <button onClick={addQuestion} style={{width:"100%",background:"none",border:`1px dashed ${BDR}`,borderRadius:12,padding:10,color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:16}}>+ Adicionar pergunta</button>
-
       <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,marginBottom:c.minichat_config||miniSaved?10:16}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:16}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
+      </div>)}
+    </div>
+  );
+}
+
+function PerguntasMinichatAdmin({c}){
+  const [open,setOpen]=useState(false);
+  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
+  const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const [msg,setMsg]=useState("");
+  const addQuestion=()=>setQuestions(qs=>[...qs,{text:"",subtext:"",options:["","","",""]}]);
+  const removeQuestion=i=>setQuestions(qs=>qs.filter((_,idx)=>idx!==i));
+  const updateQuestion=(i,field,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===i?{...q,[field]:val}:q));
+  const updateOption=(qi,oi,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.map((o,oidx)=>oidx===oi?val:o)}:q));
+  const addOption=qi=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:[...q.options,""]}:q));
+  const removeOption=(qi,oi)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.filter((_,oidx)=>oidx!==oi)}:q));
+  const salvar=async()=>{
+    setSaving(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({questions})});
+    setSaving(false);
+    if(d.error){setMsg(d.error);return;}
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        {questions.map((q,qi)=>(
+          <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{color:MUTED,fontSize:11,fontWeight:700}}>Pergunta {qi+1}</span>
+              <button onClick={()=>removeQuestion(qi)} style={{background:"none",border:"none",color:RED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Remover</button>
+            </div>
+            <textarea value={q.text} onChange={e=>updateQuestion(qi,"text",e.target.value)} placeholder="Texto da mensagem (ex: Vamos fazer um diagnóstico rápido)" rows={2} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8,resize:"vertical"}}/>
+            <input value={q.subtext} onChange={e=>updateQuestion(qi,"subtext",e.target.value)} placeholder="Pergunta objetiva (ex: Qual seu principal objetivo hoje?)" style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8}}/>
+            {q.options.map((opt,oi)=>(
+              <div key={oi} style={{display:"flex",gap:6,marginBottom:6}}>
+                <input value={opt} onChange={e=>updateOption(qi,oi,e.target.value)} placeholder={`Opção ${oi+1}`} style={{flex:1,background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F}}/>
+                {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} style={{background:"none",border:"none",color:MUTED,fontSize:14,cursor:"pointer",padding:"0 6px"}}>✕</button>}
+              </div>
+            ))}
+            <button onClick={()=>addOption(qi)} style={{background:"none",border:`1px dashed ${BDR}`,borderRadius:8,padding:"5px 10px",color:MUTED,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,marginTop:2}}>+ Opção</button>
+          </div>
+        ))}
+        <button onClick={addQuestion} style={{width:"100%",background:"none",border:`1px dashed ${BDR}`,borderRadius:12,padding:10,color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:16}}>+ Adicionar pergunta</button>
+        {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
+        <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
       </div>)}
     </div>
   );
@@ -1811,9 +1820,9 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
         <>
           <EmailAdmin c={c} onUpdated={onUpdated}/>
           <AtivacaoAdmin c={c}/>
+          <PerguntasMinichatAdmin c={c}/>
           <GtmInstalacao c={c} onUpdated={onUpdated}/>
           <GithubInstalacao c={c} onUpdated={onUpdated}/>
-          <BotoesMinichatAdmin c={c}/>
         </>
       )}
     </div>
