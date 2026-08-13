@@ -1502,12 +1502,26 @@ function AtivacaoAdmin({c}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
+  const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
+  const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
   const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
+  const enviarFoto=async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    e.target.value="";
+    setUploadingFoto(true);
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      const d=await apiCall(`/api/admin/producers/${c.id}/minichat/avatar`,{method:'POST',body:JSON.stringify({base64:ev.target.result})});
+      setUploadingFoto(false);
+      if(d?.url)setAvatarUrl(d.url);
+    };
+    reader.readAsDataURL(file);
+  };
   const addQuestion=()=>setQuestions(qs=>[...qs,{text:"",subtext:"",options:["","","",""]}]);
   const removeQuestion=i=>setQuestions(qs=>qs.filter((_,idx)=>idx!==i));
   const updateQuestion=(i,field,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===i?{...q,[field]:val}:q));
@@ -1522,6 +1536,7 @@ function AtivacaoAdmin({c}){
       greeting_name:brandName.trim(),
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
+      email_destino:emailDestino.trim(),
       questions,
     })});
     if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
@@ -1548,9 +1563,18 @@ function AtivacaoAdmin({c}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mini Chat</div>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-      <input value={avatarUrl} onChange={e=>setAvatarUrl(e.target.value)} placeholder="URL da foto de perfil (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
-      <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento (opcional — padrão é WhatsApp)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
-      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, o botão final abre o WhatsApp com a mensagem do diagnóstico. Se preencher, o botão abre esse link no lugar (ex: uma página de agendamento).</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Foto de perfil</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
+        <label style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,textAlign:"center"}}>
+          {uploadingFoto?"Enviando…":avatarUrl?"Trocar foto":"Enviar foto"}
+          <input type="file" accept="image/*" onChange={enviarFoto} disabled={uploadingFoto} style={{display:"none"}}/>
+        </label>
+      </div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
+      <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento (opcional — sobrepõe WhatsApp e E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+      <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail da empresa (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Perguntas do diagnóstico</div>
       <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>

@@ -1771,10 +1771,28 @@ app.post("/api/admin/producers/:id/email/disconnect", requireAuth, requireAdmin,
   res.json({ connected: false });
 });
 
+// Upload da foto de perfil do Mini Chat de um cliente — mesmo padrão do upload de avatar
+// do usuário (/api/user/avatar), só que o admin escolhe o cliente via :id.
+app.post("/api/admin/producers/:id/minichat/avatar", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { base64 } = req.body;
+  if (!base64) return res.status(400).json({ error: "base64 ausente" });
+  const match = base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: "formato inválido" });
+  const contentType = match[1];
+  const ext = contentType.split("/")[1] || "jpg";
+  const buffer = Buffer.from(match[2], "base64");
+  const path = `minichat/${id}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, buffer, { contentType, upsert: true });
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  res.json({ url: `${publicUrl}?v=${Date.now()}` });
+});
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, questions } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions } = req.body;
     if (!whatsapp_number?.trim()) return res.status(400).json({ error: "Número de WhatsApp é obrigatório" });
     // Perguntas personalizadas são opcionais — só aceita perguntas com texto e pelo menos 2 opções válidas.
     // Se vier vazio/ inválido, o widget usa as 4 perguntas padrão (não quebra o cliente).
@@ -1795,6 +1813,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       greeting_name: greeting_name?.trim() || brand_name?.trim() || null,
       avatar_url: avatar_url?.trim() || null,
       redirect_link: redirect_link?.trim() || null,
+      email_destino: email_destino?.trim() || null,
       questions: cleanQuestions,
     };
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);

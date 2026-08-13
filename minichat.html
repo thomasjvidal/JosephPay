@@ -557,6 +557,11 @@
             <span>Enviar para o WhatsApp</span>
         </button>
 
+        <button class="cta-button" id="emailBtn" onclick="sendToEmail()" style="display:none;margin-top:12px;background:var(--bg-secondary);border:1.5px solid var(--border);color:var(--text-primary);">
+            <span>✉️</span>
+            <span>Enviar por E-mail</span>
+        </button>
+
         <div class="redirect-status" id="redirectStatus"></div>
     </div>
 </div>
@@ -569,6 +574,7 @@
     let GREETING_NAME = "Nexy";
     let AVATAR_URL = "";
     let REDIRECT_LINK = "";
+    let EMAIL_DESTINO = "";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
 
     function applyAvatar() {
@@ -596,6 +602,13 @@
             GREETING_NAME = cfg.greeting_name || cfg.brand_name || GREETING_NAME;
             if (cfg.avatar_url) AVATAR_URL = cfg.avatar_url;
             if (cfg.redirect_link) REDIRECT_LINK = cfg.redirect_link;
+            if (cfg.email_destino) EMAIL_DESTINO = cfg.email_destino;
+            // Botão de e-mail só aparece se tiver e-mail configurado e nenhum link de
+            // redirecionamento próprio (esse último sobrepõe tudo, é uma escolha única do admin).
+            if (EMAIL_DESTINO && !REDIRECT_LINK) {
+                const emailBtn = document.getElementById("emailBtn");
+                if (emailBtn) emailBtn.style.display = "flex";
+            }
             if (Array.isArray(cfg.questions) && cfg.questions.length) {
                 const custom = cfg.questions
                     .map((q, i) => ({
@@ -699,6 +712,7 @@
     const completionOverlay = document.getElementById('completionOverlay');
     const diagnosticCard = document.getElementById('diagnosticCard');
     const whatsappBtn = document.getElementById('whatsappBtn');
+    const emailBtn = document.getElementById('emailBtn');
     const redirectStatus = document.getElementById('redirectStatus');
 
     function addMessage(text, isUser = false, subtext = null) {
@@ -865,6 +879,25 @@ Podemos conversar?`;
             }, 800);
 
         }, 600);
+    }
+
+    function sendToEmail() {
+        emailBtn.classList.add('sending');
+        emailBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
+        sendLeadToCRM();
+        const subject = `Pré-diagnóstico digital — ${GREETING_NAME}`;
+        const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage())}`;
+        setTimeout(() => {
+            emailBtn.classList.remove('sending');
+            emailBtn.innerHTML = '<span>✓</span><span>Abrindo e-mail…</span>';
+            redirectStatus.textContent = 'Se não abrir automaticamente, clique novamente no botão acima.';
+            redirectStatus.style.opacity = '1';
+            window.location.href = mailtoUrl;
+            setTimeout(() => {
+                emailBtn.innerHTML = '<span>✉️</span><span>Enviar por E-mail</span>';
+                emailBtn.onclick = () => { window.location.href = mailtoUrl; };
+            }, 1500);
+        }, 500);
     }
 
     // Inicialização
