@@ -1708,6 +1708,33 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
   }
 });
 
+// Admin adiciona contatos em massa direto no CRM de um cliente (tabela customers) —
+// os contatos aparecem no painel do próprio produtor, é a mesma tabela que ele usa.
+app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contacts } = req.body;
+    if (!Array.isArray(contacts) || !contacts.length) return res.status(400).json({ error: "Nenhum contato enviado" });
+    const rows = contacts
+      .map(c => ({
+        owner_id: id,
+        name: String(c?.name || "").trim(),
+        phone: c?.phone ? String(c.phone).trim() : null,
+        email: c?.email ? String(c.email).trim() : null,
+        status: c?.status === "cliente" ? "cliente" : "lead",
+        source: "manual",
+      }))
+      .filter(c => c.name);
+    if (!rows.length) return res.status(400).json({ error: "Nenhum contato válido (precisa de nome)" });
+    const { data, error } = await supabase.from("customers").insert(rows).select("id");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, count: data.length });
+  } catch (err) {
+    console.error("[admin/producers customers bulk]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin conecta/desconecta o e-mail (SMTP) de qualquer cliente em nome dele —
 // mesma lógica de /api/email/connect, só que escopada pelo :id em vez do usuário logado.
 app.get("/api/admin/producers/:id/email/status", requireAuth, requireAdmin, async (req, res) => {

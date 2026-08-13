@@ -243,9 +243,12 @@ const fmtBRL=(v)=>`R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigi
 const fmtLastLogin=(iso)=>{
   if(!iso)return"nunca acessou";
   const d=new Date(iso),now=new Date();
-  const dias=Math.floor((now-d)/86400000);
+  // Compara pelo dia do calendário (não por "últimas 24h"), senão um acesso de ontem à
+  // noite aparece como "hoje" só porque ainda não completou 24h corridas.
+  const meiaNoite=x=>{const y=new Date(x);y.setHours(0,0,0,0);return y;};
+  const dias=Math.round((meiaNoite(now)-meiaNoite(d))/86400000);
   if(dias===0)return`hoje às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
-  if(dias===1)return"ontem";
+  if(dias===1)return`ontem às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
   if(dias<30)return`há ${dias} dias`;
   return d.toLocaleDateString('pt-BR');
 };
@@ -1410,6 +1413,84 @@ function ProdutosDoCliente({ownerId,nome}){
   );
 }
 
+function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
+  const [text,setText]=useState("");
+  const [statuses,setStatuses]=useState({});
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  const [savedCount,setSavedCount]=useState(null);
+  const parseLine=(line)=>{
+    line=line.trim();
+    if(!line)return null;
+    const parts=line.split(/\t|,|;| - /).map(p=>p.trim()).filter(Boolean);
+    let name="",phone="",email="";
+    parts.forEach(p=>{
+      if(/@/.test(p))email=p;
+      else if(/^[\d\s()+.-]{8,}$/.test(p))phone=p.replace(/[^\d+]/g,"");
+      else if(!name)name=p;
+    });
+    if(!name)return null;
+    return{name,phone,email};
+  };
+  const parsed=text.split("\n").map(parseLine).filter(Boolean);
+  const salvar=async()=>{
+    if(!parsed.length)return;
+    setSaving(true);setError("");
+    const contacts=parsed.map((c,i)=>({...c,status:statuses[i]||"lead"}));
+    const d=await apiCall(`/api/admin/producers/${ownerId}/customers/bulk`,{method:'POST',body:JSON.stringify({contacts})});
+    setSaving(false);
+    if(d.error){setError(d.error);return;}
+    setSavedCount(d.count);
+    onCreated&&onCreated();
+  };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
+        {savedCount!==null?(
+          <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+            <div style={{color:GREEN,fontSize:40,marginBottom:12}}>✓</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:8}}>{savedCount} contato(s) adicionado(s)!</div>
+            <div style={{color:MUTED,fontSize:13,marginBottom:20}}>Já aparecem no CRM de {nome}, direto no painel dele.</div>
+            <button onClick={onClose} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
+          </div>
+        ):(
+          <>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:6}}>Adicionar contatos</div>
+            <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Cole a lista — um contato por linha. O sistema separa nome, telefone e e-mail sozinho. Depois só marca quem é interessado ou já é cliente.</div>
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"João Silva, 21999998888, joao@email.com\nMaria Souza, 21988887777"} rows={5} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:14,resize:"vertical"}}/>
+            {parsed.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>{parsed.length} contato(s) encontrado(s)</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:260,overflowY:"auto"}}>
+                  {parsed.map((c,i)=>{
+                    const status=statuses[i]||"lead";
+                    return(
+                      <div key={i} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name}</div>
+                          <div style={{color:MUTED,fontSize:11,marginTop:1}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
+                        </div>
+                        <div style={{display:"flex",gap:4,flexShrink:0}}>
+                          {[["lead","Interessado"],["cliente","Cliente"]].map(([val,label])=>(
+                            <button key={val} onClick={()=>setStatuses(s=>({...s,[i]:val}))} style={{padding:"5px 10px",borderRadius:20,border:`1px solid ${status===val?GOLD+"55":BDR}`,background:status===val?`${GOLD}18`:"transparent",color:status===val?GOLD:MUTED,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {error&&<div style={{color:RED,fontSize:12,marginBottom:12}}>{error}</div>}
+            <button onClick={salvar} disabled={!parsed.length||saving} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:(!parsed.length||saving)?"default":"pointer",fontFamily:F,opacity:!parsed.length?0.5:1}}>{saving?"Salvando…":`Salvar ${parsed.length||""} contato(s)`}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Olá. Vamos fazer um diagnóstico rápido da sua presença digital.\n\nLeva menos de 1 minuto.",subtext:"Qual seu principal objetivo hoje?",options:["Conseguir mais clientes","Passar mais credibilidade","Ter um link profissional","Receber agendamentos"]},
   {text:"Perfeito.",subtext:"Qual sua situação atual?",options:["Não tenho site","Só tenho Instagram","Site antigo/desatualizado","Site não converte"]},
@@ -1513,6 +1594,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
   const [saving,setSaving]=useState(false);
   const [saveErr,setSaveErr]=useState("");
   const [subTab,setSubTab]=useState("geral");
+  const [showContatos,setShowContatos]=useState(false);
   useEffect(()=>{
     if(!c)return;
     apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
@@ -1589,6 +1671,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {taxaFmt}</span>
         </div>
       </div>
+      {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={onUpdated}/>}
+      <Btn sm outline color={GOLD} onClick={()=>setShowContatos(true)}>+ Adicionar contatos</Btn>
       <div style={{display:"flex",gap:6}}>
         {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"}].map(t=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:CARD,color:t.id===subTab?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
