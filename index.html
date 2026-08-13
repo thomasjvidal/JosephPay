@@ -1689,6 +1689,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
             <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
             <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
             <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
+            <KPICard label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="👥"/>
+            <KPICard label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="✅"/>
           </div>
           <VisitasClienteAdmin ownerId={c.id}/>
           <FunilClienteAdmin ownerId={c.id}/>

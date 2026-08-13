@@ -1483,6 +1483,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         leads_total: leadsPorUsuario[p.id]?.total || 0,
         leads_hoje: leadsPorUsuario[p.id]?.hoje || 0,
         clientes_total: clientesPorUsuario[p.id]?.total || 0,
+        clientes_hoje: clientesPorUsuario[p.id]?.hoje || 0,
         visitas_total: visitasPorUsuario[p.id]?.total || 0,
         visitas_hoje: visitasPorUsuario[p.id]?.hoje || 0,
         conn: {
