@@ -1635,7 +1635,7 @@ function AtivacaoAdmin({c}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mini Chat</div>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Foto de perfil</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Foto do Mini Chat (aparece no chat, pro cliente final)</div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
         <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
         <label style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,textAlign:"center"}}>
@@ -1643,6 +1643,7 @@ function AtivacaoAdmin({c}){
           <input type="file" accept="image/*" onChange={enviarFoto} disabled={uploadingFoto} style={{display:"none"}}/>
         </label>
       </div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Essa foto é só do widget do Mini Chat. Pra trocar a foto do perfil do cliente (a que aparece no card da lista e no topo daqui), clique em cima do avatar lá em cima.</div>
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Opções da pergunta "objetivo" (fluxo padrão)</div>
       <textarea value={objetivoOptions} onChange={e=>setObjetivoOptions(e.target.value)} placeholder={"Uma opção por linha (opcional)\nEx:\nAliviar dor\nMelhorar estética\nPrevenção"} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4,resize:"vertical"}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, a pergunta "qual seu objetivo?" vira campo de texto livre no Mini Chat. Só vale pro fluxo padrão (quando o cliente não tem perguntas personalizadas configuradas abaixo).</div>
@@ -1724,11 +1725,26 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
   const [saveErr,setSaveErr]=useState("");
   const [subTab,setSubTab]=useState("geral");
   const [showContatos,setShowContatos]=useState(false);
+  const [avatarPreview,setAvatarPreview]=useState("");
+  const [uploadingAvatar,setUploadingAvatar]=useState(false);
   useEffect(()=>{
     if(!c)return;
     apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
     apiCall(`/api/admin/kpis`).then(d=>{if(d&&!d.error)setKpis(d);});
   },[c?.id]);
+  useEffect(()=>{setAvatarPreview("");},[c?.id]);
+  const enviarFotoPerfil=async(e)=>{
+    const file=e.target.files[0];if(!file||!c)return;
+    e.target.value="";
+    setUploadingAvatar(true);
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      const d=await apiCall(`/api/admin/producers/${c.id}/avatar`,{method:'POST',body:JSON.stringify({base64:ev.target.result})});
+      setUploadingAvatar(false);
+      if(d?.url){setAvatarPreview(d.url);onUpdated&&onUpdated();}
+    };
+    reader.readAsDataURL(file);
+  };
   useEffect(()=>{
     if(c){setEditName(c.name||"");setEditCompany(c.company_name||"");setEditEmail(c.email||"");}
   },[c?.id]);
@@ -1766,7 +1782,11 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-          <Avatar url={c.avatar_url} name={nome} size={50} radius={16} fontSize={22}/>
+          <label style={{position:"relative",cursor:uploadingAvatar?"default":"pointer",flexShrink:0}}>
+            <Avatar url={avatarPreview||c.avatar_url} name={nome} size={50} radius={16} fontSize={22}/>
+            <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,border:`2px solid ${CARD}`}}>{uploadingAvatar?"…":"✎"}</div>
+            <input type="file" accept="image/*" onChange={enviarFotoPerfil} disabled={uploadingAvatar} style={{display:"none"}}/>
+          </label>
           <div style={{flex:1,minWidth:0}}>
             {!editing?(
               <>
@@ -1893,7 +1913,7 @@ function ClientesAdmin(){
   const [clients,setClients]=useState(null);
   const [showCriar,setShowCriar]=useState(false);
   const [refresh,setRefresh]=useState(0);
-  const [ordem,setOrdem]=useState("volume");
+  const [ordem,setOrdem]=useState(()=>localStorage.getItem('jp_admin_ordem_clientes')||"volume");
   useEffect(()=>{
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
   },[refresh]);
@@ -1916,7 +1936,7 @@ function ClientesAdmin(){
       <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
         {ORDENS.map(o=>(
-          <button key={o.id} onClick={()=>setOrdem(o.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
+          <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
         ))}
       </div>
       <div className="jp-promo-card" style={{marginBottom:16}}>

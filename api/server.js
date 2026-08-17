@@ -1789,6 +1789,28 @@ app.post("/api/admin/producers/:id/minichat/avatar", requireAuth, requireAdmin, 
   res.json({ url: `${publicUrl}?v=${Date.now()}` });
 });
 
+// Upload da foto de perfil da CONTA do cliente (a que aparece no card da lista de
+// Clientes e no topo do perfil no Admin) — diferente da foto do Mini Chat acima.
+// Mesmo padrão de /api/user/avatar, mas o admin escolhe o cliente via :id e o
+// upload já salva direto em profiles.avatar_url (não precisa de um "Salvar" separado).
+app.post("/api/admin/producers/:id/avatar", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { base64 } = req.body;
+  if (!base64) return res.status(400).json({ error: "base64 ausente" });
+  const match = base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!match) return res.status(400).json({ error: "formato inválido" });
+  const contentType = match[1];
+  const ext = contentType.split("/")[1] || "jpg";
+  const buffer = Buffer.from(match[2], "base64");
+  const path = `avatars/${id}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, buffer, { contentType, upsert: true });
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  const url = `${publicUrl}?v=${Date.now()}`;
+  await supabase.from("profiles").update({ avatar_url: url }).eq("id", id);
+  res.json({ url });
+});
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
