@@ -1488,7 +1488,10 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         visitas_hoje: visitasPorUsuario[p.id]?.hoje || 0,
         conn: {
           whatsapp: wapConnected,
-          site:     !!p.site_url,
+          // "Site" conectado = tem URL cadastrada OU o sensor já foi instalado de verdade
+          // (via GitHub ou GTM) — antes só checava a URL, então um cliente com sensor
+          // instalado mas sem site_url preenchido aparecia como "não conectado" à toa.
+          site:     !!p.site_url || !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at,
           email:    !!p.email_connected,
           minichat: !!minichatAtivoPorUsuario[p.id],
           googleAds: !!googleAdsPorUsuario[p.id],
