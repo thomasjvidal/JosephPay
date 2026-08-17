@@ -49,3 +49,23 @@ Não altere o nome do evento `begin_checkout` nem as chaves do objeto.
 
 Schema: `tracking`. Acesso via anon key (INSERT + SELECT). Não altere o schema
 nem remova colunas — o sGTM do Ramon depende de todas elas.
+
+## REGRA CRÍTICA: cuidado com fluxo financeiro e mensagens dos produtores
+
+O Thomas é leigo tecnicamente e pediu explicitamente pra eu sempre ter cuidado
+extra nessas duas áreas — não mexer nelas sem ele pedir claramente:
+
+- **Fluxo financeiro dos produtores**: cálculo de taxas, vendas, assinaturas
+  (MRR), saques, ledger, comissão de afiliados. Reorganizar ONDE essas telas
+  aparecem (ex: agrupar em sub-abas) é OK; mexer na LÓGICA de cálculo, nos
+  endpoints que movem dinheiro, ou no schema dessas tabelas não é — só faça
+  isso se for exatamente o que foi pedido.
+- **Fluxo sério de mensagens**: envio de WhatsApp/e-mail (disparos em massa,
+  captura de lead, `sendToWhatsApp`/`sendToEmail` do Mini Chat, SMTP). Mesma
+  regra: reposicionar na UI tudo bem, mudar o comportamento de envio não.
+
+Regra geral pra qualquer mudança no Admin (painel do Thomas): sempre manter
+lógica e coerência pensando num usuário leigo, mas **nunca remover
+capacidade** — se algo precisa ficar mais simples, reorganize/oculte, não
+apague. Na dúvida se uma mudança é só reorganização ou é mudança de
+comportamento real, pergunte antes.
