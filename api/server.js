@@ -2298,7 +2298,17 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(file)}`, { headers });
-    const content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    // Arquivos >=1MB não vêm com "content" preenchido na Contents API (a GitHub exige
+    // buscar o conteúdo bruto separado nesse caso) — sem esse fallback, um arquivo grande
+    // (comum quando o site inteiro vem num HTML só, com o JS embutido) faz o scan "achar
+    // 0 links" silenciosamente, mesmo o arquivo tendo links de verdade.
+    let content = "";
+    if (fileResp.data.content) {
+      content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    } else if (fileResp.data.download_url) {
+      const raw = await axios.get(fileResp.data.download_url, { headers: { Authorization: `Bearer ${token}` } });
+      content = typeof raw.data === "string" ? raw.data : JSON.stringify(raw.data);
+    }
     const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     const groups = {};
     let m;
