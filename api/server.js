@@ -1811,6 +1811,64 @@ app.post("/api/admin/producers/:id/avatar", requireAuth, requireAdmin, async (re
   res.json({ url });
 });
 
+// Gera (com IA) uma pergunta do Mini Chat com base nos dados reais deste cliente
+// (nome/marca, site, produtos cadastrados) — não salva nada, só devolve a sugestão
+// pro admin revisar/editar antes de clicar em "Salvar perguntas".
+app.post("/api/admin/producers/:id/minichat/generate-question", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { index, questions } = req.body;
+    if (!Array.isArray(questions) || typeof index !== "number" || !questions[index]) {
+      return res.status(400).json({ error: "Dados inválidos" });
+    }
+    const [{ data: profile }, { data: products }] = await Promise.all([
+      supabase.from("profiles").select("name,company_name,site_url").eq("id", id).maybeSingle(),
+      supabase.from("products").select("name").eq("owner_id", id).order("created_at", { ascending: false }).limit(10),
+    ]);
+    const negocio = `Nome/marca: ${profile?.company_name || profile?.name || "—"}
+Site: ${profile?.site_url || "—"}
+Produtos/serviços cadastrados: ${(products || []).map(p => p.name).filter(Boolean).join(", ") || "nenhum cadastrado ainda"}`;
+    const outrasPerguntas = questions.map((q, i) => i === index ? null : `${i + 1}. ${q.subtext || q.text}`).filter(Boolean).join("\n") || "nenhuma";
+
+    const systemPrompt = `Você escreve perguntas para um Mini Chat de diagnóstico (estilo WhatsApp, botões de resposta rápida) usado por negócios pra qualificar leads antes de mandar pro WhatsApp.
+Dados reais do negócio deste cliente:
+${negocio}
+Outras perguntas já existentes no fluxo (não repita o mesmo assunto):
+${outrasPerguntas}
+Gere APENAS a pergunta de número ${index + 1}, adaptada ao negócio acima. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
+{"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções. Português do Brasil.`;
+
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: "Gere a pergunta." }]); break; }
+      catch (e) { lastErr = e; console.warn("[minichat generate-question] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: "Gere a pergunta." }]); }
+      catch (e) { lastErr = e; console.error("[minichat generate-question] anthropic falhou:", e.response?.data || e.message); }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+
+    const match = reply.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = match ? JSON.parse(match[0]) : null; } catch { parsed = null; }
+    if (!parsed || !parsed.subtext || !Array.isArray(parsed.options)) {
+      return res.status(500).json({ error: "A IA não retornou um formato válido, tenta de novo." });
+    }
+    res.json({
+      question: {
+        text: String(parsed.text || "").trim(),
+        subtext: String(parsed.subtext || "").trim(),
+        options: parsed.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 6),
+      },
+    });
+  } catch (err) {
+    console.error("[admin/producers minichat generate-question]", err.message);
+    res.status(500).json({ error: "Não consegui gerar a pergunta agora. Tenta de novo em instantes." });
+  }
+});
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
