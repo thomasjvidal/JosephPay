@@ -1087,6 +1087,7 @@ function GithubInstalacao({c,onUpdated}){
   const [applying,setApplying]=useState(false);
   const [msgLinks,setMsgLinks]=useState("");
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
+  const [editingMinichatPath,setEditingMinichatPath]=useState(false);
   const [installingMinichat,setInstallingMinichat]=useState(false);
   const [minichatInstalledAt,setMinichatInstalledAt]=useState(c.github_minichat_installed_at||null);
   const [msgMinichat,setMsgMinichat]=useState("");
@@ -1194,7 +1195,14 @@ function GithubInstalacao({c,onUpdated}){
             <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
               <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Instalar Mini Chat no repositório</div>
               <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página dentro do repositório do cliente que abre o Mini Chat. O conteúdo continua vindo do JosephPay — quando eu melhorar o Mini Chat, todos os clientes recebem a atualização sozinhos, sem precisar reinstalar nada aqui.</div>
-              <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+              {!editingMinichatPath?(
+                <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:8}}>
+                  Vamos criar o arquivo <b style={{color:TEXT}}>{minichatPath}</b> no repositório do cliente.{" "}
+                  <button onClick={()=>setEditingMinichatPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>usar outro nome</button>
+                </div>
+              ):(
+                <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+              )}
               {c.github_minichat_path&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Instalado hoje em: <b style={{color:TEXT}}>{c.github_minichat_path}</b></div>}
               <button onClick={instalarMinichat} disabled={!repoFullName||!minichatPath.trim()||installingMinichat} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installingMinichat?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!minichatPath.trim())?0.5:1,marginBottom:8}}>{installingMinichat?"Instalando…":"Instalar Mini Chat"}</button>
               {minichatInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(minichatInstalledAt).toLocaleString('pt-BR')}</div>}
@@ -1364,12 +1372,16 @@ function DashAdmin({onNav}){
   const [recentSales,setRecentSales]=useState(null);
   const [clients,setClients]=useState(null);
   const [ledger,setLedger]=useState(null);
+  const [traffic,setTraffic]=useState(null);
+  const siteRef=useRef(null);
   useEffect(()=>{
     apiCall('/api/admin/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
     apiCall('/api/admin/sales?limit=4').then(d=>{if(d?.sales)setRecentSales(d.sales);});
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);});
     apiCall('/api/admin/ledger/balance').then(d=>{if(d&&!d.error)setLedger(d);});
+    apiCall('/api/admin/analytics/visits').then(d=>{if(d&&!d.error)setTraffic(d);else setTraffic({total:0,sources:[]});});
   },[]);
+  const sitesAtivos=(clients||[]).filter(c=>c.conn?.site).length;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div className="jp-gold-card" style={{padding:"32px 24px 28px"}}>
@@ -1387,17 +1399,17 @@ function DashAdmin({onNav}){
           </span>
         </div>
       </div>
-      <button id="btn-sacar" onClick={()=>onNav("sacar")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
+      <button id="btn-sacar" onClick={()=>onNav("financeiro","sacar")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
-          <KPICard label="Suas taxas (0.99%)" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈" onClick={()=>onNav("vendas")}/>
-          <KPICard label="Transações" value={kpis?String(kpis.transacoes):"—"} accent={GOLD} icon="↑" onClick={()=>onNav("vendas")}/>
-          <KPICard label="Afiliados" value={kpis?`${kpis.afiliados} ativos`:"—"} accent={GOLD} icon="◉" onClick={()=>onNav("afiliados")}/>
-          <KPICard label="MRR" value={kpis?fmtBRL(kpis.mrr):"—"} accent={GOLD} icon="⟳" onClick={()=>onNav("assinaturas")}/>
+          <KPICard label="Suas taxas (0.99%)" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈" onClick={()=>onNav("financeiro","vendas")}/>
+          <KPICard label="Transações" value={kpis?String(kpis.transacoes):"—"} accent={GOLD} icon="↑" onClick={()=>onNav("financeiro","vendas")}/>
+          <KPICard label="Afiliados" value={kpis?`${kpis.afiliados} ativos`:"—"} accent={GOLD} icon="◉" onClick={()=>onNav("financeiro","afiliados")}/>
+          <KPICard label="MRR" value={kpis?fmtBRL(kpis.mrr):"—"} accent={GOLD} icon="⟳" onClick={()=>onNav("financeiro","assinaturas")}/>
           <KPICard label="Produtores" value={kpis?String(kpis.clientes):"—"} accent={GOLD} icon="◎" onClick={()=>onNav("clientes")}/>
-          <KPICard label="Sites ativos" value={clients?String(clients.filter(c=>c.conn?.site).length):"—"} accent={GOLD} icon="◈" onClick={()=>onNav("site")}/>
-          <KPICard label="Mensalidades" value={ledger?fmtBRL(ledger.totalMensalidade):"—"} sub="total acumulado" accent={GOLD} icon="↺" onClick={()=>onNav("sacar")}/>
-          <KPICard label="Ativação" value={ledger?fmtBRL(ledger.totalAtivacao):"—"} sub="total acumulado" accent={GOLD} icon="◉" onClick={()=>onNav("sacar")}/>
+          <KPICard label="Sites ativos" value={clients?String(sitesAtivos):"—"} accent={GOLD} icon="◈" onClick={()=>siteRef.current?.scrollIntoView({behavior:"smooth"})}/>
+          <KPICard label="Mensalidades" value={ledger?fmtBRL(ledger.totalMensalidade):"—"} sub="total acumulado" accent={GOLD} icon="↺" onClick={()=>onNav("financeiro","sacar")}/>
+          <KPICard label="Ativação" value={ledger?fmtBRL(ledger.totalAtivacao):"—"} sub="total acumulado" accent={GOLD} icon="◉" onClick={()=>onNav("financeiro","sacar")}/>
         </div>
       </div>
       <div className="jp-promo-card" style={{marginBottom:10}}>
@@ -1416,7 +1428,7 @@ function DashAdmin({onNav}){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
-          <button onClick={()=>onNav("vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
+          <button onClick={()=>onNav("financeiro","vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
         </div>
         {recentSales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {recentSales!==null&&recentSales.length===0&&<div style={{padding:"16px 18px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda ainda.</div>}
@@ -1453,6 +1465,52 @@ function DashAdmin({onNav}){
           </div>
         ))}
       </div>
+      <div ref={siteRef} style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Site & Analytics</div>
+        <div className="kpi-grid">
+          <KPICard label="Produtores ativos" value={clients?String(clients.length):"—"} accent={GOLD} icon="◎"/>
+          <KPICard label="Sites ativos" value={clients?String(sitesAtivos):"—"} accent={GOLD} icon="◈"/>
+          <KPICard label="Volume total" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.vol||0),0)):"—"} accent={GOLD} icon="⊕"/>
+          <KPICard label="Taxas totais" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.taxa||0),0)):"—"} accent={GOLD} icon="⟳"/>
+        </div>
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma (últimos 30 dias)</div>
+          {traffic===null&&[1,2,3].map(i=>(<div key={i} className="sk" style={{height:16,borderRadius:6,marginBottom:12}}/>))}
+          {traffic!==null&&traffic.sources.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"10px 0"}}>Nenhuma visita registrada ainda.</div>}
+          {(traffic?.sources||[]).map(t=>(
+            <div key={t.source} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13,textTransform:"capitalize"}}>{t.source}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.pct}%</span></div>
+              <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:`${t.pct}%`}}/></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotaProdutorAdmin({ownerId}){
+  const [note,setNote]=useState("");
+  const [loaded,setLoaded]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{
+    if(!ownerId)return;
+    setLoaded(false);
+    apiCall(`/api/admin/producers/${ownerId}/notes`).then(d=>{setNote(d?.note||"");setLoaded(true);});
+  },[ownerId]);
+  const salvar=async()=>{
+    setSaving(true);
+    const d=await apiCall(`/api/admin/producers/${ownerId}/notes`,{method:'PATCH',body:JSON.stringify({note})});
+    setSaving(false);
+    if(!d?.error){setSaved(true);setTimeout(()=>setSaved(false),2000);}
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:4}}>Nota privada</div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Só você vê isso — anote contexto do relacionamento com esse produtor (combinados, histórico, próximos passos).</div>
+      <textarea value={note} onChange={e=>setNote(e.target.value)} disabled={!loaded} placeholder="Ex: combinou reunião mensal, pediu ajuda com anúncios em outubro…" rows={4} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
+      <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar nota"}</button>
     </div>
   );
 }
@@ -1857,6 +1915,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           <FunilClienteAdmin ownerId={c.id}/>
           <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
           <ProdutosDoCliente ownerId={c.id} nome={nome}/>
+          <NotaProdutorAdmin ownerId={c.id}/>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
             {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
@@ -1926,6 +1985,7 @@ function ClientesAdmin(){
   const [showCriar,setShowCriar]=useState(false);
   const [refresh,setRefresh]=useState(0);
   const [ordem,setOrdem]=useState(()=>localStorage.getItem('jp_admin_ordem_clientes')||"volume");
+  const [filtro,setFiltro]=useState("todos");
   useEffect(()=>{
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
   },[refresh]);
@@ -1934,7 +1994,14 @@ function ClientesAdmin(){
     return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)} onUpdated={()=>setRefresh(r=>r+1)}/>;
   }
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
-  const clientsOrdenados=[...(clients||[])].sort((a,b)=>{
+  const isAtivo=c=>c.last_login_at&&(Date.now()-new Date(c.last_login_at).getTime())<30*86400000;
+  const FILTROS=[{id:"todos",label:"Todos"},{id:"ativos",label:"Ativos"},{id:"inativos",label:"Inativos"}];
+  const clientsFiltrados=(clients||[]).filter(c=>{
+    if(filtro==="ativos")return isAtivo(c);
+    if(filtro==="inativos")return !isAtivo(c);
+    return true;
+  });
+  const clientsOrdenados=[...clientsFiltrados].sort((a,b)=>{
     if(ordem==="volume")return Number(b.vol||0)-Number(a.vol||0);
     return new Date(b.created_at||0)-new Date(a.created_at||0);
   });
@@ -1943,10 +2010,14 @@ function ClientesAdmin(){
       {showCriar&&<CriarContaModal onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
-        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clients.length} produtores`:"—"}</span>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clientsFiltrados.length} produtores`:"—"}</span>
       </div>
       <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+        {FILTROS.map(f=>(
+          <button key={f.id} onClick={()=>setFiltro(f.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${f.id===filtro?GOLD+"55":BDR}`,background:f.id===filtro?`${GOLD}14`:"transparent",color:f.id===filtro?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{f.label}</button>
+        ))}
+        <div style={{width:1,background:BDR,flexShrink:0,margin:"2px 2px"}}/>
         {ORDENS.map(o=>(
           <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
         ))}
@@ -1991,6 +2062,26 @@ function ClientesAdmin(){
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function FinanceiroAdmin({initialSubTab}){
+  const [subTab,setSubTab]=useState(initialSubTab||"vendas");
+  useEffect(()=>{if(initialSubTab)setSubTab(initialSubTab);},[initialSubTab]);
+  const TABS=[{id:"vendas",label:"Vendas"},{id:"assinaturas",label:"Assinaturas"},{id:"afiliados",label:"Afiliados"},{id:"sacar",label:"Sacar"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Financeiro</div>
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:"transparent",color:t.id===subTab?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{t.label}</button>
+        ))}
+      </div>
+      {subTab==="vendas"&&<VendasAdmin/>}
+      {subTab==="assinaturas"&&<Assinaturas isAdmin={true}/>}
+      {subTab==="afiliados"&&<Afiliados isAdmin={true}/>}
+      {subTab==="sacar"&&<Sacar isAdmin={true}/>}
     </div>
   );
 }
@@ -2061,55 +2152,6 @@ function VendasAdmin(){
   );
 }
 
-function SiteAdmin(){
-  const [clients,setClients]=useState(null);
-  const [traffic,setTraffic]=useState(null);
-  useEffect(()=>{
-    apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
-    apiCall('/api/admin/analytics/visits').then(d=>{if(d&&!d.error)setTraffic(d);else setTraffic({total:0,sources:[]});});
-  },[]);
-  const sitesAtivos=(clients||[]).filter(c=>c.conn?.site).length;
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Site & Analytics</div>
-      <div className="kpi-grid">
-        <KPICard label="Produtores ativos" value={clients?String(clients.length):"—"} accent={GOLD} icon="◎"/>
-        <KPICard label="Sites ativos" value={clients?String(sitesAtivos):"—"} accent={GOLD} icon="◈"/>
-        <KPICard label="Volume total" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.vol||0),0)):"—"} accent={GOLD} icon="⊕"/>
-        <KPICard label="Taxas totais" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.taxa||0),0)):"—"} accent={GOLD} icon="⟳"/>
-      </div>
-      {clients===null&&[1,2].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:13,width:"45%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"60%",borderRadius:5}}/></div></div><div className="sk" style={{height:4,borderRadius:2,width:"100%"}}/></div>))}
-      {(clients||[]).map((c,i)=>(
-        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-            <Avatar url={c.avatar_url} name={c.name} size={38} radius={12}/>
-            <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>📧 {c.email||"—"}</div></div>
-            <Tag status="ativo"/>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
-              <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
-                <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma (últimos 30 dias)</div>
-        {traffic===null&&[1,2,3].map(i=>(<div key={i} className="sk" style={{height:16,borderRadius:6,marginBottom:12}}/>))}
-        {traffic!==null&&traffic.sources.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"10px 0"}}>Nenhuma visita registrada ainda.</div>}
-        {(traffic?.sources||[]).map(t=>(
-          <div key={t.source} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:MUTED,fontSize:13,textTransform:"capitalize"}}>{t.source}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{t.pct}%</span></div>
-            <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,0.05)"}}><div style={{height:"100%",borderRadius:2,background:GOLD,width:`${t.pct}%`}}/></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function DashClient({accent=GOLD,isDeise,onNav}){
   const [vis,setVis]=useState(()=>localStorage.getItem('jp_vis')==='true');
@@ -2317,6 +2359,13 @@ function BottomNav({tab,setTab,nav}){
         <line x1="18" y1="20" x2="18" y2="10"/>
         <line x1="12" y1="20" x2="12" y2="4"/>
         <line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    ),
+    financeiro:(
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="6" width="20" height="14" rx="2"/>
+        <path d="M2 10h20"/>
+        <path d="M6 15h4"/>
       </svg>
     ),
     chat:(
@@ -2597,28 +2646,27 @@ function AdminPanel({onLogout,userEmail}){
     }catch{}
   };
   useEffect(()=>{reloadProfile();},[]);
+  const [finSubTab,setFinSubTab]=useState(null);
+  const onNav=(t,sub=null)=>{setFinSubTab(sub);setTab(t);};
   const NAV=[
     {id:"dashboard",icon:"⌂",label:"Dashboard"},
     {id:"clientes",icon:"◻",label:"Clientes"},
-    {id:"vendas",icon:"↗",label:"Vendas"},
-    {id:"site",icon:"◯",label:"Site"},
-    {id:"afiliados",icon:"⊙",label:"Afiliados"},
-    {id:"assinaturas",icon:"↺",label:"Assinaturas"},
+    {id:"financeiro",icon:"◈",label:"Financeiro"},
     {id:"chat",icon:"✧",label:"Chat IA"},
     {id:"integracoes",icon:"⎈",label:"Integrações"},
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",vendas:"Vendas",site:"Site & Analytics",afiliados:"Afiliados",assinaturas:"Assinaturas",sacar:"Sacar",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={setTab}/>,clientes:<ClientesAdmin/>,vendas:<VendasAdmin/>,site:<SiteAdmin/>,afiliados:<Afiliados isAdmin={true}/>,assinaturas:<Assinaturas isAdmin={true}/>,sacar:<Sacar isAdmin={true}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
-      <Sidebar tab={tab} setTab={setTab} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
+      <Sidebar tab={tab} setTab={onNav} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
       <div className="jp-main">
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial={profile.name?.[0]?.toUpperCase()||"J"} onOpenPerfil={()=>setShowPerfil(true)} avatarUrl={profile.avatar_url}/>
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      {tab !== "chat" && <BottomNav tab={tab} setTab={setTab} nav={NAV_RODAPE}/>}
+      {tab !== "chat" && <BottomNav tab={tab} setTab={onNav} nav={NAV_RODAPE}/>}
       {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} isAdmin={true} onNavigate={(t)=>{setShowPerfil(false);setTab(t);}}/>}
     </>
   );

@@ -1709,6 +1709,26 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
   }
 });
 
+// Nota privada do admin sobre esse produtor — fica numa tabela própria
+// (producer_notes), nunca em profiles, pra não vazar pro próprio produtor.
+app.get("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (req, res) => {
+  const { data } = await supabase.from("producer_notes").select("note,updated_at").eq("producer_id", req.params.id).maybeSingle();
+  res.json({ note: data?.note || "", updated_at: data?.updated_at || null });
+});
+
+app.patch("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const { error } = await supabase.from("producer_notes").upsert({ producer_id: id, note: note || null, updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin/producers notes]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin adiciona contatos em massa direto no CRM de um cliente (tabela customers) —
 // os contatos aparecem no painel do próprio produtor, é a mesma tabela que ele usa.
 app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, async (req, res) => {
