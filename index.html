@@ -996,18 +996,21 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
   );
 }
 
-function GtmInstalacao({c,onUpdated}){
+function InstalacaoAdmin({c,onUpdated}){
   const [open,setOpen]=useState(false);
+  const [metodo,setMetodo]=useState(c.github_repo?"github":"gtm");
+  const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
+  // ── Google Tag Manager ──
   const [googleConnected,setGoogleConnected]=useState(null);
   const [accounts,setAccounts]=useState(null);
   const [containers,setContainers]=useState(null);
   const [accountId,setAccountId]=useState(c.gtm_account_id||"");
   const [containerId,setContainerId]=useState(c.gtm_container_id||"");
   const [containerName,setContainerName]=useState(c.gtm_container_name||"");
-  const [saving,setSaving]=useState(false);
-  const [installing,setInstalling]=useState(false);
-  const [installedAt,setInstalledAt]=useState(c.gtm_sensor_installed_at||null);
-  const [msg,setMsg]=useState("");
+  const [gtmSaving,setGtmSaving]=useState(false);
+  const [gtmInstalling,setGtmInstalling]=useState(false);
+  const [gtmInstalledAt,setGtmInstalledAt]=useState(c.gtm_sensor_installed_at||null);
+  const [gtmMsg,setGtmMsg]=useState("");
   useEffect(()=>{
     apiCall('/api/admin/google/status').then(d=>{
       setGoogleConnected(!!d?.connected);
@@ -1020,68 +1023,34 @@ function GtmInstalacao({c,onUpdated}){
     const d=await apiCall(`/api/admin/google/tagmanager/containers?accountId=${val}`);
     if(d?.containers)setContainers(d.containers);
   };
-  const salvarVinculo=async()=>{
+  const salvarVinculoGtm=async()=>{
     if(!accountId||!containerId)return;
-    setSaving(true);setMsg("");
+    setGtmSaving(true);setGtmMsg("");
     const nome=containers?.find(x=>x.id===containerId)?.name||containerName;
     const d=await apiCall(`/api/admin/producers/${c.id}/gtm`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId,container_name:nome})});
-    setSaving(false);
-    if(d.error)setMsg(d.error);
-    else{setContainerName(nome);setMsg("Container vinculado.");setTimeout(()=>setMsg(""),2500);onUpdated&&onUpdated();}
+    setGtmSaving(false);
+    if(d.error)setGtmMsg(d.error);
+    else{setContainerName(nome);setGtmMsg("Container vinculado.");setTimeout(()=>setGtmMsg(""),2500);onUpdated&&onUpdated();}
   };
-  const instalar=async()=>{
+  const instalarGtm=async()=>{
     if(!accountId||!containerId)return;
-    setInstalling(true);setMsg("");
+    setGtmInstalling(true);setGtmMsg("");
     // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
     const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId})});
-    setInstalling(false);
-    if(d.error)setMsg(d.error);
-    else{setInstalledAt(new Date().toISOString());setMsg("Sensor instalado e publicado no GTM.");onUpdated&&onUpdated();}
+    setGtmInstalling(false);
+    if(d.error)setGtmMsg(d.error);
+    else{setGtmInstalledAt(new Date().toISOString());setGtmMsg("Sensor instalado e publicado no GTM.");onUpdated&&onUpdated();}
   };
-  if(googleConnected===null)return null;
-  return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Instalar sensor via Google Tag Manager" open={open} onToggle={()=>setOpen(o=>!o)}/>
-      {open&&(<>
-      {!googleConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>}
-      {googleConnected&&(
-        <>
-          <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Escolha qual container GTM é o site deste cliente. Isso instala o mesmo sensor de sempre, só que remotamente.</div>
-          <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
-            <option value="">{accounts===null?"Carregando contas…":"Selecione a conta GTM"}</option>
-            {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
-          </select>
-          {accountId&&(
-            <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
-              <option value="">{containers===null?"Carregando containers…":"Selecione o container deste cliente"}</option>
-              {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
-            </select>
-          )}
-          {containerName&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{containerName}</b></div>}
-          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-            <button onClick={salvarVinculo} disabled={!accountId||!containerId||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||saving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{saving?"Salvando…":"Vincular container"}</button>
-            <button onClick={instalar} disabled={!accountId||!containerId||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
-          </div>
-          {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
-          {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
-        </>
-      )}
-      </>)}
-    </div>
-  );
-}
-
-function GithubInstalacao({c,onUpdated}){
-  const [open,setOpen]=useState(false);
+  // ── GitHub ──
   const [githubConnected,setGithubConnected]=useState(null);
   const [repos,setRepos]=useState(null);
   const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
   const [files,setFiles]=useState(null);
   const [filePath,setFilePath]=useState(c.github_file_path||"");
-  const [saving,setSaving]=useState(false);
-  const [installing,setInstalling]=useState(false);
-  const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||null);
-  const [msg,setMsg]=useState("");
+  const [ghSaving,setGhSaving]=useState(false);
+  const [ghInstalling,setGhInstalling]=useState(false);
+  const [ghInstalledAt,setGhInstalledAt]=useState(c.github_sensor_installed_at||null);
+  const [ghMsg,setGhMsg]=useState("");
   const [links,setLinks]=useState(null);
   const [selected,setSelected]=useState({});
   const [applying,setApplying]=useState(false);
@@ -1110,7 +1079,7 @@ function GithubInstalacao({c,onUpdated}){
       setLinks(d.links||[]);
     });
   };
-  useEffect(()=>{if(open&&c.github_repo&&c.github_file_path)carregarLinks();},[open,c.github_repo,c.github_file_path]);
+  useEffect(()=>{if(open&&metodo==="github"&&c.github_repo&&c.github_file_path)carregarLinks();},[open,metodo,c.github_repo,c.github_file_path]);
   const toggleLink=href=>setSelected(s=>({...s,[href]:!s[href]}));
   const selecionados=Object.keys(selected).filter(h=>selected[h]);
   const aplicarLinks=async()=>{
@@ -1141,105 +1110,150 @@ function GithubInstalacao({c,onUpdated}){
       else setFilePath("");
     });
   },[repoFullName]);
-  const salvarVinculo=async()=>{
+  const salvarVinculoGh=async()=>{
     if(!repoFullName||!filePath.trim())return;
-    setSaving(true);setMsg("");
+    setGhSaving(true);setGhMsg("");
     const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
-    setSaving(false);
-    if(d.error){setMsg(d.error);}else{setMsg("Repositório vinculado.");setTimeout(()=>setMsg(""),2500);onUpdated&&onUpdated();}
+    setGhSaving(false);
+    if(d.error){setGhMsg(d.error);}else{setGhMsg("Repositório vinculado.");setTimeout(()=>setGhMsg(""),2500);onUpdated&&onUpdated();}
   };
-  const instalar=async()=>{
+  const instalarGh=async()=>{
     if(!repoFullName||!filePath.trim())return;
-    setInstalling(true);setMsg("");
+    setGhInstalling(true);setGhMsg("");
     // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
     const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
-    setInstalling(false);
-    if(d.error)setMsg(d.error);
-    else{setInstalledAt(new Date().toISOString());setMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");onUpdated&&onUpdated();}
+    setGhInstalling(false);
+    if(d.error)setGhMsg(d.error);
+    else{setGhInstalledAt(new Date().toISOString());setGhMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");onUpdated&&onUpdated();}
   };
-  if(githubConnected===null)return null;
+  if(googleConnected===null||githubConnected===null)return null;
+  const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código próprio (GitHub)"}];
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Instalar sensor via GitHub" open={open} onToggle={()=>setOpen(o=>!o)}/>
-      {open&&(<>
-      {!githubConnected&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor direto no código deste cliente.</div>}
-      {githubConnected&&(
-        <>
-          <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Só para clientes com site em código próprio, num repositório seu. Escolha o repositório e o arquivo onde o sensor deve entrar (precisa ter uma tag &lt;/head&gt;).</div>
-          <SearchSelect
-            value={repoFullName}
-            onChange={setRepoFullName}
-            options={(repos||[]).map(r=>r.fullName)}
-            loading={repos===null}
-            placeholder="Buscar/selecionar repositório…"
-          />
-          {repoFullName&&files&&files.length>0?(
-            <SearchSelect
-              value={filePath}
-              onChange={setFilePath}
-              options={files}
-              placeholder="Buscar/selecionar arquivo…"
-            />
+      <CardHeader title="Instalação técnica" open={open} onToggle={()=>setOpen(o=>!o)}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
+        <StatusBadges status={c.conn}/>
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
+        <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
+          <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+          <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+        </div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Como o site desse cliente foi feito?</div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {METODOS.map(m=>(
+            <button key={m.id} onClick={()=>setMetodo(m.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${m.id===metodo?GOLD+"55":BDR}`,background:m.id===metodo?`${GOLD}14`:CARD2,color:m.id===metodo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{m.label}</button>
+          ))}
+        </div>
+
+        {metodo==="gtm"&&(
+          !googleConnected?(
+            <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>
           ):(
-            <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum .html encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-          )}
-          {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
-          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-            <button onClick={salvarVinculo} disabled={!repoFullName||!filePath.trim()||saving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||saving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{saving?"Salvando…":"Vincular repositório"}</button>
-            <button onClick={instalar} disabled={!repoFullName||!filePath.trim()||installing} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installing?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{installing?"Instalando…":"Instalar sensor"}</button>
-          </div>
-          {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
-          {msg&&<div style={{color:MUTED,fontSize:11}}>{msg}</div>}
+            <>
+              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Escolha qual container GTM é o site deste cliente. Isso instala o mesmo sensor de sempre, só que remotamente.</div>
+              <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
+                <option value="">{accounts===null?"Carregando contas…":"Selecione a conta GTM"}</option>
+                {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
+              </select>
+              {accountId&&(
+                <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
+                  <option value="">{containers===null?"Carregando containers…":"Selecione o container deste cliente"}</option>
+                  {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
+                </select>
+              )}
+              {containerName&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{containerName}</b></div>}
+              <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                <button onClick={salvarVinculoGtm} disabled={!accountId||!containerId||gtmSaving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||gtmSaving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{gtmSaving?"Salvando…":"Vincular container"}</button>
+                <button onClick={instalarGtm} disabled={!accountId||!containerId||gtmInstalling} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:gtmInstalling?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{gtmInstalling?"Instalando…":"Instalar sensor"}</button>
+              </div>
+              {gtmInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(gtmInstalledAt).toLocaleString('pt-BR')}</div>}
+              {gtmMsg&&<div style={{color:MUTED,fontSize:11}}>{gtmMsg}</div>}
+            </>
+          )
+        )}
 
-          {repoFullName&&(
-            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Instalar Mini Chat no repositório</div>
-              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página dentro do repositório do cliente que abre o Mini Chat. O conteúdo continua vindo do JosephPay — quando eu melhorar o Mini Chat, todos os clientes recebem a atualização sozinhos, sem precisar reinstalar nada aqui.</div>
-              {!editingMinichatPath?(
-                <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:8}}>
-                  Vamos criar o arquivo <b style={{color:TEXT}}>{minichatPath}</b> no repositório do cliente.{" "}
-                  <button onClick={()=>setEditingMinichatPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>usar outro nome</button>
-                </div>
+        {metodo==="github"&&(
+          !githubConnected?(
+            <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor direto no código deste cliente.</div>
+          ):(
+            <>
+              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Só para clientes com site em código próprio, num repositório seu. Escolha o repositório e o arquivo onde o sensor deve entrar (precisa ter uma tag &lt;/head&gt;).</div>
+              <SearchSelect
+                value={repoFullName}
+                onChange={setRepoFullName}
+                options={(repos||[]).map(r=>r.fullName)}
+                loading={repos===null}
+                placeholder="Buscar/selecionar repositório…"
+              />
+              {repoFullName&&files&&files.length>0?(
+                <SearchSelect
+                  value={filePath}
+                  onChange={setFilePath}
+                  options={files}
+                  placeholder="Buscar/selecionar arquivo…"
+                />
               ):(
-                <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+                <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum .html encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
               )}
-              {c.github_minichat_path&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Instalado hoje em: <b style={{color:TEXT}}>{c.github_minichat_path}</b></div>}
-              <button onClick={instalarMinichat} disabled={!repoFullName||!minichatPath.trim()||installingMinichat} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installingMinichat?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!minichatPath.trim())?0.5:1,marginBottom:8}}>{installingMinichat?"Instalando…":"Instalar Mini Chat"}</button>
-              {minichatInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(minichatInstalledAt).toLocaleString('pt-BR')}</div>}
-              {msgMinichat&&<div style={{color:MUTED,fontSize:11}}>{msgMinichat}</div>}
-            </div>
-          )}
+              {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
+              <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                <button onClick={salvarVinculoGh} disabled={!repoFullName||!filePath.trim()||ghSaving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||ghSaving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{ghSaving?"Salvando…":"Vincular repositório"}</button>
+                <button onClick={instalarGh} disabled={!repoFullName||!filePath.trim()||ghInstalling} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:ghInstalling?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{ghInstalling?"Instalando…":"Instalar sensor"}</button>
+              </div>
+              {ghInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(ghInstalledAt).toLocaleString('pt-BR')}</div>}
+              {ghMsg&&<div style={{color:MUTED,fontSize:11}}>{ghMsg}</div>}
 
-          {c.github_repo&&c.github_file_path&&(
-            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Botões do site → Mini Chat</div>
-              <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</div>
-              {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
-              {links&&links.length===0&&!msgLinks&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
-              {links&&links.length>0&&(
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
-                  {links.map(l=>{
-                    const isMinichat=l.href===minichatLink;
-                    const checked=!!selected[l.href];
-                    return(
-                      <label key={l.href} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
-                        <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l.href)} style={{marginTop:3}}/>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
-                          <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
-                        </div>
-                      </label>
-                    );
-                  })}
+              {repoFullName&&(
+                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
+                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Instalar Mini Chat no repositório</div>
+                  <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página dentro do repositório do cliente que abre o Mini Chat. O conteúdo continua vindo do JosephPay — quando eu melhorar o Mini Chat, todos os clientes recebem a atualização sozinhos, sem precisar reinstalar nada aqui.</div>
+                  {!editingMinichatPath?(
+                    <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:8}}>
+                      Vamos criar o arquivo <b style={{color:TEXT}}>{minichatPath}</b> no repositório do cliente.{" "}
+                      <button onClick={()=>setEditingMinichatPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>usar outro nome</button>
+                    </div>
+                  ):(
+                    <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+                  )}
+                  {c.github_minichat_path&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Instalado hoje em: <b style={{color:TEXT}}>{c.github_minichat_path}</b></div>}
+                  <button onClick={instalarMinichat} disabled={!repoFullName||!minichatPath.trim()||installingMinichat} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installingMinichat?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!minichatPath.trim())?0.5:1,marginBottom:8}}>{installingMinichat?"Instalando…":"Instalar Mini Chat"}</button>
+                  {minichatInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(minichatInstalledAt).toLocaleString('pt-BR')}</div>}
+                  {msgMinichat&&<div style={{color:MUTED,fontSize:11}}>{msgMinichat}</div>}
                 </div>
               )}
-              {msgLinks&&<div style={{color:msgLinks.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msgLinks}</div>}
-              <button onClick={aplicarLinks} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
-            </div>
-          )}
-        </>
-      )}
-      </>)}
+
+              {c.github_repo&&c.github_file_path&&(
+                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
+                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Botões do site → Mini Chat</div>
+                  <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</div>
+                  {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
+                  {links&&links.length===0&&!msgLinks&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
+                  {links&&links.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
+                      {links.map(l=>{
+                        const isMinichat=l.href===minichatLink;
+                        const checked=!!selected[l.href];
+                        return(
+                          <label key={l.href} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
+                            <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l.href)} style={{marginTop:3}}/>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
+                              <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {msgLinks&&<div style={{color:msgLinks.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msgLinks}</div>}
+                  <button onClick={aplicarLinks} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
+                </div>
+              )}
+            </>
+          )
+        )}
+      </div>)}
     </div>
   );
 }
@@ -1635,7 +1649,6 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
 function AtivacaoAdmin({c}){
-  const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
@@ -1646,6 +1659,7 @@ function AtivacaoAdmin({c}){
   const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
+  const [maisOpcoes,setMaisOpcoes]=useState(false);
   const enviarFoto=async(e)=>{
     const file=e.target.files[0];if(!file)return;
     e.target.value="";
@@ -1681,27 +1695,22 @@ function AtivacaoAdmin({c}){
   const [open,setOpen]=useState(false);
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Ativação" open={open} onToggle={()=>setOpen(o=>!o)}/>
+      <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
-      <StatusBadges status={c.conn}/>
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
-      <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
-        <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
-        <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
-      </div>
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mini Chat</div>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Foto do Mini Chat (aparece no chat, pro cliente final)</div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
         <label style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,textAlign:"center"}}>
-          {uploadingFoto?"Enviando…":avatarUrl?"Trocar foto":"Enviar foto"}
+          {uploadingFoto?"Enviando…":avatarUrl?"Trocar foto":"Foto do Mini Chat"}
           <input type="file" accept="image/*" onChange={enviarFoto} disabled={uploadingFoto} style={{display:"none"}}/>
         </label>
       </div>
-      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Essa foto é só do widget do Mini Chat. Pra trocar a foto do perfil do cliente (a que aparece no card da lista e no topo daqui), clique em cima do avatar lá em cima.</div>
+
+      <button onClick={()=>setMaisOpcoes(m=>!m)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:maisOpcoes?14:16,display:"flex",alignItems:"center",gap:4}}>Mais opções {maisOpcoes?"▲":"▼"}</button>
+
+      {maisOpcoes&&(<>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Essa foto é só do widget do Mini Chat. Pra trocar a foto do perfil do cliente (a que aparece no card da lista e no topo do perfil), clique em cima do avatar lá.</div>
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Opções da pergunta "objetivo" (fluxo padrão)</div>
       <textarea value={objetivoOptions} onChange={e=>setObjetivoOptions(e.target.value)} placeholder={"Uma opção por linha (opcional)\nEx:\nAliviar dor\nMelhorar estética\nPrevenção"} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4,resize:"vertical"}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, a pergunta "qual seu objetivo?" vira campo de texto livre no Mini Chat. Só vale pro fluxo padrão (quando o cliente não tem perguntas personalizadas configuradas abaixo).</div>
@@ -1711,11 +1720,14 @@ function AtivacaoAdmin({c}){
       <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail da empresa (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
 
-      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,marginBottom:c.minichat_config||miniSaved?10:16}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
-      {(miniSaved||c.minichat_config)&&<div style={{marginBottom:16}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
+      {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
+      <div style={{height:14}}/>
+      </>)}
+
+      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
       </div>)}
     </div>
   );
@@ -1941,11 +1953,10 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
       )}
       {subTab==="ativacao"&&(
         <>
-          <EmailAdmin c={c} onUpdated={onUpdated}/>
           <AtivacaoAdmin c={c}/>
           <PerguntasMinichatAdmin c={c}/>
-          <GtmInstalacao c={c} onUpdated={onUpdated}/>
-          <GithubInstalacao c={c} onUpdated={onUpdated}/>
+          <InstalacaoAdmin c={c} onUpdated={onUpdated}/>
+          <EmailAdmin c={c} onUpdated={onUpdated}/>
         </>
       )}
     </div>
