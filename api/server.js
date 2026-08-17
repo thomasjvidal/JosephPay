@@ -1792,7 +1792,7 @@ app.post("/api/admin/producers/:id/minichat/avatar", requireAuth, requireAdmin, 
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -1820,8 +1820,14 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       avatar_url: avatar_url !== undefined ? (avatar_url?.trim() || null) : (existing.avatar_url ?? null),
       redirect_link: redirect_link !== undefined ? (redirect_link?.trim() || null) : (existing.redirect_link ?? null),
       email_destino: email_destino !== undefined ? (email_destino?.trim() || null) : (existing.email_destino ?? null),
+      // Opções da pergunta "objetivo" no fluxo padrão do Mini Chat — se não configurar,
+      // essa pergunta vira campo de texto livre em vez de múltipla escolha.
+      objetivo_options: objetivo_options !== undefined
+        ? (Array.isArray(objetivo_options) ? objetivo_options.map(o => String(o || "").trim()).filter(Boolean) : []).slice(0, 6)
+        : (existing.objetivo_options ?? null),
       questions: cleanQuestions,
     };
+    if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
@@ -1844,6 +1850,21 @@ app.get("/api/minichat/config", async (req, res) => {
   if (!uid) return res.status(400).json({ error: "uid ausente" });
   const { data } = await supabase.from("profiles").select("minichat_config").eq("id", uid).single();
   res.json({ config: data?.minichat_config || null });
+});
+
+// Lista pública (só nome) dos produtos de um produtor — usada pelo Mini Chat como opções
+// reais da pergunta "qual procedimento/produto desperta seu interesse".
+app.options("/api/minichat/products", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+app.get("/api/minichat/products", async (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  const { uid } = req.query;
+  if (!uid) return res.status(400).json({ error: "uid ausente" });
+  const { data } = await supabase.from("products").select("name").eq("owner_id", uid).order("created_at", { ascending: false });
+  res.json({ products: (data || []).map(p => p.name).filter(Boolean) });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

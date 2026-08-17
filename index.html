@@ -1584,6 +1584,7 @@ function AtivacaoAdmin({c}){
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
+  const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
@@ -1608,6 +1609,7 @@ function AtivacaoAdmin({c}){
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
       email_destino:emailDestino.trim(),
+      objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
     })});
     if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
   };
@@ -1641,6 +1643,10 @@ function AtivacaoAdmin({c}){
           <input type="file" accept="image/*" onChange={enviarFoto} disabled={uploadingFoto} style={{display:"none"}}/>
         </label>
       </div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Opções da pergunta "objetivo" (fluxo padrão)</div>
+      <textarea value={objetivoOptions} onChange={e=>setObjetivoOptions(e.target.value)} placeholder={"Uma opção por linha (opcional)\nEx:\nAliviar dor\nMelhorar estética\nPrevenção"} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4,resize:"vertical"}}/>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, a pergunta "qual seu objetivo?" vira campo de texto livre no Mini Chat. Só vale pro fluxo padrão (quando o cliente não tem perguntas personalizadas configuradas abaixo).</div>
+
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
       <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento (opcional — sobrepõe WhatsApp e E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail da empresa (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
