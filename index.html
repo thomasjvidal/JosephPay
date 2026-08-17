@@ -1110,7 +1110,7 @@ function GithubInstalacao({c,onUpdated}){
       setLinks(d.links||[]);
     });
   };
-  useEffect(()=>{if(open&&links===null&&c.github_repo&&c.github_file_path)carregarLinks();},[open]);
+  useEffect(()=>{if(open&&c.github_repo&&c.github_file_path)carregarLinks();},[open,c.github_repo,c.github_file_path]);
   const toggleLink=href=>setSelected(s=>({...s,[href]:!s[href]}));
   const selecionados=Object.keys(selected).filter(h=>selected[h]);
   const aplicarLinks=async()=>{
