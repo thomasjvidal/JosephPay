@@ -1403,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at")
+      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,google_ads_customer_id")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1980,6 +1980,13 @@ const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI  = `${PUBLIC_URL}/api/admin/google/callback`;
 const GTM_SCOPE = "https://www.googleapis.com/auth/tagmanager.edit.containers https://www.googleapis.com/auth/tagmanager.publish https://www.googleapis.com/auth/tagmanager.readonly";
+// Mesma conexão Google do admin também pede o escopo do Ads — assim uma única
+// conta conectada cobre GTM e Google Ads, sem exigir uma segunda tela de login.
+// Quem conectou antes dessa mudança precisa clicar em "Conectar" de novo uma vez
+// pra conceder essa permissão extra (o Google sempre reabre a tela de consentimento).
+const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+const GOOGLE_SCOPE = `${GTM_SCOPE} ${GOOGLE_ADS_SCOPE}`;
+const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "";
 
 // state do OAuth só precisa viver alguns minutos (tempo de o admin logar no Google) —
 // mapa em memória é suficiente, não precisa de tabela pra isso.
@@ -2024,7 +2031,7 @@ app.get("/api/admin/google/connect", requireAuth, requireAdmin, (req, res) => {
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: "code",
-    scope: GTM_SCOPE,
+    scope: GOOGLE_SCOPE,
     access_type: "offline",
     prompt: "consent",
     state,
@@ -2171,6 +2178,121 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
     console.error("[gtm/install-sensor]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar o sensor via GTM" });
   }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROTAS — Google Ads (admin-only) — o admin é o gestor de tráfego dos produtores.
+// Usa a MESMA conexão Google do GTM (platform_google_auth), só que também pede o
+// escopo do Ads. Além disso precisa de um Developer Token do Google Ads (pedido
+// direto ao Google, fora daqui — configurado como env var GOOGLE_ADS_DEVELOPER_TOKEN)
+// e do customer_id da conta de Ads de cada produtor (vinculado abaixo).
+// IMPORTANTE: enquanto o developer token ou o customer_id não estiverem
+// configurados, os endpoints de campanhas/anúncios/palavras-chave respondem
+// {connected:false} — nunca inventamos número de gasto/campanha que não existe.
+// Os números de contatos/clientes/faturamento/visitas SEMPRE são reais, vêm do
+// que o JosephPay já rastreia (customers/sales/visits), com ou sem Ads conectado.
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data } = await supabase.from("platform_google_auth").select("connected_email").eq("id", 1).maybeSingle();
+    res.json({
+      googleConnected: !!data?.connected_email,
+      googleEmail: data?.connected_email || null,
+      developerTokenConfigured: !!GOOGLE_ADS_DEVELOPER_TOKEN,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/google-ads", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customer_id } = req.body;
+    const { error } = await supabase.from("profiles").update({ google_ads_customer_id: (customer_id || "").trim() || null }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Visão geral / Desempenho: números reais do JosephPay pro período pedido, com
+// comparação ao período anterior de mesmo tamanho. Não depende do Ads estar
+// conectado — é o que o admin já rastreia hoje (customers/sales/visits).
+app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    const from = req.query.from ? new Date(req.query.from) : new Date(to.getTime() - 30 * 86400000);
+    const rangeMs = Math.max(to.getTime() - from.getTime(), 86400000);
+    const prevTo = new Date(from.getTime());
+    const prevFrom = new Date(from.getTime() - rangeMs);
+
+    const { data: profile } = await supabase.from("profiles").select("name,company_name,avatar_url,google_ads_customer_id").eq("id", id).maybeSingle();
+    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
+
+    const periodStats = async (start, end) => {
+      const [customersRes, salesRes, visitsRes] = await Promise.all([
+        supabase.from("customers").select("id,status").eq("owner_id", id).is("deleted_at", null).gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+        supabase.from("sales").select("amount,gross_amount").eq("owner_id", id).eq("status", "pago").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+        supabase.from("visits").select("has_gclid").eq("owner_id", id).eq("event_type", "pageview").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+      ]);
+      const customers = customersRes.data || [];
+      const sales = salesRes.data || [];
+      const visits = visitsRes.data || [];
+      return {
+        contatos: customers.length,
+        clientes: customers.filter(c => c.status === "cliente" || c.status === "assinante").length,
+        faturamento: Math.round(sales.reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0) * 100) / 100,
+        visitas: visits.length,
+        visitasAnuncio: visits.filter(v => v.has_gclid).length,
+      };
+    };
+
+    const [atual, anterior] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo)]);
+    const adsConnected = !!(profile.google_ads_customer_id && GOOGLE_ADS_DEVELOPER_TOKEN);
+
+    res.json({
+      cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
+      adsConnected,
+      googleAdsCustomerId: profile.google_ads_customer_id || null,
+      periodo: { from: from.toISOString(), to: to.toISOString() },
+      // investimento/custo por cliente só existem com a Ads API real conectada — sem isso, null (nunca inventado).
+      investimento: null,
+      atual,
+      anterior,
+    });
+  } catch (err) {
+    console.error("[google-ads/overview]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Campanhas/Anúncios/Palavras-chave: dependem da Google Ads API de verdade (developer
+// token + customer_id). Estrutura pronta pra plugar isso — até lá, resposta honesta
+// de "não conectado", sem simular dado nenhum.
+function requireAdsConnection(profile) {
+  return !!(profile?.google_ads_customer_id && GOOGLE_ADS_DEVELOPER_TOKEN);
+}
+app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  if (!requireAdsConnection(profile)) return res.json({ connected: false, campaigns: [] });
+  // TODO: quando o developer token estiver configurado, buscar campanhas reais via Google Ads API aqui.
+  res.json({ connected: true, campaigns: [] });
+});
+app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  if (!requireAdsConnection(profile)) return res.json({ connected: false, ads: [] });
+  // TODO: buscar anúncios reais via Google Ads API aqui.
+  res.json({ connected: true, ads: [] });
+});
+app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  if (!requireAdsConnection(profile)) return res.json({ connected: false, keywords: [] });
+  // TODO: buscar termos de pesquisa reais via Google Ads API aqui.
+  res.json({ connected: true, keywords: [] });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

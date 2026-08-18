@@ -2379,6 +2379,13 @@ function BottomNav({tab,setTab,nav}){
         <path d="M6 15h4"/>
       </svg>
     ),
+    googleads:(
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <circle cx="12" cy="12" r="4.5"/>
+        <circle cx="12" cy="12" r="0.6" fill="currentColor" stroke="none"/>
+      </svg>
+    ),
     chat:(
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -2644,6 +2651,388 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// GOOGLE ADS (Admin) — o admin é o gestor de tráfego dos produtores. Uma aba só
+// no rodapé ("Google Ads"); todas as telas abaixo são internas, acessadas pelos
+// botões da Visão Geral — não aparecem no rodapé.
+// Números de contatos/clientes/faturamento/visitas SEMPRE são reais (vêm do que
+// o JosephPay já rastreia). Investimento/campanhas/anúncios/palavras-chave só
+// aparecem depois que o Google Ads estiver de fato conectado — até lá, mostramos
+// "conexão pendente" em vez de inventar número.
+// ══════════════════════════════════════════════════════════════════════════════
+
+function pctChange(atual,anterior){
+  if(!anterior)return atual>0?"+100%":"0%";
+  const pct=((atual-anterior)/anterior)*100;
+  return `${pct>=0?"+":""}${pct.toFixed(0)}%`;
+}
+
+function GAPeriodoChips({presetDias,setPresetDias}){
+  const OPCOES=[{d:7,label:"7 dias"},{d:14,label:"14 dias"},{d:30,label:"30 dias"},{d:90,label:"90 dias"}];
+  return(
+    <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+      {OPCOES.map(o=>(
+        <button key={o.d} onClick={()=>setPresetDias(o.d)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${o.d===presetDias?GOLD+"55":BDR}`,background:o.d===presetDias?`${GOLD}14`:"transparent",color:o.d===presetDias?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function GAPendente({titulo,texto,onNav}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{titulo}</div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px 18px",textAlign:"center"}}>
+        <div style={{fontSize:26,marginBottom:10,opacity:0.6}}>⏳</div>
+        <div style={{color:TEXT,fontSize:14,fontWeight:700,marginBottom:6}}>Conexão pendente</div>
+        <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:16}}>{texto}</div>
+        <Btn sm outline onClick={()=>onNav("integracao")}>Configurar Google Ads</Btn>
+      </div>
+    </div>
+  );
+}
+
+function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPresetDias,onNav}){
+  const [overview,setOverview]=useState(null);
+  useEffect(()=>{
+    if(!clienteId)return;
+    setOverview(null);
+    const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+  },[clienteId,presetDias]);
+  const a=overview?.atual;
+  const custoContato=(overview?.investimento!=null&&a?.contatos)?fmtBRL(overview.investimento/a.contatos):"—";
+  const custoCliente=(overview?.investimento!=null&&a?.clientes)?fmtBRL(overview.investimento/a.clientes):"—";
+  const ACOES=[
+    {id:"campanhas",label:"Ver campanhas"},
+    {id:"desempenho",label:"Ver desempenho"},
+    {id:"anuncios",label:"Ver anúncios"},
+    {id:"palavras",label:"Ver palavras-chave"},
+    {id:"relatorios",label:"Gerar relatório"},
+    {id:"integracao",label:"Configurar Google Ads"},
+  ];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Google Ads</div>
+      <select value={clienteId||""} onChange={e=>setClienteId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}>
+        {clientes.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+      </select>
+      <GAPeriodoChips presetDias={presetDias} setPresetDias={setPresetDias}/>
+      {!overview&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>}
+      {overview&&(<>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[
+            {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD},
+            {label:"Contatos",v:String(a.contatos),c:GOLD},
+            {label:"Clientes",v:String(a.clientes),c:GREEN},
+            {label:"Faturamento",v:fmtBRL(a.faturamento),c:GOLD},
+          ].map(r=>(
+            <div key={r.label} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{r.label}</span>
+              <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:20}}>{r.v}</span>
+            </div>
+          ))}
+        </div>
+        <div className="kpi-grid">
+          <KPICard label="Custo por contato" value={custoContato} icon="◈"/>
+          <KPICard label="Custo por cliente" value={custoCliente} icon="◎"/>
+          <KPICard label="Visitas no período" value={String(a.visitas)} icon="👁"/>
+          <KPICard label="Visitas de anúncio" value={String(a.visitasAnuncio)} sub="clique pago" icon="⊕"/>
+        </div>
+        {!overview.adsConnected&&(
+          <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>
+            Contatos, clientes e faturamento acima já são reais. Investimento e campanhas aparecem depois de conectar o Google Ads pra esse cliente.{" "}
+            <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora</button>
+          </div>
+        )}
+      </>)}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {ACOES.map(ac=>(
+          <button key={ac.id} onClick={()=>onNav(ac.id)} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 10px",color:TEXT,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{ac.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
+  const [overview,setOverview]=useState(null);
+  useEffect(()=>{
+    if(!clienteId)return;
+    setOverview(null);
+    const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+  },[clienteId,presetDias]);
+  if(!overview)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  const a=overview.atual,p=overview.anterior;
+  const passos=[
+    {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—"},
+    {label:"Visitas",v:String(a.visitas)},
+    {label:"Visitas de anúncio",v:String(a.visitasAnuncio)},
+    {label:"Contatos",v:String(a.contatos)},
+    {label:"Clientes",v:String(a.clientes)},
+    {label:"Faturamento",v:fmtBRL(a.faturamento)},
+  ];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Desempenho · {cliente?.name}</div>
+      <GAPeriodoChips presetDias={presetDias} setPresetDias={setPresetDias}/>
+      <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>O caminho completo: do investimento até o dinheiro de volta.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {passos.map((r,i)=>(
+          <React.Fragment key={r.label}>
+            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:MUTED,fontSize:12,fontWeight:600}}>{r.label}</span>
+              <span style={{color:TEXT,fontSize:16,fontWeight:800}}>{r.v}</span>
+            </div>
+            {i<passos.length-1&&<div style={{textAlign:"center",color:MUTED,fontSize:13}}>↓</div>}
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginTop:4}}>Comparado ao período anterior</div>
+      <div className="kpi-grid">
+        <KPICard label="Contatos" value={pctChange(a.contatos,p.contatos)} accent={a.contatos>=p.contatos?GREEN:RED} icon="◈"/>
+        <KPICard label="Clientes" value={pctChange(a.clientes,p.clientes)} accent={a.clientes>=p.clientes?GREEN:RED} icon="◎"/>
+        <KPICard label="Faturamento" value={pctChange(a.faturamento,p.faturamento)} accent={a.faturamento>=p.faturamento?GREEN:RED} icon="⊕"/>
+        <KPICard label="Visitas" value={pctChange(a.visitas,p.visitas)} accent={a.visitas>=p.visitas?GREEN:RED} icon="👁"/>
+      </div>
+      <div style={{background:CARD2,borderRadius:14,padding:"14px 16px",color:TEXT,fontSize:12,lineHeight:1.7}}>
+        {a.contatos>=p.contatos?"Estamos trazendo mais pessoas que no período anterior.":"Menos pessoas chegaram do que no período anterior."}<br/>
+        {a.clientes>=p.clientes?"Mais contatos estão virando clientes.":"Menos contatos viraram clientes dessa vez."}
+      </div>
+    </div>
+  );
+}
+
+function GACampanhas({clienteId,cliente,onNav,onSelect}){
+  const [data,setData]=useState(null);
+  useEffect(()=>{if(!clienteId)return;setData(null);apiCall(`/api/admin/producers/${clienteId}/google-ads/campaigns`).then(setData);},[clienteId]);
+  if(!data)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  if(!data.connected)return <GAPendente titulo={`Campanhas · ${cliente?.name||""}`} texto="Conecte o Google Ads desse cliente pra ver as campanhas reais aqui — nome, status, investimento, contatos e clientes de cada uma." onNav={onNav}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Campanhas · {cliente?.name}</div>
+      {data.campaigns.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma campanha encontrada ainda.</div>}
+      {data.campaigns.map(camp=>(
+        <div key={camp.id} onClick={()=>onSelect(camp)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,cursor:"pointer"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{camp.name}</span>
+            <Tag status={camp.status==="ENABLED"?"ativo":"inativo"}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GACampanhaDetalhe({campanha,onNav}){
+  if(!campanha)return <GAPendente titulo="Campanha" texto="Selecione uma campanha na lista pra ver os detalhes." onNav={onNav}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{campanha.name}</div>
+      <div className="kpi-grid">
+        <KPICard label="Investimento" value={fmtBRL(campanha.cost||0)} icon="◈"/>
+        <KPICard label="Cliques" value={String(campanha.clicks||0)} icon="↑"/>
+        <KPICard label="Contatos" value={String(campanha.contatos||0)} icon="◎"/>
+        <KPICard label="Clientes" value={String(campanha.clientes||0)} icon="✅"/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <button onClick={()=>onNav("anuncios")} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 10px",color:TEXT,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Ver anúncios</button>
+        <button onClick={()=>onNav("palavras")} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 10px",color:TEXT,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Ver palavras-chave</button>
+      </div>
+    </div>
+  );
+}
+
+function GAAnuncios({clienteId,cliente,onNav}){
+  const [data,setData]=useState(null);
+  useEffect(()=>{if(!clienteId)return;setData(null);apiCall(`/api/admin/producers/${clienteId}/google-ads/ads`).then(setData);},[clienteId]);
+  if(!data)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  if(!data.connected)return <GAPendente titulo={`Anúncios · ${cliente?.name||""}`} texto="Conecte o Google Ads desse cliente pra ver aqui quais anúncios trazem mais cliques, contatos e clientes." onNav={onNav}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Anúncios · {cliente?.name}</div>
+      {data.ads.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum anúncio encontrado ainda.</div>}
+    </div>
+  );
+}
+
+function GAPalavrasChave({clienteId,cliente,onNav}){
+  const [data,setData]=useState(null);
+  useEffect(()=>{if(!clienteId)return;setData(null);apiCall(`/api/admin/producers/${clienteId}/google-ads/keywords`).then(setData);},[clienteId]);
+  if(!data)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  if(!data.connected)return <GAPendente titulo={`Palavras-chave · ${cliente?.name||""}`} texto="Conecte o Google Ads desse cliente pra ver aqui quais pesquisas estão trazendo clientes." onNav={onNav}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Palavras-chave · {cliente?.name}</div>
+      {data.keywords.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma palavra-chave encontrada ainda.</div>}
+    </div>
+  );
+}
+
+function GARelatorios({cliente,presetDias,setPresetDias,tipoRelatorio,setTipoRelatorio,onGerar}){
+  const TIPOS=[{id:"semanal",label:"Semanal"},{id:"quinzenal",label:"Quinzenal"},{id:"mensal",label:"Mensal"},{id:"trimestral",label:"Trimestral"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Relatórios · {cliente?.name}</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>Período</div>
+      <GAPeriodoChips presetDias={presetDias} setPresetDias={setPresetDias}/>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginTop:6}}>Tipo de relatório</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {TIPOS.map(t=>(
+          <button key={t.id} onClick={()=>setTipoRelatorio(t.id)} style={{padding:"7px 14px",borderRadius:20,border:`1px solid ${t.id===tipoRelatorio?GOLD+"55":BDR}`,background:t.id===tipoRelatorio?`${GOLD}14`:"transparent",color:t.id===tipoRelatorio?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
+        ))}
+      </div>
+      <button onClick={onGerar} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:13,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,marginTop:10}}>Gerar relatório</button>
+    </div>
+  );
+}
+
+function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
+  const [overview,setOverview]=useState(null);
+  useEffect(()=>{
+    if(!clienteId)return;
+    setOverview(null);
+    const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+  },[clienteId,presetDias]);
+  if(!overview)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  const a=overview.atual,p=overview.anterior;
+  const periodoLabel=`${new Date(overview.periodo.from).toLocaleDateString('pt-BR')} — ${new Date(overview.periodo.to).toLocaleDateString('pt-BR')}`;
+  const TIPO_LABEL={semanal:"Relatório Semanal",quinzenal:"Relatório Quinzenal",mensal:"Relatório Mensal",trimestral:"Relatório Trimestral"};
+  const conclusoes=[
+    `${a.contatos} contato(s) chegaram nesse período.`,
+    a.clientes>0?`${a.clientes} virou/viraram cliente${a.clientes>1?"s":""}.`:"Nenhum contato virou cliente ainda nesse período.",
+    a.faturamento>0?`Isso gerou ${fmtBRL(a.faturamento)} em faturamento.`:null,
+    a.contatos>=p.contatos?"O número de contatos cresceu em relação ao período anterior.":"O número de contatos caiu em relação ao período anterior — vale revisar o anúncio.",
+  ].filter(Boolean);
+  const linhas=[
+    {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):null},
+    {label:"Contatos",v:String(a.contatos)},
+    {label:"Clientes",v:String(a.clientes)},
+    {label:"Faturamento",v:fmtBRL(a.faturamento)},
+  ].filter(r=>r.v!=null);
+  const compartilhar=()=>{
+    const texto=`${TIPO_LABEL[tipoRelatorio]} — ${cliente?.name}\n${periodoLabel}\n\n${linhas.map(l=>`${l.label}: ${l.v}`).join("\n")}`;
+    if(navigator.share)navigator.share({title:"Relatório",text:texto}).catch(()=>{});
+    else navigator.clipboard?.writeText(texto);
+  };
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <style>{`@media print{.jp-bnav,.jp-sidebar,.jp-topbar{display:none !important}}`}</style>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"24px 20px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <Avatar url={cliente?.avatar_url} name={cliente?.name} size={40} radius={12}/>
+          <div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:15}}>{cliente?.name}</div>
+            <div style={{color:MUTED,fontSize:11}}>{TIPO_LABEL[tipoRelatorio]} · {periodoLabel}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+          {linhas.map(r=>(
+            <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:CARD2,borderRadius:12}}>
+              <span style={{color:MUTED,fontSize:12,fontWeight:600}}>{r.label}</span>
+              <span style={{color:TEXT,fontSize:15,fontWeight:800}}>{r.v}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>O que aconteceu</div>
+        <ul style={{margin:"0 0 16px",padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.8}}>
+          {conclusoes.map((c,i)=>(<li key={i}>{c}</li>))}
+        </ul>
+        {!overview.adsConnected&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>Investimento em anúncios aparece aqui depois que o Google Ads for conectado pra esse cliente.</div>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Btn sm outline onClick={()=>window.print()}>Exportar PDF</Btn>
+        <Btn sm outline onClick={compartilhar}>Compartilhar</Btn>
+      </div>
+    </div>
+  );
+}
+
+function GAIntegracao({clienteId,cliente,onUpdated}){
+  const [status,setStatus]=useState(null);
+  const [customerId,setCustomerId]=useState(cliente?.google_ads_customer_id||"");
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState("");
+  useEffect(()=>{apiCall('/api/admin/google-ads/status').then(setStatus);},[]);
+  useEffect(()=>{setCustomerId(cliente?.google_ads_customer_id||"");},[cliente?.id]);
+  const conectar=async()=>{
+    const d=await apiCall('/api/admin/google/connect');
+    if(d?.url)window.open(d.url,'_blank');
+  };
+  const salvar=async()=>{
+    setSaving(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${clienteId}/google-ads`,{method:'POST',body:JSON.stringify({customer_id:customerId.trim()})});
+    setSaving(false);
+    if(d?.error){setMsg(d.error);return;}
+    setMsg("Salvo.");setTimeout(()=>setMsg(""),2000);
+    onUpdated&&onUpdated();
+  };
+  if(!status)return null;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Integração · Google Ads</div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:status.googleConnected?GREEN:MUTED,flexShrink:0}}/>
+          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.googleConnected?`Conectado: ${status.googleEmail}`:"Conta Google não conectada"}</span>
+        </div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Mesma conexão Google usada pro sensor via Tag Manager — só precisa conectar uma vez.</div>
+        <Btn sm outline onClick={conectar}>{status.googleConnected?"Reconectar (renovar permissões)":"Conectar Google"}</Btn>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:status.developerTokenConfigured?GREEN:MUTED,flexShrink:0}}/>
+          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.developerTokenConfigured?"Developer Token configurado":"Developer Token pendente"}</span>
+        </div>
+        {!status.developerTokenConfigured&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Esse token é pedido direto ao Google, dentro da própria conta de Google Ads (Ferramentas → Central de API). Depois de conseguir, me manda o token que eu configuro no servidor.</div>}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Conta de Ads deste cliente</div>
+        <div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.5}}>Cole o ID da conta de Google Ads de <b style={{color:TEXT}}>{cliente?.name}</b> (formato 123-456-7890).</div>
+        <input value={customerId} onChange={e=>setCustomerId(e.target.value)} placeholder="123-456-7890" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+        <Btn sm outline onClick={salvar}>{saving?"Salvando…":"Salvar"}</Btn>
+        {msg&&<div style={{color:MUTED,fontSize:11,marginTop:8}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
+function GoogleAdsAdmin(){
+  const [clientes,setClientes]=useState(null);
+  const [clienteId,setClienteId]=useState(null);
+  const [screen,setScreen]=useState("visaogeral");
+  const [campanhaSel,setCampanhaSel]=useState(null);
+  const [presetDias,setPresetDias]=useState(30);
+  const [tipoRelatorio,setTipoRelatorio]=useState("mensal");
+  const carregarClientes=()=>apiCall('/api/admin/clients').then(d=>{
+    if(d?.clients){setClientes(d.clients);setClienteId(c=>c||d.clients[0]?.id||null);}
+    else setClientes([]);
+  });
+  useEffect(()=>{carregarClientes();},[]);
+  const cliente=clientes?.find(c=>c.id===clienteId)||null;
+  const onNav=(s)=>setScreen(s);
+  if(clientes===null)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
+  if(!clientes.length)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Cadastre um produtor primeiro (aba Clientes) pra gerenciar o tráfego dele aqui.</div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {screen!=="visaogeral"&&(
+        <button onClick={()=>setScreen("visaogeral")} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar pra Visão geral</button>
+      )}
+      {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={setClienteId} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
+      {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
+      {screen==="campanha"&&<GACampanhaDetalhe campanha={campanhaSel} onNav={onNav}/>}
+      {screen==="desempenho"&&<GADesempenho clienteId={clienteId} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias}/>}
+      {screen==="anuncios"&&<GAAnuncios clienteId={clienteId} cliente={cliente} onNav={onNav}/>}
+      {screen==="palavras"&&<GAPalavrasChave clienteId={clienteId} cliente={cliente} onNav={onNav}/>}
+      {screen==="relatorios"&&<GARelatorios cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} tipoRelatorio={tipoRelatorio} setTipoRelatorio={setTipoRelatorio} onGerar={()=>setScreen("relatoriogerado")}/>}
+      {screen==="relatoriogerado"&&<GARelatorioGerado clienteId={clienteId} cliente={cliente} presetDias={presetDias} tipoRelatorio={tipoRelatorio}/>}
+      {screen==="integracao"&&<GAIntegracao clienteId={clienteId} cliente={cliente} onUpdated={carregarClientes}/>}
+    </div>
+  );
+}
+
 function AdminPanel({onLogout,userEmail}){
   const [tab,setTab]=useState("dashboard");
   const [showPerfil,setShowPerfil]=useState(false);
@@ -2663,13 +3052,14 @@ function AdminPanel({onLogout,userEmail}){
     {id:"dashboard",icon:"⌂",label:"Dashboard"},
     {id:"clientes",icon:"◻",label:"Clientes"},
     {id:"financeiro",icon:"◈",label:"Financeiro"},
+    {id:"googleads",icon:"⊕",label:"Google Ads"},
     {id:"chat",icon:"✧",label:"Chat IA"},
     {id:"integracoes",icon:"⎈",label:"Integrações"},
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={onNav} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
