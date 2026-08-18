@@ -2268,6 +2268,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       const visits = visitsRes.data || [];
       return {
         contatos: customers.length,
+        interessados: customers.filter(c => c.status === "lead").length,
         clientes: customers.filter(c => c.status === "cliente" || c.status === "assinante").length,
         faturamento: Math.round(sales.reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0) * 100) / 100,
         visitas: visits.length,

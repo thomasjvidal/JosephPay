@@ -2730,6 +2730,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           {[
             {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD},
             {label:"Contatos",v:String(a.contatos),c:GOLD},
+            {label:"Interessados",v:String(a.interessados),c:GOLD},
             {label:"Clientes",v:String(a.clientes),c:GREEN},
             {label:"Faturamento",v:fmtBRL(a.faturamento),c:GOLD},
           ].map(r=>(
@@ -2776,6 +2777,7 @@ function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
     {label:"Visitas",v:String(a.visitas)},
     {label:"Visitas de anúncio",v:String(a.visitasAnuncio)},
     {label:"Contatos",v:String(a.contatos)},
+    {label:"Interessados",v:String(a.interessados)},
     {label:"Clientes",v:String(a.clientes)},
     {label:"Faturamento",v:fmtBRL(a.faturamento)},
   ];
@@ -2915,6 +2917,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
   const linhas=[
     {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):null},
     {label:"Contatos",v:String(a.contatos)},
+    {label:"Interessados",v:String(a.interessados)},
     {label:"Clientes",v:String(a.clientes)},
     {label:"Faturamento",v:fmtBRL(a.faturamento)},
   ].filter(r=>r.v!=null);
