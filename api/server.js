@@ -2204,14 +2204,47 @@ async function getGoogleAdsDeveloperToken() {
   return data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN || "";
 }
 
+async function getGoogleAdsManagerId() {
+  const { data } = await supabase.from("platform_google_auth").select("manager_customer_id").eq("id", 1).maybeSingle();
+  return (data?.manager_customer_id || "").replace(/\D/g, "");
+}
+
+const GOOGLE_ADS_API_VERSION = "v17";
+
+// Roda uma consulta GAQL (linguagem de consulta do Google Ads) contra a conta de um
+// cliente específico, passando pela conta de gerente quando configurada. Erros da API
+// (token em modo teste, conta não vinculada, etc.) sobem pra quem chamou tratar.
+async function googleAdsSearch(customerId, query) {
+  const accessToken = await getGoogleAccessToken();
+  if (!accessToken) throw new Error("Google não conectado");
+  const developerToken = await getGoogleAdsDeveloperToken();
+  if (!developerToken) throw new Error("Developer Token não configurado");
+  const managerId = await getGoogleAdsManagerId();
+  const cleanCustomerId = String(customerId || "").replace(/\D/g, "");
+  if (!cleanCustomerId) throw new Error("ID da conta de Ads inválido");
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "developer-token": developerToken,
+    "Content-Type": "application/json",
+  };
+  if (managerId) headers["login-customer-id"] = managerId;
+  const resp = await axios.post(
+    `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`,
+    { query },
+    { headers }
+  );
+  return resp.data.results || [];
+}
+
 app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email,developer_token").eq("id", 1).maybeSingle();
+    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email,developer_token,manager_customer_id").eq("id", 1).maybeSingle();
     // "Conectado" depende do refresh_token existir, não do e-mail — o e-mail é só exibição.
     res.json({
       googleConnected: !!data?.refresh_token,
       googleEmail: data?.connected_email || null,
       developerTokenConfigured: !!(data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN),
+      managerCustomerId: data?.manager_customer_id || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2223,6 +2256,18 @@ app.post("/api/admin/google-ads/developer-token", requireAuth, requireAdmin, asy
     const { token } = req.body;
     if (!token?.trim()) return res.status(400).json({ error: "Cole o token antes de salvar" });
     const { error } = await supabase.from("platform_google_auth").upsert({ id: 1, developer_token: token.trim(), updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/google-ads/manager-id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { manager_id } = req.body;
+    if (!manager_id?.trim()) return res.status(400).json({ error: "Cole o ID da conta de gerente antes de salvar" });
+    const { error } = await supabase.from("platform_google_auth").upsert({ id: 1, manager_customer_id: manager_id.trim(), updated_at: new Date().toISOString() });
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
   } catch (err) {
@@ -2279,13 +2324,30 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     const [atual, anterior, developerToken] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo), getGoogleAdsDeveloperToken()]);
     const adsConnected = !!(profile.google_ads_customer_id && developerToken);
 
+    // Investimento real, buscado na hora na Google Ads API — se a busca falhar (token
+    // ainda em modo teste, conta não vinculada etc.), fica null e o motivo vai em adsError,
+    // nunca inventamos o número.
+    let investimento = null, adsError = null;
+    if (adsConnected) {
+      try {
+        const fromStr = from.toISOString().slice(0, 10);
+        const toStr = to.toISOString().slice(0, 10);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM customer WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`);
+        const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
+        investimento = Math.round((costMicros / 1e6) * 100) / 100;
+      } catch (err) {
+        console.error("[google-ads/overview] busca real falhou:", err.response?.data || err.message);
+        adsError = err.response?.data?.error?.message || err.message;
+      }
+    }
+
     res.json({
       cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
       adsConnected,
+      adsError,
       googleAdsCustomerId: profile.google_ads_customer_id || null,
       periodo: { from: from.toISOString(), to: to.toISOString() },
-      // investimento/custo por cliente só existem com a Ads API real conectada — sem isso, null (nunca inventado).
-      investimento: null,
+      investimento,
       atual,
       anterior,
     });
@@ -2302,23 +2364,87 @@ async function requireAdsConnection(profile) {
   const developerToken = await getGoogleAdsDeveloperToken();
   return !!(profile?.google_ads_customer_id && developerToken);
 }
+function adsDateRange(req) {
+  const to = req.query.to ? new Date(req.query.to) : new Date();
+  const from = req.query.from ? new Date(req.query.from) : new Date(to.getTime() - 30 * 86400000);
+  return { fromStr: from.toISOString().slice(0, 10), toStr: to.toISOString().slice(0, 10) };
+}
+
 app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, campaigns: [] });
-  // TODO: quando o developer token estiver configurado, buscar campanhas reais via Google Ads API aqui.
-  res.json({ connected: true, campaigns: [] });
+  try {
+    const { fromStr, toStr } = adsDateRange(req);
+    const rows = await googleAdsSearch(profile.google_ads_customer_id, `
+      SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.clicks, metrics.impressions
+      FROM campaign
+      WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
+      ORDER BY metrics.cost_micros DESC
+    `);
+    const campaigns = rows.map(r => ({
+      id: r.campaign?.id, name: r.campaign?.name, status: r.campaign?.status,
+      cost: Number(r.metrics?.costMicros || 0) / 1e6,
+      clicks: Number(r.metrics?.clicks || 0),
+      impressions: Number(r.metrics?.impressions || 0),
+    }));
+    res.json({ connected: true, campaigns });
+  } catch (err) {
+    console.error("[google-ads/campaigns]", err.response?.data || err.message);
+    res.json({ connected: true, campaigns: [], error: err.response?.data?.error?.message || err.message });
+  }
 });
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, ads: [] });
-  // TODO: buscar anúncios reais via Google Ads API aqui.
-  res.json({ connected: true, ads: [] });
+  try {
+    const { fromStr, toStr } = adsDateRange(req);
+    const rows = await googleAdsSearch(profile.google_ads_customer_id, `
+      SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status,
+             ad_group_ad.ad.responsive_search_ad.headlines, metrics.clicks, metrics.impressions, metrics.cost_micros
+      FROM ad_group_ad
+      WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
+      ORDER BY metrics.cost_micros DESC
+    `);
+    const ads = rows.map(r => {
+      const headline = r.adGroupAd?.ad?.responsiveSearchAd?.headlines?.[0]?.text || r.adGroupAd?.ad?.name || r.adGroupAd?.ad?.type || "Anúncio";
+      return {
+        id: r.adGroupAd?.ad?.id, headline, status: r.adGroupAd?.status,
+        cost: Number(r.metrics?.costMicros || 0) / 1e6,
+        clicks: Number(r.metrics?.clicks || 0),
+        impressions: Number(r.metrics?.impressions || 0),
+      };
+    });
+    res.json({ connected: true, ads });
+  } catch (err) {
+    console.error("[google-ads/ads]", err.response?.data || err.message);
+    res.json({ connected: true, ads: [], error: err.response?.data?.error?.message || err.message });
+  }
 });
 app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, keywords: [] });
-  // TODO: buscar termos de pesquisa reais via Google Ads API aqui.
-  res.json({ connected: true, keywords: [] });
+  try {
+    const { fromStr, toStr } = adsDateRange(req);
+    const rows = await googleAdsSearch(profile.google_ads_customer_id, `
+      SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
+             metrics.clicks, metrics.impressions, metrics.cost_micros, metrics.ctr
+      FROM keyword_view
+      WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
+      ORDER BY metrics.clicks DESC
+    `);
+    const keywords = rows.map(r => ({
+      text: r.adGroupCriterion?.keyword?.text,
+      matchType: r.adGroupCriterion?.keyword?.matchType,
+      clicks: Number(r.metrics?.clicks || 0),
+      impressions: Number(r.metrics?.impressions || 0),
+      ctr: Number(r.metrics?.ctr || 0),
+      cost: Number(r.metrics?.costMicros || 0) / 1e6,
+    }));
+    res.json({ connected: true, keywords });
+  } catch (err) {
+    console.error("[google-ads/keywords]", err.response?.data || err.message);
+    res.json({ connected: true, keywords: [], error: err.response?.data?.error?.message || err.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

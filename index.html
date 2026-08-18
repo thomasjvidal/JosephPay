@@ -2752,6 +2752,9 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
             <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora</button>
           </div>
         )}
+        {overview.adsConnected&&overview.adsError&&(
+          <div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar o investimento no Google Ads: {overview.adsError}</div>
+        )}
       </>)}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         {ACOES.map(ac=>(
@@ -2860,7 +2863,20 @@ function GAAnuncios({clienteId,cliente,onNav}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Anúncios · {cliente?.name}</div>
-      {data.ads.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum anúncio encontrado ainda.</div>}
+      {data.error&&<div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar do Google Ads: {data.error}</div>}
+      {data.ads.length===0&&!data.error&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum anúncio encontrado ainda.</div>}
+      {data.ads.map(ad=>(
+        <div key={ad.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,gap:10}}>
+            <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{ad.headline}</span>
+            <Tag status={ad.status==="ENABLED"?"ativo":"inativo"}/>
+          </div>
+          <div style={{display:"flex",gap:16,color:MUTED,fontSize:12}}>
+            <span>{ad.clicks} cliques</span>
+            <span>{fmtBRL(ad.cost)}</span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -2873,7 +2889,17 @@ function GAPalavrasChave({clienteId,cliente,onNav}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Palavras-chave · {cliente?.name}</div>
-      {data.keywords.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma palavra-chave encontrada ainda.</div>}
+      {data.error&&<div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar do Google Ads: {data.error}</div>}
+      {data.keywords.length===0&&!data.error&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma palavra-chave encontrada ainda.</div>}
+      {data.keywords.map((kw,i)=>(
+        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{kw.text}</span>
+          <div style={{display:"flex",gap:14,color:MUTED,fontSize:12}}>
+            <span>{kw.clicks} cliques</span>
+            <span>{fmtBRL(kw.cost)}</span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -2969,6 +2995,9 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
   const [devToken,setDevToken]=useState("");
   const [savingToken,setSavingToken]=useState(false);
   const [tokenMsg,setTokenMsg]=useState("");
+  const [managerId,setManagerId]=useState("");
+  const [savingManager,setSavingManager]=useState(false);
+  const [managerMsg,setManagerMsg]=useState("");
   const carregarStatus=()=>apiCall('/api/admin/google-ads/status').then(setStatus);
   useEffect(()=>{carregarStatus();},[]);
   useEffect(()=>{setCustomerId(cliente?.google_ads_customer_id||"");},[cliente?.id]);
@@ -3009,6 +3038,15 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
     setTokenMsg("✓ Salvo.");setTimeout(()=>setTokenMsg(""),2500);
     carregarStatus();
   };
+  const salvarManager=async()=>{
+    if(!managerId.trim())return;
+    setSavingManager(true);setManagerMsg("");
+    const d=await apiCall('/api/admin/google-ads/manager-id',{method:'POST',body:JSON.stringify({manager_id:managerId.trim()})});
+    setSavingManager(false);
+    if(d?.error){setManagerMsg(d.error);return;}
+    setManagerMsg("✓ Salvo.");setTimeout(()=>setManagerMsg(""),2500);
+    carregarStatus();
+  };
   if(!status)return null;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -3032,6 +3070,16 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
         <input value={devToken} onChange={e=>setDevToken(e.target.value)} placeholder={status.developerTokenConfigured?"Colar um novo token (opcional)":"Cole o token aqui"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
         <Btn sm outline onClick={salvarToken}>{savingToken?"Salvando…":"Salvar token"}</Btn>
         {tokenMsg&&<div style={{color:tokenMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{tokenMsg}</div>}
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:status.managerCustomerId?GREEN:MUTED,flexShrink:0}}/>
+          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.managerCustomerId?`Conta de gerente: ${status.managerCustomerId}`:"Conta de gerente pendente"}</span>
+        </div>
+        <div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.5}}>É o número da sua conta de gerente (MCC) no Google Ads — a que junta as contas de todos os clientes. Também é um valor só, vale pra plataforma inteira.</div>
+        <input value={managerId} onChange={e=>setManagerId(e.target.value)} placeholder="838-643-3727" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+        <Btn sm outline onClick={salvarManager}>{savingManager?"Salvando…":"Salvar conta de gerente"}</Btn>
+        {managerMsg&&<div style={{color:managerMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{managerMsg}</div>}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Conta de Ads deste cliente</div>
