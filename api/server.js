@@ -861,7 +861,7 @@ const CHAT_TIMEOUT_MS = 8000;
 async function callGroq(key, systemPrompt, messages) {
   const r = await axios.post(
     "https://api.groq.com/openai/v1/chat/completions",
-    { model: "llama-3.3-70b-versatile", max_tokens: 1024,
+    { model: "llama-3.1-8b-instant", max_tokens: 1024,
       messages: [{ role: "system", content: systemPrompt }, ...messages] },
     { headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
   );
