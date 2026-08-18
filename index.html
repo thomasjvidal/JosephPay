@@ -864,10 +864,13 @@ function GoogleAdmin(){
   const load=()=>apiCall('/api/admin/google/status').then(d=>{if(!d.error)setStatus(d);});
   useEffect(()=>{load();},[]);
   const conectar=async()=>{
+    // Abre a aba já no clique (senão o navegador do celular trata como pop-up e bloqueia
+    // sem avisar) — só depois preenche o endereço, quando a URL do Google chega.
+    const win=window.open('','_blank');
     const d=await apiCall('/api/admin/google/connect');
-    if(d.error||!d.url)return;
+    if(d.error||!d.url){win&&win.close();return;}
     setConnecting(true);
-    window.open(d.url,'_blank','noopener');
+    if(win)win.location.href=d.url;else window.location.href=d.url;
     let tentativas=0;
     const iv=setInterval(async()=>{
       tentativas++;
@@ -908,10 +911,13 @@ function GithubAdmin(){
   const load=()=>apiCall('/api/admin/github/status').then(d=>{if(!d.error)setStatus(d);});
   useEffect(()=>{load();},[]);
   const conectar=async()=>{
+    // Abre a aba já no clique (senão o navegador do celular trata como pop-up e bloqueia
+    // sem avisar) — só depois preenche o endereço, quando a URL do GitHub chega.
+    const win=window.open('','_blank');
     const d=await apiCall('/api/admin/github/connect');
-    if(d.error||!d.url)return;
+    if(d.error||!d.url){win&&win.close();return;}
     setConnecting(true);
-    window.open(d.url,'_blank','noopener');
+    if(win)win.location.href=d.url;else window.location.href=d.url;
     let tentativas=0;
     const iv=setInterval(async()=>{
       tentativas++;
@@ -2955,11 +2961,17 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
   const [customerId,setCustomerId]=useState(cliente?.google_ads_customer_id||"");
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState("");
+  const [conectarMsg,setConectarMsg]=useState("");
   useEffect(()=>{apiCall('/api/admin/google-ads/status').then(setStatus);},[]);
   useEffect(()=>{setCustomerId(cliente?.google_ads_customer_id||"");},[cliente?.id]);
   const conectar=async()=>{
+    // Abre a aba já no clique (senão o navegador do celular trata como pop-up e bloqueia
+    // sem avisar) — só depois preenche o endereço, quando a URL do Google chega.
+    setConectarMsg("");
+    const win=window.open('','_blank');
     const d=await apiCall('/api/admin/google/connect');
-    if(d?.url)window.open(d.url,'_blank');
+    if(d?.error||!d?.url){win&&win.close();setConectarMsg(d?.error||"Não consegui abrir a conexão com o Google.");return;}
+    if(win)win.location.href=d.url;else window.location.href=d.url;
   };
   const salvar=async()=>{
     setSaving(true);setMsg("");
@@ -2980,6 +2992,7 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
         </div>
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Mesma conexão Google usada pro sensor via Tag Manager — só precisa conectar uma vez.</div>
         <Btn sm outline onClick={conectar}>{status.googleConnected?"Reconectar (renovar permissões)":"Conectar Google"}</Btn>
+        {conectarMsg&&<div style={{color:RED,fontSize:11,marginTop:8}}>{conectarMsg}</div>}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
