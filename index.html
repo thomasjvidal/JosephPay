@@ -2962,6 +2962,7 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState("");
   const [conectarMsg,setConectarMsg]=useState("");
+  const [checando,setChecando]=useState(false);
   useEffect(()=>{apiCall('/api/admin/google-ads/status').then(setStatus);},[]);
   useEffect(()=>{setCustomerId(cliente?.google_ads_customer_id||"");},[cliente?.id]);
   const conectar=async()=>{
@@ -2972,6 +2973,16 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
     const d=await apiCall('/api/admin/google/connect');
     if(d?.error||!d?.url){win&&win.close();setConectarMsg(d?.error||"Não consegui abrir a conexão com o Google.");return;}
     if(win)win.location.href=d.url;else window.location.href=d.url;
+    // A aba de login abre separada — fica checando aqui de tempos em tempos se a
+    // conexão já foi concluída, pra tela atualizar sozinha sem precisar recarregar.
+    setChecando(true);
+    let tentativas=0;
+    const iv=setInterval(async()=>{
+      tentativas++;
+      const s=await apiCall('/api/admin/google-ads/status');
+      if(s?.googleConnected){clearInterval(iv);setChecando(false);setStatus(s);}
+      else if(tentativas>40){clearInterval(iv);setChecando(false);}
+    },3000);
   };
   const salvar=async()=>{
     setSaving(true);setMsg("");
@@ -2991,7 +3002,8 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
           <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.googleConnected?`Conectado: ${status.googleEmail}`:"Conta Google não conectada"}</span>
         </div>
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Mesma conexão Google usada pro sensor via Tag Manager — só precisa conectar uma vez.</div>
-        <Btn sm outline onClick={conectar}>{status.googleConnected?"Reconectar (renovar permissões)":"Conectar Google"}</Btn>
+        <Btn sm outline onClick={conectar}>{checando?"Verificando…":status.googleConnected?"Reconectar (renovar permissões)":"Conectar Google"}</Btn>
+        {checando&&<div style={{color:MUTED,fontSize:11,marginTop:8}}>Depois de autorizar na aba do Google, volta aqui — a tela atualiza sozinha em instantes.</div>}
         {conectarMsg&&<div style={{color:RED,fontSize:11,marginTop:8}}>{conectarMsg}</div>}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
