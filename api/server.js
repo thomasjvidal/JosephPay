@@ -2187,9 +2187,11 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
 // ══════════════════════════════════════════════════════════════════════════════
 // ROTAS — Google Ads (admin-only) — o admin é o gestor de tráfego dos produtores.
 // Usa a MESMA conexão Google do GTM (platform_google_auth), só que também pede o
-// escopo do Ads. Além disso precisa de um Developer Token do Google Ads (pedido
-// direto ao Google, fora daqui — configurado como env var GOOGLE_ADS_DEVELOPER_TOKEN)
-// e do customer_id da conta de Ads de cada produtor (vinculado abaixo).
+// escopo do Ads. Além disso precisa de um Developer Token do Google Ads — um só
+// pra plataforma inteira (não por cliente), pedido direto ao Google fora daqui,
+// e guardado na mesma linha de platform_google_auth (com fallback pra env var
+// GOOGLE_ADS_DEVELOPER_TOKEN, caso prefira configurar assim) — e do customer_id
+// da conta de Ads de cada produtor (esse sim, um por cliente, vinculado abaixo).
 // IMPORTANTE: enquanto o developer token ou o customer_id não estiverem
 // configurados, os endpoints de campanhas/anúncios/palavras-chave respondem
 // {connected:false} — nunca inventamos número de gasto/campanha que não existe.
@@ -2197,15 +2199,32 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
 // que o JosephPay já rastreia (customers/sales/visits), com ou sem Ads conectado.
 // ══════════════════════════════════════════════════════════════════════════════
 
+async function getGoogleAdsDeveloperToken() {
+  const { data } = await supabase.from("platform_google_auth").select("developer_token").eq("id", 1).maybeSingle();
+  return data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN || "";
+}
+
 app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email").eq("id", 1).maybeSingle();
+    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email,developer_token").eq("id", 1).maybeSingle();
     // "Conectado" depende do refresh_token existir, não do e-mail — o e-mail é só exibição.
     res.json({
       googleConnected: !!data?.refresh_token,
       googleEmail: data?.connected_email || null,
-      developerTokenConfigured: !!GOOGLE_ADS_DEVELOPER_TOKEN,
+      developerTokenConfigured: !!(data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/google-ads/developer-token", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token?.trim()) return res.status(400).json({ error: "Cole o token antes de salvar" });
+    const { error } = await supabase.from("platform_google_auth").upsert({ id: 1, developer_token: token.trim(), updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2256,8 +2275,8 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       };
     };
 
-    const [atual, anterior] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo)]);
-    const adsConnected = !!(profile.google_ads_customer_id && GOOGLE_ADS_DEVELOPER_TOKEN);
+    const [atual, anterior, developerToken] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo), getGoogleAdsDeveloperToken()]);
+    const adsConnected = !!(profile.google_ads_customer_id && developerToken);
 
     res.json({
       cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
@@ -2278,24 +2297,25 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
 // Campanhas/Anúncios/Palavras-chave: dependem da Google Ads API de verdade (developer
 // token + customer_id). Estrutura pronta pra plugar isso — até lá, resposta honesta
 // de "não conectado", sem simular dado nenhum.
-function requireAdsConnection(profile) {
-  return !!(profile?.google_ads_customer_id && GOOGLE_ADS_DEVELOPER_TOKEN);
+async function requireAdsConnection(profile) {
+  const developerToken = await getGoogleAdsDeveloperToken();
+  return !!(profile?.google_ads_customer_id && developerToken);
 }
 app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
-  if (!requireAdsConnection(profile)) return res.json({ connected: false, campaigns: [] });
+  if (!(await requireAdsConnection(profile))) return res.json({ connected: false, campaigns: [] });
   // TODO: quando o developer token estiver configurado, buscar campanhas reais via Google Ads API aqui.
   res.json({ connected: true, campaigns: [] });
 });
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
-  if (!requireAdsConnection(profile)) return res.json({ connected: false, ads: [] });
+  if (!(await requireAdsConnection(profile))) return res.json({ connected: false, ads: [] });
   // TODO: buscar anúncios reais via Google Ads API aqui.
   res.json({ connected: true, ads: [] });
 });
 app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
-  if (!requireAdsConnection(profile)) return res.json({ connected: false, keywords: [] });
+  if (!(await requireAdsConnection(profile))) return res.json({ connected: false, keywords: [] });
   // TODO: buscar termos de pesquisa reais via Google Ads API aqui.
   res.json({ connected: true, keywords: [] });
 });

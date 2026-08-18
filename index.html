@@ -2963,7 +2963,11 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
   const [msg,setMsg]=useState("");
   const [conectarMsg,setConectarMsg]=useState("");
   const [checando,setChecando]=useState(false);
-  useEffect(()=>{apiCall('/api/admin/google-ads/status').then(setStatus);},[]);
+  const [devToken,setDevToken]=useState("");
+  const [savingToken,setSavingToken]=useState(false);
+  const [tokenMsg,setTokenMsg]=useState("");
+  const carregarStatus=()=>apiCall('/api/admin/google-ads/status').then(setStatus);
+  useEffect(()=>{carregarStatus();},[]);
   useEffect(()=>{setCustomerId(cliente?.google_ads_customer_id||"");},[cliente?.id]);
   const conectar=async()=>{
     // Abre a aba já no clique (senão o navegador do celular trata como pop-up e bloqueia
@@ -2992,6 +2996,16 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
     setMsg("Salvo.");setTimeout(()=>setMsg(""),2000);
     onUpdated&&onUpdated();
   };
+  const salvarToken=async()=>{
+    if(!devToken.trim())return;
+    setSavingToken(true);setTokenMsg("");
+    const d=await apiCall('/api/admin/google-ads/developer-token',{method:'POST',body:JSON.stringify({token:devToken.trim()})});
+    setSavingToken(false);
+    if(d?.error){setTokenMsg(d.error);return;}
+    setDevToken("");
+    setTokenMsg("✓ Salvo.");setTimeout(()=>setTokenMsg(""),2500);
+    carregarStatus();
+  };
   if(!status)return null;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -3011,7 +3025,10 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
           <span style={{width:8,height:8,borderRadius:"50%",background:status.developerTokenConfigured?GREEN:MUTED,flexShrink:0}}/>
           <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.developerTokenConfigured?"Developer Token configurado":"Developer Token pendente"}</span>
         </div>
-        {!status.developerTokenConfigured&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Esse token é pedido direto ao Google, dentro da própria conta de Google Ads (Ferramentas → Central de API). Depois de conseguir, me manda o token que eu configuro no servidor.</div>}
+        <div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.5}}>Esse token é pedido direto ao Google, dentro da própria conta de Google Ads (Ferramentas → Central de API). É um só pra plataforma inteira, vale pra todos os clientes.</div>
+        <input value={devToken} onChange={e=>setDevToken(e.target.value)} placeholder={status.developerTokenConfigured?"Colar um novo token (opcional)":"Cole o token aqui"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+        <Btn sm outline onClick={salvarToken}>{savingToken?"Salvando…":"Salvar token"}</Btn>
+        {tokenMsg&&<div style={{color:tokenMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{tokenMsg}</div>}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Conta de Ads deste cliente</div>
