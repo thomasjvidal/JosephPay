@@ -1985,7 +1985,9 @@ const GTM_SCOPE = "https://www.googleapis.com/auth/tagmanager.edit.containers ht
 // Quem conectou antes dessa mudança precisa clicar em "Conectar" de novo uma vez
 // pra conceder essa permissão extra (o Google sempre reabre a tela de consentimento).
 const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
-const GOOGLE_SCOPE = `${GTM_SCOPE} ${GOOGLE_ADS_SCOPE}`;
+// userinfo.email é só pra mostrar qual conta está conectada na tela — a conexão em si
+// não depende dela (ver checagem de "conectado" abaixo, que usa refresh_token).
+const GOOGLE_SCOPE = `${GTM_SCOPE} ${GOOGLE_ADS_SCOPE} https://www.googleapis.com/auth/userinfo.email`;
 const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "";
 
 // state do OAuth só precisa viver alguns minutos (tempo de o admin logar no Google) —
@@ -2016,8 +2018,10 @@ async function getGoogleAccessToken() {
 
 app.get("/api/admin/google/status", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data } = await supabase.from("platform_google_auth").select("connected_email,updated_at").eq("id", 1).maybeSingle();
-    res.json({ connected: !!data?.connected_email, email: data?.connected_email || null, connectedAt: data?.updated_at || null });
+    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email,updated_at").eq("id", 1).maybeSingle();
+    // "Conectado" depende do refresh_token existir, não do e-mail — o e-mail é só exibição
+    // e pode não vir se o Google não devolver esse dado (ex: escopo antigo sem userinfo.email).
+    res.json({ connected: !!data?.refresh_token, email: data?.connected_email || null, connectedAt: data?.updated_at || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2195,9 +2199,10 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
 
 app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data } = await supabase.from("platform_google_auth").select("connected_email").eq("id", 1).maybeSingle();
+    const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email").eq("id", 1).maybeSingle();
+    // "Conectado" depende do refresh_token existir, não do e-mail — o e-mail é só exibição.
     res.json({
-      googleConnected: !!data?.connected_email,
+      googleConnected: !!data?.refresh_token,
       googleEmail: data?.connected_email || null,
       developerTokenConfigured: !!GOOGLE_ADS_DEVELOPER_TOKEN,
     });
