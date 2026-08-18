@@ -3100,11 +3100,20 @@ function GoogleAdsAdmin(){
   const [presetDias,setPresetDias]=useState(30);
   const [tipoRelatorio,setTipoRelatorio]=useState("mensal");
   const carregarClientes=()=>apiCall('/api/admin/clients').then(d=>{
-    if(d?.clients){setClientes(d.clients);setClienteId(c=>c||d.clients[0]?.id||null);}
+    if(d?.clients){
+      setClientes(d.clients);
+      setClienteId(c=>{
+        if(c)return c;
+        const salvo=localStorage.getItem('jp_admin_ga_cliente_id');
+        if(salvo&&d.clients.some(cl=>cl.id===salvo))return salvo;
+        return d.clients[0]?.id||null;
+      });
+    }
     else setClientes([]);
   });
   useEffect(()=>{carregarClientes();},[]);
   const cliente=clientes?.find(c=>c.id===clienteId)||null;
+  const selecionarCliente=(id)=>{setClienteId(id);localStorage.setItem('jp_admin_ga_cliente_id',id);};
   const onNav=(s)=>setScreen(s);
   if(clientes===null)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
   if(!clientes.length)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Cadastre um produtor primeiro (aba Clientes) pra gerenciar o tráfego dele aqui.</div>;
@@ -3113,7 +3122,7 @@ function GoogleAdsAdmin(){
       {screen!=="visaogeral"&&(
         <button onClick={()=>setScreen("visaogeral")} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar pra Visão geral</button>
       )}
-      {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={setClienteId} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
+      {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={selecionarCliente} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
       {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
       {screen==="campanha"&&<GACampanhaDetalhe campanha={campanhaSel} onNav={onNav}/>}
       {screen==="desempenho"&&<GADesempenho clienteId={clienteId} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias}/>}
