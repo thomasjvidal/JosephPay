@@ -896,7 +896,7 @@ function GoogleAdmin(){
         <div>
           <div style={{display:"flex",alignItems:"center",gap:8,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
             <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
-            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>Conectado como {status.email}</span>
+            <span style={{color:TEXT,fontSize:12,fontWeight:600}}>{status.email?`Conectado como ${status.email}`:"Conectado"}</span>
           </div>
           <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
         </div>
@@ -2999,7 +2999,7 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
           <span style={{width:8,height:8,borderRadius:"50%",background:status.googleConnected?GREEN:MUTED,flexShrink:0}}/>
-          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.googleConnected?`Conectado: ${status.googleEmail}`:"Conta Google não conectada"}</span>
+          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{status.googleConnected?(status.googleEmail?`Conectado: ${status.googleEmail}`:"Conectado"):"Conta Google não conectada"}</span>
         </div>
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Mesma conexão Google usada pro sensor via Tag Manager — só precisa conectar uma vez.</div>
         <Btn sm outline onClick={conectar}>{checando?"Verificando…":status.googleConnected?"Reconectar (renovar permissões)":"Conectar Google"}</Btn>
