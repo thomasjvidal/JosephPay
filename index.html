@@ -3082,7 +3082,10 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
         {managerMsg&&<div style={{color:managerMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{managerMsg}</div>}
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Conta de Ads deste cliente</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:cliente?.google_ads_customer_id?GREEN:MUTED,flexShrink:0}}/>
+          <span style={{color:TEXT,fontSize:13,fontWeight:700}}>{cliente?.google_ads_customer_id?`Conta vinculada: ${cliente.google_ads_customer_id}`:"Conta de Ads deste cliente pendente"}</span>
+        </div>
         <div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.5}}>Cole o ID da conta de Google Ads de <b style={{color:TEXT}}>{cliente?.name}</b> (formato 123-456-7890).</div>
         <input value={customerId} onChange={e=>setCustomerId(e.target.value)} placeholder="123-456-7890" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
         <Btn sm outline onClick={salvar}>{saving?"Salvando…":"Salvar"}</Btn>
