@@ -2236,6 +2236,18 @@ async function googleAdsSearch(customerId, query) {
   return resp.data.results || [];
 }
 
+// A mensagem padrão do axios ("Request failed with status code X") não diz nada —
+// o motivo real vem dentro do corpo do erro da Google Ads API. Monta uma mensagem
+// que mostra o status HTTP + o motivo detalhado (quando a Google manda um), pra dar
+// pra diagnosticar sem precisar olhar log de servidor.
+function describeGoogleAdsError(err) {
+  const status = err.response?.status;
+  const gErr = err.response?.data?.error;
+  const detail = gErr?.details?.find(d => Array.isArray(d.errors))?.errors?.[0];
+  const reason = detail?.message || gErr?.message || err.message;
+  return status ? `HTTP ${status} — ${reason}` : reason;
+}
+
 app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data } = await supabase.from("platform_google_auth").select("refresh_token,connected_email,developer_token,manager_customer_id").eq("id", 1).maybeSingle();
@@ -2337,7 +2349,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
       } catch (err) {
         console.error("[google-ads/overview] busca real falhou:", err.response?.data || err.message);
-        adsError = err.response?.data?.error?.message || err.message;
+        adsError = describeGoogleAdsError(err);
       }
     }
 
@@ -2390,7 +2402,7 @@ app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdm
     res.json({ connected: true, campaigns });
   } catch (err) {
     console.error("[google-ads/campaigns]", err.response?.data || err.message);
-    res.json({ connected: true, campaigns: [], error: err.response?.data?.error?.message || err.message });
+    res.json({ connected: true, campaigns: [], error: describeGoogleAdsError(err) });
   }
 });
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
@@ -2417,7 +2429,7 @@ app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, as
     res.json({ connected: true, ads });
   } catch (err) {
     console.error("[google-ads/ads]", err.response?.data || err.message);
-    res.json({ connected: true, ads: [], error: err.response?.data?.error?.message || err.message });
+    res.json({ connected: true, ads: [], error: describeGoogleAdsError(err) });
   }
 });
 app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
@@ -2443,7 +2455,7 @@ app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmi
     res.json({ connected: true, keywords });
   } catch (err) {
     console.error("[google-ads/keywords]", err.response?.data || err.message);
-    res.json({ connected: true, keywords: [], error: err.response?.data?.error?.message || err.message });
+    res.json({ connected: true, keywords: [], error: describeGoogleAdsError(err) });
   }
 });
 
