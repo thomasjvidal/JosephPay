@@ -2209,7 +2209,7 @@ async function getGoogleAdsManagerId() {
   return (data?.manager_customer_id || "").replace(/\D/g, "");
 }
 
-const GOOGLE_ADS_API_VERSION = "v17";
+const GOOGLE_ADS_API_VERSION = "v25";
 
 // Roda uma consulta GAQL (linguagem de consulta do Google Ads) contra a conta de um
 // cliente específico, passando pela conta de gerente quando configurada. Erros da API
