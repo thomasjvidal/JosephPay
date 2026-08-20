@@ -1759,6 +1759,26 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
   }
 });
 
+// Admin visualiza os clientes/interessados de um produtor específico — mesma tabela
+// que o produtor já usa no próprio CRM, só que lido pelo backend (service role) em
+// vez do Supabase anônimo do produtor, já que o Admin não tem a sessão dele.
+// Só leitura — nenhum envio de mensagem acontece por aqui.
+app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id,name,phone,email,status,source,birthday,created_at")
+      .eq("owner_id", req.params.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ customers: data || [] });
+  } catch (err) {
+    console.error("[admin/producers customers]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin conecta/desconecta o e-mail (SMTP) de qualquer cliente em nome dele —
 // mesma lógica de /api/email/connect, só que escopada pelo :id em vez do usuário logado.
 app.get("/api/admin/producers/:id/email/status", requireAuth, requireAdmin, async (req, res) => {

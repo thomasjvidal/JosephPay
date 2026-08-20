@@ -1002,8 +1002,9 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
   );
 }
 
-function InstalacaoAdmin({c,onUpdated}){
-  const [open,setOpen]=useState(false);
+function InstalacaoAdmin({c,onUpdated,initialOpen}){
+  const [open,setOpen]=useState(!!initialOpen);
+  const [showTecnico,setShowTecnico]=useState(false);
   const [metodo,setMetodo]=useState(c.github_repo?"github":"gtm");
   const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
   // ── Google Tag Manager ──
@@ -1138,13 +1139,16 @@ function InstalacaoAdmin({c,onUpdated}){
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Instalação técnica" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
-        <StatusBadges status={c.conn}/>
-        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
-        <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
-          <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
-          <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
-        </div>
+        <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:showTecnico?12:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
+        {showTecnico&&(<>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
+          <StatusBadges status={c.conn}/>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
+          <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
+            <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
+            <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+          </div>
+        </>)}
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Como o site desse cliente foi feito?</div>
         <div style={{display:"flex",gap:8,marginBottom:16}}>
           {METODOS.map(m=>(
@@ -1264,8 +1268,8 @@ function InstalacaoAdmin({c,onUpdated}){
   );
 }
 
-function EmailAdmin({c,onUpdated}){
-  const [open,setOpen]=useState(false);
+function EmailAdmin({c,onUpdated,initialOpen}){
+  const [open,setOpen]=useState(!!initialOpen);
   const [status,setStatus]=useState(null);
   const [host,setHost]=useState("");
   const [port,setPort]=useState("465");
@@ -1570,6 +1574,64 @@ function ProdutosDoCliente({ownerId,nome}){
   );
 }
 
+function ClientesDoProdutorAdmin({ownerId,nome}){
+  const [open,setOpen]=useState(false);
+  const [lista,setLista]=useState(null);
+  const [filtro,setFiltro]=useState("todos");
+  useEffect(()=>{
+    if(!ownerId||!open||lista!==null)return;
+    apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{if(d?.customers)setLista(d.customers);else setLista([]);});
+  },[ownerId,open]);
+  const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
+  const srcLabel=s=>s==='minichat'?'Site':s==='manual'?'Manual':'Compra';
+  const cnts={todos:(lista||[]).length,lead:(lista||[]).filter(c=>c.status==='lead').length,cliente:(lista||[]).filter(c=>(c.status||'cliente')==='cliente').length,assinante:(lista||[]).filter(c=>c.status==='assinante').length};
+  const filtrada=(lista||[]).filter(c=>filtro==='todos'||(c.status||'cliente')===filtro);
+  const exportar=()=>{
+    if(!lista||!lista.length)return;
+    const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+    const hdr='Nome,Telefone,E-mail,Status,Origem,Aniversário,Data cadastro';
+    const rows=lista.map(c=>[esc(c.name),esc(c.phone),esc(c.email),esc(stLabel(c.status)),esc(srcLabel(c.source)),esc(c.birthday?new Date(c.birthday).toLocaleDateString('pt-BR'):''),esc(new Date(c.created_at).toLocaleDateString('pt-BR'))].join(','));
+    const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`clientes-${(nome||'cliente').toLowerCase().replace(/\s+/g,'-')}.csv`;a.click();
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Clientes do produtor" open={open} onToggle={()=>setOpen(o=>!o)}/>
+      {open&&(<div style={{marginTop:8}}>
+        {lista===null&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
+        {lista!==null&&(
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[["todos","Todos"],["lead","Interessados"],["cliente","Clientes"],["assinante","Assinantes"]].map(([id,label])=>(
+                  <button key={id} onClick={()=>setFiltro(id)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${filtro===id?GOLD+"55":BDR}`,background:filtro===id?`${GOLD}14`:"transparent",color:filtro===id?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>{label} <span style={{opacity:0.7}}>{cnts[id]}</span></button>
+                ))}
+              </div>
+              <Btn sm outline color={GOLD} onClick={exportar}>Exportar CSV</Btn>
+            </div>
+            {filtrada.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum contato aqui ainda.</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
+              {filtrada.map(c=>(
+                <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{width:34,height:34,borderRadius:10,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div>
+                    <div style={{color:MUTED,fontSize:11,marginTop:2}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
+                    <div style={{color:MUTED,fontSize:10,marginTop:2}}>{c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>)}
+    </div>
+  );
+}
+
 function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   const [text,setText]=useState("");
   const [statuses,setStatuses]=useState({});
@@ -1654,7 +1716,7 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Entendido.",subtext:"Qual sua maior dificuldade hoje?",options:["Perguntam preço e somem","Explico tudo no WhatsApp","Não pareço profissional","Não tenho autoridade digital"]},
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
-function AtivacaoAdmin({c}){
+function AtivacaoAdmin({c,initialOpen}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
@@ -1698,7 +1760,23 @@ function AtivacaoAdmin({c}){
     setResetting(false);
     if(!d.error)setResetResult(d.password);
   };
-  const [open,setOpen]=useState(false);
+  const [promptText,setPromptText]=useState(null);
+  const gerarPrompt=()=>{
+    const mc=c.minichat_config||{};
+    const linhas=[`Você está ajudando a configurar o Mini Chat de ${c.company_name||c.name||"um cliente"} dentro do JosephPay.`];
+    if(mc.brand_name)linhas.push(`Nome usado na saudação: ${mc.brand_name}`);
+    if(mc.whatsapp_number)linhas.push(`WhatsApp de destino: ${mc.whatsapp_number}`);
+    if(mc.email_destino)linhas.push(`E-mail de destino: ${mc.email_destino}`);
+    if(mc.redirect_link)linhas.push(`Link de redirecionamento final: ${mc.redirect_link}`);
+    if(mc.objetivo_options?.length)linhas.push(`Opções da pergunta "objetivo": ${mc.objetivo_options.join(", ")}`);
+    if(mc.questions?.length){
+      linhas.push("Perguntas atuais do fluxo:");
+      mc.questions.forEach((q,i)=>{linhas.push(`${i+1}. ${q.subtext||q.text||""}${q.options?.filter(Boolean).length?` (opções: ${q.options.filter(Boolean).join(", ")})`:""}`);});
+    }
+    linhas.push("Com base nisso, sugira melhorias no texto das perguntas e opções pra deixar o diagnóstico mais natural e no tom de voz dessa empresa.");
+    setPromptText(linhas.join("\n"));
+  };
+  const [open,setOpen]=useState(!!initialOpen);
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
@@ -1727,6 +1805,16 @@ function AtivacaoAdmin({c}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
 
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
+      {c.minichat_config&&(<div style={{marginBottom:14}}>
+        <Btn sm outline color={GOLD} onClick={gerarPrompt}>Gerar prompt</Btn>
+        {promptText&&(
+          <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginTop:8}}>
+            <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,paddingRight:60}}>{promptText}</pre>
+            <button onClick={()=>navigator.clipboard?.writeText(promptText)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+          </div>
+        )}
+        <div style={{color:MUTED,fontSize:11,marginTop:6,lineHeight:1.4}}>Monta um texto com os dados reais desse cliente pra você colar no ChatGPT/Claude e pedir sugestões de melhoria no fluxo.</div>
+      </div>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
@@ -1739,8 +1827,8 @@ function AtivacaoAdmin({c}){
   );
 }
 
-function PerguntasMinichatAdmin({c}){
-  const [open,setOpen]=useState(false);
+function PerguntasMinichatAdmin({c,initialOpen}){
+  const [open,setOpen]=useState(!!initialOpen);
   const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
@@ -1797,6 +1885,74 @@ function PerguntasMinichatAdmin({c}){
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
       </div>)}
+    </div>
+  );
+}
+
+// Calcula, a partir dos mesmos campos reais que já existem no banco (nenhum
+// controle novo), em que passo da ativação o cliente está — pra abrir sozinho
+// só a próxima etapa pendente e mostrar uma tira de progresso compacta.
+function AtivacaoChecklistAdmin({c,onUpdated}){
+  const metodoAtual=c.github_repo?"github":(c.gtm_container_id?"gtm":null);
+  const siteOk=!!((c.github_repo&&c.github_file_path)||c.gtm_container_id);
+  const sensorOk=!!(c.github_sensor_installed_at||c.gtm_sensor_installed_at);
+  const minichatInstOk=metodoAtual==="github"?!!c.github_minichat_installed_at:null; // null = não se aplica (só existe via GitHub hoje)
+  const configOk=!!c.minichat_config?.whatsapp_number;
+  const emailOk=!!c.conn?.email;
+  const [botoesOk,setBotoesOk]=useState(null); // null = não verificado ainda / não se aplica
+  useEffect(()=>{
+    if(metodoAtual!=="github"||!c.github_repo||!c.github_file_path){setBotoesOk(null);return;}
+    const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+      if(d?.error||!d?.links){setBotoesOk(null);return;}
+      setBotoesOk(d.links.some(l=>l.href===minichatLink));
+    });
+  },[metodoAtual,c.github_repo,c.github_file_path,c.id]);
+
+  const steps=[
+    {id:"site",label:"Site conectado",done:siteOk,cardKeys:["instalacao"]},
+    {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["instalacao"]},
+    ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado",done:minichatInstOk,cardKeys:["instalacao"]}]:[]),
+    {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
+    ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["instalacao"]}]:[]),
+    {id:"email",label:"E-mail conectado",done:emailOk,cardKeys:["email"]},
+  ];
+  const currentStep=steps.find(s=>!s.done);
+  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
+
+  const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        {clienteAtivo?(
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <span style={{color:GREEN,fontSize:16,fontWeight:800}}>✓ Cliente ativo</span>
+          </div>
+        ):(
+          <div style={{color:TEXT,fontWeight:800,fontSize:15,marginBottom:2}}>Ativação pendente</div>
+        )}
+        <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{steps.filter(s=>s.done).length} de {steps.length} etapas concluídas</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {steps.map(s=>{
+            const isCurrent=currentStep&&s.id===currentStep.id;
+            const color=s.done?GREEN:isCurrent?GOLD:MUTED;
+            const icone=s.done?"✓":isCurrent?"→":"○";
+            return(
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:isCurrent?700:500,color}}>
+                <span style={{width:16,textAlign:"center"}}>{icone}</span>
+                <span>{s.label}</span>
+              </div>
+            );
+          })}
+        </div>
+        {!c.github_repo&&!c.gtm_container_id&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Não sei ainda como o site desse cliente foi feito — comece abrindo "Instalação técnica" abaixo e escolhendo GTM ou GitHub.</div>}
+        {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — instalar a página do Mini Chat direto no site ainda só funciona para clientes com GitHub. Configure o Mini Chat normalmente; o link continua funcionando, só não dá pra criar a página automaticamente no site dele.</div>}
+      </div>
+      <AtivacaoAdmin c={c} initialOpen={openCard("minichat")}/>
+      <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")}/>
+      <InstalacaoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("instalacao")}/>
+      <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")}/>
     </div>
   );
 }
@@ -1933,6 +2089,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           <FunilClienteAdmin ownerId={c.id}/>
           <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
           <ProdutosDoCliente ownerId={c.id} nome={nome}/>
+          <ClientesDoProdutorAdmin ownerId={c.id} nome={nome}/>
           <NotaProdutorAdmin ownerId={c.id}/>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
@@ -1957,14 +2114,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
           </div>
         </>
       )}
-      {subTab==="ativacao"&&(
-        <>
-          <AtivacaoAdmin c={c}/>
-          <PerguntasMinichatAdmin c={c}/>
-          <InstalacaoAdmin c={c} onUpdated={onUpdated}/>
-          <EmailAdmin c={c} onUpdated={onUpdated}/>
-        </>
-      )}
+      {subTab==="ativacao"&&<AtivacaoChecklistAdmin c={c} onUpdated={onUpdated}/>}
     </div>
   );
 }
