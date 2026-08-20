@@ -861,7 +861,7 @@ const CHAT_TIMEOUT_MS = 8000;
 async function callGroq(key, systemPrompt, messages) {
   const r = await axios.post(
     "https://api.groq.com/openai/v1/chat/completions",
-    { model: "llama-3.1-8b-instant", max_tokens: 1024,
+    { model: "openai/gpt-oss-20b", max_tokens: 1024,
       messages: [{ role: "system", content: systemPrompt }, ...messages] },
     { headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, timeout: CHAT_TIMEOUT_MS }
   );
@@ -1865,12 +1865,13 @@ app.post("/api/admin/producers/:id/minichat/generate-question", requireAuth, req
       return res.status(400).json({ error: "Dados inválidos" });
     }
     const [{ data: profile }, { data: products }] = await Promise.all([
-      supabase.from("profiles").select("name,company_name,site_url").eq("id", id).maybeSingle(),
+      supabase.from("profiles").select("name,company_name,site_url,minichat_config").eq("id", id).maybeSingle(),
       supabase.from("products").select("name").eq("owner_id", id).order("created_at", { ascending: false }).limit(10),
     ]);
     const negocio = `Nome/marca: ${profile?.company_name || profile?.name || "—"}
 Site: ${profile?.site_url || "—"}
-Produtos/serviços cadastrados: ${(products || []).map(p => p.name).filter(Boolean).join(", ") || "nenhum cadastrado ainda"}`;
+Produtos/serviços cadastrados: ${(products || []).map(p => p.name).filter(Boolean).join(", ") || "nenhum cadastrado ainda"}
+Sobre o negócio (ramo, público, diferenciais): ${profile?.minichat_config?.business_context || "não informado — pergunte de forma genérica"}`;
     const outrasPerguntas = questions.map((q, i) => i === index ? null : `${i + 1}. ${q.subtext || q.text}`).filter(Boolean).join("\n") || "nenhuma";
 
     const systemPrompt = `Você escreve perguntas para um Mini Chat de diagnóstico (estilo WhatsApp, botões de resposta rápida) usado por negócios pra qualificar leads antes de mandar pro WhatsApp.
@@ -1915,7 +1916,7 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options, business_context } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -1949,6 +1950,9 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
         ? (Array.isArray(objetivo_options) ? objetivo_options.map(o => String(o || "").trim()).filter(Boolean) : []).slice(0, 6)
         : (existing.objetivo_options ?? null),
       questions: cleanQuestions,
+      // Texto livre sobre o negócio (ramo, público, diferenciais) — usado só pra dar
+      // contexto real pra IA quando o admin pede pra gerar/sugerir perguntas.
+      business_context: business_context !== undefined ? (business_context?.trim() || null) : (existing.business_context ?? null),
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
