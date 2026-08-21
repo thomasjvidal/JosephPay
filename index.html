@@ -1240,6 +1240,9 @@ function InstalacaoAdmin({c,onUpdated,initialOpen}){
                   {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o arquivo…</div>}
                   {links&&links.length===0&&!msgLinks&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo.</div>}
                   {links&&links.length>0&&(
+                    <button onClick={()=>setSelected(Object.fromEntries(links.filter(l=>l.href!==minichatLink).map(l=>[l.href,true])))} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10}}>Marcar todos</button>
+                  )}
+                  {links&&links.length>0&&(
                     <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
                       {links.map(l=>{
                         const isMinichat=l.href===minichatLink;
@@ -1811,6 +1814,7 @@ function AtivacaoAdmin({c,initialOpen}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
 
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
+      {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${wapNum.trim().replace(/\D/g,"")}`}/></div>}
       {c.minichat_config&&(<div style={{marginBottom:14}}>
         <Btn sm outline color={GOLD} onClick={gerarPrompt}>Gerar prompt</Btn>
         {promptText&&(
@@ -1841,6 +1845,15 @@ function PerguntasMinichatAdmin({c,initialOpen}){
   const [saved,setSaved]=useState(false);
   const [msg,setMsg]=useState("");
   const [regenerating,setRegenerating]=useState({});
+  const [gerandoTudo,setGerandoTudo]=useState(false);
+  const gerarTodas=async()=>{
+    if(gerandoTudo)return;
+    setMsg("");setGerandoTudo(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/generate-all-questions`,{method:'POST',body:JSON.stringify({count:questions.length||4})});
+    setGerandoTudo(false);
+    if(d?.questions?.length)setQuestions(d.questions);
+    else if(d?.error)setMsg(d.error);
+  };
   const addQuestion=()=>setQuestions(qs=>[...qs,{text:"",subtext:"",options:["","","",""]}]);
   const removeQuestion=i=>setQuestions(qs=>qs.filter((_,idx)=>idx!==i));
   const updateQuestion=(i,field,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===i?{...q,[field]:val}:q));
@@ -1866,7 +1879,9 @@ function PerguntasMinichatAdmin({c,initialOpen}){
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar todas com IA"}</Btn>
+        <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o campo "Sobre o negócio" (na aba Mini Chat acima) pra montar as {questions.length} perguntas de uma vez. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         {questions.map((q,qi)=>(
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>

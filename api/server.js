@@ -1973,6 +1973,61 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
+// Mesma ideia do endpoint acima, mas gera o fluxo inteiro (N perguntas) de uma
+// vez só, numa única chamada de IA — pra não precisar clicar pergunta por pergunta.
+app.post("/api/admin/producers/:id/minichat/generate-all-questions", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { count } = req.body;
+    count = Math.min(Math.max(Number(count) || 4, 2), 8);
+    const [{ data: profile }, { data: products }] = await Promise.all([
+      supabase.from("profiles").select("name,company_name,site_url,minichat_config").eq("id", id).maybeSingle(),
+      supabase.from("products").select("name").eq("owner_id", id).order("created_at", { ascending: false }).limit(10),
+    ]);
+    const negocio = `Nome/marca: ${profile?.company_name || profile?.name || "—"}
+Site: ${profile?.site_url || "—"}
+Produtos/serviços cadastrados: ${(products || []).map(p => p.name).filter(Boolean).join(", ") || "nenhum cadastrado ainda"}
+Sobre o negócio (ramo, público, diferenciais): ${profile?.minichat_config?.business_context || "não informado — pergunte de forma genérica"}`;
+
+    const systemPrompt = `Você escreve o fluxo completo de perguntas de um Mini Chat de diagnóstico (estilo WhatsApp, botões de resposta rápida) usado por negócios pra qualificar leads antes de mandar pro WhatsApp.
+Dados reais do negócio deste cliente:
+${negocio}
+Gere exatamente ${count} perguntas, cada uma sobre um assunto diferente (não repita o mesmo tema), formando uma sequência lógica de diagnóstico que termina qualificando o lead pra falar no WhatsApp. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
+{"questions":[{"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}]}
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções por pergunta. Português do Brasil.`;
+
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: "Gere as perguntas." }]); break; }
+      catch (e) { lastErr = e; console.warn("[minichat generate-all-questions] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: "Gere as perguntas." }]); }
+      catch (e) { lastErr = e; console.error("[minichat generate-all-questions] anthropic falhou:", e.response?.data || e.message); }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+
+    const match = reply.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = match ? JSON.parse(match[0]) : null; } catch { parsed = null; }
+    if (!parsed || !Array.isArray(parsed.questions) || !parsed.questions.length) {
+      return res.status(500).json({ error: "A IA não retornou um formato válido, tenta de novo." });
+    }
+    const questions = parsed.questions
+      .map(q => ({
+        text: String(q?.text || "").trim(),
+        subtext: String(q?.subtext || "").trim(),
+        options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 6) : [],
+      }))
+      .filter(q => q.subtext && q.options.length >= 2);
+    if (!questions.length) return res.status(500).json({ error: "A IA não retornou perguntas válidas, tenta de novo." });
+    res.json({ questions });
+  } catch (err) {
+    console.error("[admin/producers minichat generate-all-questions]", err.message);
+    res.status(500).json({ error: "Não consegui gerar as perguntas agora. Tenta de novo em instantes." });
+  }
+});
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
