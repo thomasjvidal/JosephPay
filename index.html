@@ -962,10 +962,10 @@ function IntegracoesAdmin(){
   );
 }
 
-function CardHeader({title,open,onToggle}){
+function CardHeader({title,open,onToggle,done}){
   return(
     <div onClick={onToggle} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:open?6:0,cursor:"pointer"}}>
-      <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{title}</div>
+      <div style={{color:done?GREEN:TEXT,fontWeight:700,fontSize:14,display:"flex",alignItems:"center",gap:6}}>{done&&<span>✓</span>}{title}</div>
       <span style={{color:MUTED,fontSize:12,transform:open?"rotate(180deg)":"none",transition:"transform 0.2s",flexShrink:0,marginLeft:8}}>⌄</span>
     </div>
   );
@@ -1002,7 +1002,7 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
   );
 }
 
-function InstalacaoAdmin({c,onUpdated,initialOpen}){
+function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(!!initialOpen);
   const [showTecnico,setShowTecnico]=useState(false);
   const [metodo,setMetodo]=useState(c.github_repo?"github":"gtm");
@@ -1136,8 +1136,8 @@ function InstalacaoAdmin({c,onUpdated,initialOpen}){
   if(googleConnected===null||githubConnected===null)return null;
   const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código próprio (GitHub)"}];
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Instalação técnica" open={open} onToggle={()=>setOpen(o=>!o)}/>
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Instalação técnica" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:showTecnico?12:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
         {showTecnico&&(<>
@@ -1271,7 +1271,7 @@ function InstalacaoAdmin({c,onUpdated,initialOpen}){
   );
 }
 
-function EmailAdmin({c,onUpdated,initialOpen}){
+function EmailAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(!!initialOpen);
   const [status,setStatus]=useState(null);
   const [host,setHost]=useState("");
@@ -1302,8 +1302,8 @@ function EmailAdmin({c,onUpdated,initialOpen}){
   };
   if(status===null)return null;
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="E-mail (disparos)" open={open} onToggle={()=>setOpen(o=>!o)}/>
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="E-mail (disparos)" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<>
       <div style={{color:MUTED,fontSize:12,marginBottom:14,lineHeight:1.5}}>Conecte o e-mail deste cliente (Gmail, Outlook etc — com senha de app) pra ele conseguir mandar e-mail em massa pro CRM. Você faz isso pelo cliente, sem ele precisar mexer em nada técnico.</div>
       {status.connected?(
@@ -1719,7 +1719,7 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Entendido.",subtext:"Qual sua maior dificuldade hoje?",options:["Perguntam preço e somem","Explico tudo no WhatsApp","Não pareço profissional","Não tenho autoridade digital"]},
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
-function AtivacaoAdmin({c,initialOpen}){
+function AtivacaoAdmin({c,initialOpen,done}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
@@ -1783,8 +1783,8 @@ function AtivacaoAdmin({c,initialOpen}){
   };
   const [open,setOpen]=useState(!!initialOpen);
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
@@ -1837,7 +1837,7 @@ function AtivacaoAdmin({c,initialOpen}){
   );
 }
 
-function PerguntasMinichatAdmin({c,initialOpen}){
+function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [open,setOpen]=useState(!!initialOpen);
   const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
@@ -1876,8 +1876,8 @@ function PerguntasMinichatAdmin({c,initialOpen}){
     setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)}/>
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
         <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar todas com IA"}</Btn>
@@ -1942,6 +1942,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
 
   const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
+  const cardDone=key=>steps.filter(s=>s.cardKeys.includes(key)).every(s=>s.done);
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1970,10 +1971,10 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
         {!c.github_repo&&!c.gtm_container_id&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Não sei ainda como o site desse cliente foi feito — comece abrindo "Instalação técnica" abaixo e escolhendo GTM ou GitHub.</div>}
         {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — instalar a página do Mini Chat direto no site ainda só funciona para clientes com GitHub. Configure o Mini Chat normalmente; o link continua funcionando, só não dá pra criar a página automaticamente no site dele.</div>}
       </div>
-      <AtivacaoAdmin c={c} initialOpen={openCard("minichat")}/>
-      <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")}/>
-      <InstalacaoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("instalacao")}/>
-      <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")}/>
+      <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
+      <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
+      <InstalacaoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("instalacao")} done={cardDone("instalacao")}/>
+      <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
     </div>
   );
 }
