@@ -2153,6 +2153,7 @@ function QuickStats({c}){
 }
 
 function ClientesAdmin(){
+  const [subTab,setSubTab]=useState("produtores");
   const [sel,setSel]=useState(null);
   const [clients,setClients]=useState(null);
   const [showCriar,setShowCriar]=useState(false);
@@ -2166,6 +2167,13 @@ function ClientesAdmin(){
     const c=clients?.find(x=>x.id===sel)||null;
     return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)} onUpdated={()=>setRefresh(r=>r+1)}/>;
   }
+  if(subTab==="minichat")return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Clientes</div>
+      <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
+      <MinichatOverviewAdmin/>
+    </div>
+  );
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
   const isAtivo=c=>c.last_login_at&&(Date.now()-new Date(c.last_login_at).getTime())<30*86400000;
   const FILTROS=[{id:"todos",label:"Todos"},{id:"ativos",label:"Ativos"},{id:"inativos",label:"Inativos"}];
@@ -2185,6 +2193,7 @@ function ClientesAdmin(){
         <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
         <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clientsFiltrados.length} produtores`:"—"}</span>
       </div>
+      <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
       <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
         {FILTROS.map(f=>(
@@ -2235,6 +2244,121 @@ function ClientesAdmin(){
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ClientesSubTabs({subTab,setSubTab}){
+  const TABS=[{id:"produtores",label:"Produtores"},{id:"minichat",label:"Mini Chat"}];
+  return(
+    <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+      {TABS.map(t=>(
+        <button key={t.id} onClick={()=>setSubTab(t.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:"transparent",color:t.id===subTab?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{t.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function MinichatOverviewAdmin(){
+  const [sel,setSel]=useState(null);
+  const [produtores,setProdutores]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/admin/minichat/overview').then(d=>{if(d?.produtores)setProdutores(d.produtores);else setProdutores([]);});
+  },[]);
+  if(sel)return <MinichatDetalheAdmin ownerId={sel.id} nome={sel.company_name||sel.name} onBack={()=>setSel(null)}/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {produtores===null&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
+      {produtores!==null&&produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Ninguém usou o Mini Chat ainda.</div>}
+      {(produtores||[]).map(p=>(
+        <div key={p.id} onClick={()=>setSel(p)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+          <Avatar url={p.avatar_url} name={p.company_name||p.name} size={40} radius={12} fontSize={16}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{p.company_name||p.name||"—"}</div>
+            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{p.total} sessão(ões) · {p.completas} concluída(s) · última {fmtLastLogin(p.ultima_sessao)}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{color:p.taxa>=40?GREEN:p.taxa>=15?GOLD:MUTED,fontWeight:800,fontSize:18}}>{p.taxa}%</div>
+            <div style={{color:MUTED,fontSize:10}}>conclusão</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MinichatDetalheAdmin({ownerId,nome,onBack}){
+  const [data,setData]=useState(null);
+  const [sessaoAberta,setSessaoAberta]=useState(null);
+  useEffect(()=>{
+    apiCall(`/api/admin/producers/${ownerId}/minichat/sessions`).then(setData);
+  },[ownerId]);
+  const maxFunil=data?.funil?.length?Math.max(...data.funil,1):1;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer",padding:0}}>←</button>
+        <div style={{color:TEXT,fontWeight:800,fontSize:16}}>Mini Chat · {nome}</div>
+      </div>
+      {!data&&<div style={{color:MUTED,fontSize:12}}>Carregando…</div>}
+      {data&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Sessões</div>
+              <div style={{color:TEXT,fontWeight:800,fontSize:20,marginTop:2}}>{data.total}</div>
+            </div>
+            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Concluídas</div>
+              <div style={{color:GREEN,fontWeight:800,fontSize:20,marginTop:2}}>{data.completas}</div>
+            </div>
+          </div>
+          {data.funil.length>0&&(
+            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>Onde as pessoas param</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {data.funil.map((qtd,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{color:MUTED,fontSize:11,width:64,flexShrink:0}}>Pergunta {i+1}</div>
+                    <div style={{flex:1,background:CARD2,borderRadius:6,height:16,overflow:"hidden"}}>
+                      <div style={{width:`${(qtd/maxFunil)*100}%`,background:GOLD,height:"100%",borderRadius:6}}/>
+                    </div>
+                    <div style={{color:TEXT,fontSize:11,fontWeight:700,width:24,textAlign:"right",flexShrink:0}}>{qtd}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{color:TEXT,fontWeight:700,fontSize:13,marginTop:4}}>Sessões individuais</div>
+          {data.sessoes.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhuma sessão ainda.</div>}
+          {data.sessoes.map(s=>{
+            const aberta=sessaoAberta===s.id;
+            return(
+              <div key={s.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+                <div onClick={()=>setSessaoAberta(aberta?null:s.id)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:s.completed_at?GREEN:MUTED,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{s.completed_at?`Terminou (${s.finished_via==='email'?'e-mail':'WhatsApp'})`:`Parou na pergunta ${(s.current_index||0)+1}${s.questions_total?` de ${s.questions_total}`:''}`}</div>
+                    <div style={{color:MUTED,fontSize:10,marginTop:2}}>{new Date(s.updated_at).toLocaleString('pt-BR')}</div>
+                  </div>
+                  <span style={{color:MUTED,fontSize:11}}>{aberta?"▲":"▼"}</span>
+                </div>
+                {aberta&&(
+                  <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+                    {(s.answers||[]).filter(Boolean).map((a,i)=>(
+                      <div key={i} style={{background:CARD2,borderRadius:10,padding:"8px 10px"}}>
+                        <div style={{color:MUTED,fontSize:10,marginBottom:2}}>{a.question||`Pergunta ${i+1}`}</div>
+                        <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{a.answer}</div>
+                      </div>
+                    ))}
+                    {!(s.answers||[]).filter(Boolean).length&&<div style={{color:MUTED,fontSize:11}}>Sem respostas registradas.</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

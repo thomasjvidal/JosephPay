@@ -577,6 +577,36 @@
     let EMAIL_DESTINO = "";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
 
+    // ID único por visita, só pra agrupar as respostas de uma mesma sessão no
+    // rastreio do funil — não é enviado a nenhum lugar além do JosephPay.
+    function getVisitorId() {
+        try {
+            let v = sessionStorage.getItem("mc_visitor_id");
+            if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`); sessionStorage.setItem("mc_visitor_id", v); }
+            return v;
+        } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+    }
+
+    // Registra até qual pergunta a pessoa chegou e o que respondeu — só pro
+    // Admin ver o funil (onde as pessoas desistem). Fire-and-forget, nunca
+    // bloqueia o fluxo do chat nem dispara mensagem nenhuma.
+    function trackProgress({ index, question, answer, questionsTotal, completed, finishedVia }) {
+        const uid = new URLSearchParams(location.search).get("uid");
+        if (!uid) return;
+        fetch(`${JOSEPHPAY_API}/api/minichat/track-progress`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                owner_id: uid,
+                visitor_id: getVisitorId(),
+                index, question, answer,
+                questions_total: questionsTotal,
+                completed: !!completed,
+                finished_via: finishedVia,
+            }),
+        }).catch(() => {});
+    }
+
     function applyAvatar() {
         const img = document.getElementById("brandMarkImg");
         const letter = document.getElementById("brandMarkLetter");
@@ -817,6 +847,13 @@
         // Salva dados
         userData[id] = value;
 
+        trackProgress({
+            index: currentStep,
+            question: questions[currentStep]?.subtext || questions[currentStep]?.text || "",
+            answer: value,
+            questionsTotal: questions.length,
+        });
+
         // Próxima pergunta
         currentStep++;
 
@@ -898,6 +935,7 @@ Podemos conversar?`;
         whatsappBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
 
         sendLeadToCRM();
+        trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'whatsapp' });
 
         // Se o cliente configurou um link de redirecionamento próprio, usa ele.
         // Senão, cai no comportamento padrão: abrir o WhatsApp com a mensagem do diagnóstico.
@@ -934,6 +972,7 @@ Podemos conversar?`;
         emailBtn.classList.add('sending');
         emailBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
         sendLeadToCRM();
+        trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
         const subject = `Pré-diagnóstico digital — ${GREETING_NAME}`;
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage())}`;
         setTimeout(() => {

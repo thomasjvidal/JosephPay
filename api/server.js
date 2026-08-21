@@ -1779,6 +1779,66 @@ app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (
   }
 });
 
+// Visão geral do Mini Chat de todos os produtores — quantas sessões, quantas
+// terminaram, taxa de conclusão. Agrega em memória (volume baixo o suficiente
+// pra não precisar de RPC/SQL agregado por enquanto).
+app.get("/api/admin/minichat/overview", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [{ data: sessions, error }, { data: profiles }] = await Promise.all([
+      supabase.from("minichat_sessions").select("owner_id,completed_at,updated_at"),
+      supabase.from("profiles").select("id,name,company_name,avatar_url").eq("role", "client"),
+    ]);
+    if (error) return res.status(500).json({ error: error.message });
+    const porDono = {};
+    (sessions || []).forEach(s => {
+      if (!porDono[s.owner_id]) porDono[s.owner_id] = { total: 0, completas: 0, ultima: null };
+      const d = porDono[s.owner_id];
+      d.total++;
+      if (s.completed_at) d.completas++;
+      if (!d.ultima || s.updated_at > d.ultima) d.ultima = s.updated_at;
+    });
+    const rows = Object.keys(porDono).map(ownerId => {
+      const p = (profiles || []).find(x => x.id === ownerId);
+      const d = porDono[ownerId];
+      return {
+        id: ownerId,
+        name: p?.name || null,
+        company_name: p?.company_name || null,
+        avatar_url: p?.avatar_url || null,
+        total: d.total,
+        completas: d.completas,
+        taxa: d.total ? Math.round((d.completas / d.total) * 100) : 0,
+        ultima_sessao: d.ultima,
+      };
+    }).sort((a, b) => b.total - a.total);
+    res.json({ produtores: rows });
+  } catch (err) {
+    console.error("[admin/minichat/overview]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Detalhe do Mini Chat de um produtor: funil (quantas sessões chegaram em cada
+// pergunta) + lista de sessões individuais com as respostas dadas.
+app.get("/api/admin/producers/:id/minichat/sessions", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: sessions, error } = await supabase
+      .from("minichat_sessions")
+      .select("id,visitor_id,questions_total,current_index,answers,completed_at,finished_via,created_at,updated_at")
+      .eq("owner_id", req.params.id)
+      .order("updated_at", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    const rows = sessions || [];
+    const maxPerguntas = Math.max(0, ...rows.map(s => s.questions_total || 0));
+    // funil[i] = quantas sessões chegaram a responder (ou passar por) a pergunta i
+    const funil = Array.from({ length: maxPerguntas }, (_, i) => rows.filter(s => s.current_index >= i || s.completed_at).length);
+    res.json({ sessoes: rows, funil, total: rows.length, completas: rows.filter(s => s.completed_at).length });
+  } catch (err) {
+    console.error("[admin/producers minichat sessions]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin conecta/desconecta o e-mail (SMTP) de qualquer cliente em nome dele —
 // mesma lógica de /api/email/connect, só que escopada pelo :id em vez do usuário logado.
 app.get("/api/admin/producers/:id/email/status", requireAuth, requireAdmin, async (req, res) => {
@@ -3275,6 +3335,64 @@ app.post("/api/leads/create", (req, res, next) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// ── Mini Chat: rastreio de sessão (até qual pergunta a pessoa chegou, o que
+// respondeu, se terminou) — só analytics, nunca dispara mensagem nenhuma.
+// Chamado a cada pergunta respondida no minichat.html; público, mesmo padrão
+// de validação leve do /api/leads/create.
+const minichatTrackRateMap = new Map();
+app.options("/api/minichat/track-progress", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Methods", "POST");
+  res.sendStatus(204);
+});
+app.post("/api/minichat/track-progress", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  next();
+}, async (req, res) => {
+  try {
+    const { owner_id, visitor_id, index, question, answer, questions_total, completed, finished_via } = req.body;
+    if (!owner_id || !visitor_id) return res.status(400).json({ error: "Dados incompletos" });
+
+    // Rate limit: 40 req/min por visitante (um fluxo tem no máximo ~10 perguntas,
+    // dá folga pra retries de rede sem abrir brecha de abuso).
+    const rateKey = `${owner_id}:${visitor_id}`;
+    const now = Date.now();
+    const entry = minichatTrackRateMap.get(rateKey) || { count: 0, reset: now + 60000 };
+    if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
+    entry.count++;
+    minichatTrackRateMap.set(rateKey, entry);
+    if (entry.count > 40) return res.status(429).json({ error: "Limite de requisições atingido" });
+
+    const { data: profile } = await supabase.from("profiles").select("id").eq("id", owner_id).maybeSingle();
+    if (!profile) return res.status(401).json({ error: "owner_id inválido" });
+
+    const { data: existing } = await supabase.from("minichat_sessions").select("answers").eq("owner_id", owner_id).eq("visitor_id", visitor_id).maybeSingle();
+    const answers = Array.isArray(existing?.answers) ? [...existing.answers] : [];
+    if (typeof index === "number" && (question || answer)) {
+      answers[index] = { question: String(question || "").slice(0, 300), answer: String(answer || "").slice(0, 500) };
+    }
+
+    const row = {
+      owner_id,
+      visitor_id: String(visitor_id).slice(0, 100),
+      questions_total: typeof questions_total === "number" ? questions_total : undefined,
+      current_index: typeof index === "number" ? index : undefined,
+      answers,
+      updated_at: new Date().toISOString(),
+    };
+    if (completed) { row.completed_at = new Date().toISOString(); row.finished_via = finished_via === "email" ? "email" : "whatsapp"; }
+    Object.keys(row).forEach(k => row[k] === undefined && delete row[k]);
+
+    const { error } = await supabase.from("minichat_sessions").upsert({ ...row, owner_id, visitor_id: row.visitor_id }, { onConflict: "owner_id,visitor_id" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[minichat/track-progress]", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PATCH /api/customers/:id/status ──────────────────────────────────────────
