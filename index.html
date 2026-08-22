@@ -1067,6 +1067,18 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const [installingMinichat,setInstallingMinichat]=useState(false);
   const [minichatInstalledAt,setMinichatInstalledAt]=useState(c.github_minichat_installed_at||null);
   const [msgMinichat,setMsgMinichat]=useState("");
+  const [vercelReadyAt,setVercelReadyAt]=useState(c.github_vercel_ready_at||null);
+  const [preparingVercel,setPreparingVercel]=useState(false);
+  const [msgVercel,setMsgVercel]=useState("");
+  const prepararVercel=async()=>{
+    setPreparingVercel(true);setMsgVercel("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/prepare-vercel`,{method:'POST'});
+    setPreparingVercel(false);
+    if(d?.error){setMsgVercel(d.error);return;}
+    setVercelReadyAt(new Date().toISOString());
+    setMsgVercel("✓ Pronto — pode importar esse repositório direto na Vercel.");
+    onUpdated&&onUpdated();
+  };
   const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
   const instalarMinichat=async()=>{
     if(!repoFullName||!minichatPath.trim())return;
@@ -1212,6 +1224,15 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
                 <button onClick={instalarGh} disabled={!repoFullName||!filePath.trim()||ghInstalling} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:ghInstalling?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{ghInstalling?"Instalando…":"Instalar sensor"}</button>
               </div>
               {ghInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(ghInstalledAt).toLocaleString('pt-BR')}</div>}
+              {c.github_repo&&(
+                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
+                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Preparar pra Vercel</div>
+                  <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Se o site desse cliente foi feito no Lovable (ou outra ferramenta baseada em Vite) e você importa o repositório direto na Vercel, geralmente falta uma configuração — esse botão adiciona ela sozinho, sem precisar pedir pra outra IA preparar antes.</div>
+                  <Btn sm outline color={GOLD} onClick={prepararVercel}>{preparingVercel?"Preparando…":vercelReadyAt?"Preparar de novo":"Preparar repositório pra Vercel"}</Btn>
+                  {vercelReadyAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginTop:8}}>✓ Preparado em {new Date(vercelReadyAt).toLocaleString('pt-BR')}</div>}
+                  {msgVercel&&<div style={{color:msgVercel.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msgVercel}</div>}
+                </div>
+              )}
               {ghMsg&&<div style={{color:MUTED,fontSize:11}}>{ghMsg}</div>}
 
               {repoFullName&&(

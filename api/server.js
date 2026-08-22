@@ -1403,7 +1403,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,google_ads_customer_id")
+      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -2852,6 +2852,62 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
+  }
+});
+
+// Prepara o repositório do cliente pra ser importado direto na Vercel — sem
+// precisar pedir pra outra IA arrumar isso toda vez. Detecta se é um projeto
+// Vite (Lovable sempre gera Vite+React) e cria/atualiza o vercel.json com o
+// comando de build, a pasta de saída certa, e o rewrite que faz as rotas do
+// React Router funcionarem (sem isso, recarregar uma página interna dá 404
+// na Vercel — é o erro mais comum nesse tipo de projeto).
+app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+
+    let pkg;
+    try {
+      const pkgResp = await axios.get(`https://api.github.com/repos/${repo}/contents/package.json`, { headers });
+      pkg = JSON.parse(Buffer.from(pkgResp.data.content, "base64").toString("utf8"));
+    } catch (e) {
+      if (e.response?.status === 404) return res.status(400).json({ error: "Não achei um package.json na raiz desse repositório — não parece um projeto Vite/Lovable padrão." });
+      throw e;
+    }
+    const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+    if (!deps.vite) return res.status(400).json({ error: "Esse repositório não parece um projeto Vite (o que o Lovable gera) — não criei o vercel.json pra não arriscar uma configuração errada." });
+
+    const vercelConfig = {
+      buildCommand: "npm run build",
+      outputDirectory: "dist",
+      framework: "vite",
+      rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+    };
+    const content = JSON.stringify(vercelConfig, null, 2) + "\n";
+
+    let sha;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+      sha = existing.data.sha;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+    await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, {
+      message: "JosephPay: prepara repositório pra deploy na Vercel",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }, { headers });
+
+    await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true, atualizado: !!sha });
+  } catch (err) {
+    console.error("[github/prepare-vercel]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || "Falha ao preparar o repositório pra Vercel" });
   }
 });
 
