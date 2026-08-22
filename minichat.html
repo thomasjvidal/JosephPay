@@ -657,7 +657,20 @@
         return steps;
     }
 
-    let questions = buildDefaultQuestions([], null);
+    // Perguntas fixas de contato — sempre aparecem por último, antes do redirecionamento
+    // final (WhatsApp/e-mail), em QUALQUER fluxo (padrão ou personalizado pelo admin).
+    // Garante que todo lead capturado tenha nome, telefone e data de nascimento reais.
+    const CONTACT_QUESTIONS = [
+        { id: 'nome', text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?", type: 'text', placeholder: 'Digite seu nome…' },
+        { id: 'telefone', text: "Perfeito.", subtext: "Qual seu telefone com WhatsApp?", type: 'text', placeholder: '(21) 99999-9999' },
+        { id: 'nascimento', text: "Última pergunta.", subtext: "Qual sua data de nascimento?", type: 'text', placeholder: 'DD/MM/AAAA' },
+    ];
+    function withContactQuestions(steps) {
+        const semDuplicata = (steps || []).filter(q => !['nome', 'telefone', 'nascimento'].includes(q.id));
+        return [...semDuplicata, ...CONTACT_QUESTIONS];
+    }
+
+    let questions = withContactQuestions(buildDefaultQuestions([], null));
 
     // Carrega configuração do produtor via ?uid= (multi-cliente).
     // Se ausente ou falhar, mantém os valores padrão acima — não quebra o widget.
@@ -717,6 +730,7 @@
         } catch (e) {
             console.warn("[minichat] config remota indisponível, usando padrão", e.message);
         }
+        questions = withContactQuestions(questions);
     }
 
     // Avisa que alguém abriu o Mini Chat de verdade — é o sinal real de "está ativo",
@@ -740,7 +754,9 @@
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Owner-Key": uid },
             body: JSON.stringify({
-                name: `Lead Mini Chat (${nomeLead})`,
+                name: userData.nome ? userData.nome : `Lead Mini Chat (${nomeLead})`,
+                phone: userData.telefone || null,
+                birthday: userData.nascimento || null,
             }),
         }).catch(() => {});
     }
@@ -913,6 +929,8 @@
         if (usingDefaultFlow) {
             return `Olá, tudo bem? Segue meu diagnóstico para avaliação:
 Nome: ${userData.nome || ''}
+Telefone: ${userData.telefone || ''}
+Data de nascimento: ${userData.nascimento || ''}
 Procedimento de interesse: ${userData.produto || ''}
 Objetivo: ${userData.objetivo || ''}
 Momento para iniciar: ${userData.quando || ''}

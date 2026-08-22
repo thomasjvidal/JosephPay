@@ -1978,16 +1978,24 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
 app.post("/api/admin/producers/:id/minichat/generate-all-questions", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let { count } = req.body;
+    let { count, business_context } = req.body;
     count = Math.min(Math.max(Number(count) || 4, 2), 8);
     const [{ data: profile }, { data: products }] = await Promise.all([
       supabase.from("profiles").select("name,company_name,site_url,minichat_config").eq("id", id).maybeSingle(),
       supabase.from("products").select("name").eq("owner_id", id).order("created_at", { ascending: false }).limit(10),
     ]);
+    // Se veio um contexto novo nessa chamada (campo preenchido na hora, ainda não
+    // salvo), usa ele e já aproveita pra persistir — economiza um clique de "Salvar".
+    const contextoFinal = business_context?.trim() || profile?.minichat_config?.business_context || "";
+    if (business_context !== undefined && contextoFinal !== (profile?.minichat_config?.business_context || "")) {
+      await supabase.from("profiles").update({
+        minichat_config: { ...(profile?.minichat_config || {}), business_context: contextoFinal || null },
+      }).eq("id", id);
+    }
     const negocio = `Nome/marca: ${profile?.company_name || profile?.name || "—"}
 Site: ${profile?.site_url || "—"}
 Produtos/serviços cadastrados: ${(products || []).map(p => p.name).filter(Boolean).join(", ") || "nenhum cadastrado ainda"}
-Sobre o negócio (ramo, público, diferenciais): ${profile?.minichat_config?.business_context || "não informado — pergunte de forma genérica"}`;
+Sobre o negócio (ramo, público, diferenciais): ${contextoFinal || "não informado — pergunte de forma genérica"}`;
 
     const systemPrompt = `Você escreve o fluxo completo de perguntas de um Mini Chat de diagnóstico (estilo WhatsApp, botões de resposta rápida) usado por negócios pra qualificar leads antes de mandar pro WhatsApp.
 Dados reais do negócio deste cliente:
@@ -3340,6 +3348,26 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
   res.json({ inserted: data?.length || rows.length });
 });
 
+// Data de nascimento digitada em texto livre pelo visitante do Mini Chat (ex:
+// "15/03/1990") — converte pro formato que a coluna `date` do banco aceita.
+// Se não bater com nada reconhecível, retorna null em vez de quebrar o cadastro.
+function parseBirthdate(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const s = raw.trim();
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // DD/MM/AAAA ou DD-MM-AAAA
+  if (m) {
+    const [, d, mo, y] = m;
+    const date = new Date(Number(y), Number(mo) - 1, Number(d));
+    if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
+      return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    return null;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // já em ISO
+  if (m) return s;
+  return null;
+}
+
 // ── CRM: entrada de lead via MiniChat (protegido por X-Owner-Key) ─────────────
 const leadsRateMap = new Map();
 // CORS aberto — chamado de domínios externos (sites dos produtores)
@@ -3373,7 +3401,7 @@ app.post("/api/leads/create", (req, res, next) => {
     .single();
   if (pErr || !profile) return res.status(401).json({ error: "X-Owner-Key inválido" });
 
-  const { name, phone, email } = req.body;
+  const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
 
   const { data, error } = await supabase
@@ -3383,6 +3411,7 @@ app.post("/api/leads/create", (req, res, next) => {
       name: name.trim(),
       phone: phone?.trim() || null,
       email: email?.trim() || null,
+      birthday: parseBirthdate(birthday),
       source: "minichat",
       status: "lead",
     })

@@ -1846,10 +1846,11 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [msg,setMsg]=useState("");
   const [regenerating,setRegenerating]=useState({});
   const [gerandoTudo,setGerandoTudo]=useState(false);
+  const [nicho,setNicho]=useState(c.minichat_config?.business_context||"");
   const gerarTodas=async()=>{
     if(gerandoTudo)return;
     setMsg("");setGerandoTudo(true);
-    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/generate-all-questions`,{method:'POST',body:JSON.stringify({count:questions.length||4})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/generate-all-questions`,{method:'POST',body:JSON.stringify({count:questions.length||4,business_context:nicho.trim()})});
     setGerandoTudo(false);
     if(d?.questions?.length)setQuestions(d.questions);
     else if(d?.error)setMsg(d.error);
@@ -1880,8 +1881,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
       <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nicho / setor deste negócio</div>
+        <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar todas com IA"}</Btn>
-        <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o campo "Sobre o negócio" (na aba Mini Chat acima) pra montar as {questions.length} perguntas de uma vez. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
+        <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o nicho acima (salva sozinho ao gerar) pra montar as {questions.length} perguntas de uma vez, com coerência sobre serviços e público. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         {questions.map((q,qi)=>(
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -1979,7 +1982,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   );
 }
 
-function ClientePerfilAdmin({c,onBack,onUpdated}){
+function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const accent=GOLD;
   const [sales,setSales]=useState(null);
   const [kpis,setKpis]=useState(null);
@@ -1989,7 +1992,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated}){
   const [editEmail,setEditEmail]=useState("");
   const [saving,setSaving]=useState(false);
   const [saveErr,setSaveErr]=useState("");
-  const [subTab,setSubTab]=useState("geral");
+  const [subTab,setSubTab]=useState(initialSubTab||"geral");
   const [showContatos,setShowContatos]=useState(false);
   const [avatarPreview,setAvatarPreview]=useState("");
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
@@ -2171,6 +2174,7 @@ function QuickStats({c}){
 function ClientesAdmin(){
   const [subTab,setSubTab]=useState("produtores");
   const [sel,setSel]=useState(null);
+  const [selSubTab,setSelSubTab]=useState(null);
   const [clients,setClients]=useState(null);
   const [showCriar,setShowCriar]=useState(false);
   const [refresh,setRefresh]=useState(0);
@@ -2181,13 +2185,13 @@ function ClientesAdmin(){
   },[refresh]);
   if(sel!==null){
     const c=clients?.find(x=>x.id===sel)||null;
-    return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)} onUpdated={()=>setRefresh(r=>r+1)}/>;
+    return <ClientePerfilAdmin c={c} onBack={()=>{setSel(null);setSelSubTab(null);}} onUpdated={()=>setRefresh(r=>r+1)} initialSubTab={selSubTab}/>;
   }
   if(subTab==="minichat")return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Clientes</div>
       <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
-      <MinichatOverviewAdmin/>
+      <MinichatOverviewAdmin clients={clients} onConfigurar={id=>{setSel(id);setSelSubTab("ativacao");}}/>
     </div>
   );
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
@@ -2275,27 +2279,34 @@ function ClientesSubTabs({subTab,setSubTab}){
   );
 }
 
-function MinichatOverviewAdmin(){
-  const [sel,setSel]=useState(null);
-  const [produtores,setProdutores]=useState(null);
+function MinichatOverviewAdmin({clients,onConfigurar}){
+  const [selFunil,setSelFunil]=useState(null);
+  const [stats,setStats]=useState(null);
   useEffect(()=>{
-    apiCall('/api/admin/minichat/overview').then(d=>{if(d?.produtores)setProdutores(d.produtores);else setProdutores([]);});
+    apiCall('/api/admin/minichat/overview').then(d=>{if(d?.produtores)setStats(d.produtores);else setStats([]);});
   },[]);
-  if(sel)return <MinichatDetalheAdmin ownerId={sel.id} nome={sel.company_name||sel.name} onBack={()=>setSel(null)}/>;
+  if(selFunil)return <MinichatDetalheAdmin ownerId={selFunil.id} nome={selFunil.company_name||selFunil.name} onBack={()=>setSelFunil(null)}/>;
+  if(clients===null||stats===null)return <div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>;
+  const produtores=(clients||[]).filter(c=>c.role==="client").map(c=>{
+    const s=(stats||[]).find(x=>x.id===c.id);
+    return {...c, total:s?.total||0, completas:s?.completas||0, taxa:s?.taxa||0, ultima_sessao:s?.ultima_sessao||null, configurado:!!c.minichat_config?.whatsapp_number};
+  });
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {produtores===null&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
-      {produtores!==null&&produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Ninguém usou o Mini Chat ainda.</div>}
-      {(produtores||[]).map(p=>(
-        <div key={p.id} onClick={()=>setSel(p)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-          <Avatar url={p.avatar_url} name={p.company_name||p.name} size={40} radius={12} fontSize={16}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{p.company_name||p.name||"—"}</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{p.total} sessão(ões) · {p.completas} concluída(s) · última {fmtLastLogin(p.ultima_sessao)}</div>
+      {produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum produtor cadastrado ainda.</div>}
+      {produtores.map(p=>(
+        <div key={p.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <Avatar url={p.avatar_url} name={p.company_name||p.name} size={40} radius={12} fontSize={16}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{p.company_name||p.name||"—"}</div>
+              <div style={{color:p.configurado?GREEN:MUTED,fontSize:11,marginTop:2,fontWeight:p.configurado?700:400}}>{p.configurado?"✓ Mini Chat configurado":"Mini Chat não configurado"}</div>
+              {p.total>0&&<div style={{color:MUTED,fontSize:11,marginTop:1}}>{p.total} sessão(ões) · {p.completas} concluída(s) · {p.taxa}% conclusão</div>}
+            </div>
           </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{color:p.taxa>=40?GREEN:p.taxa>=15?GOLD:MUTED,fontWeight:800,fontSize:18}}>{p.taxa}%</div>
-            <div style={{color:MUTED,fontSize:10}}>conclusão</div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn sm outline color={GOLD} onClick={()=>onConfigurar(p.id)}>{p.configurado?"Ver / editar":"Configurar"}</Btn>
+            {p.total>0&&<Btn sm outline color={MUTED} onClick={()=>setSelFunil(p)}>Ver funil</Btn>}
           </div>
         </div>
       ))}
