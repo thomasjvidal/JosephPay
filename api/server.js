@@ -1507,10 +1507,12 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         visitas_hoje: visitasPorUsuario[p.id]?.hoje || 0,
         conn: {
           whatsapp: wapConnected,
-          // "Site" conectado = tem URL cadastrada OU o sensor já foi instalado de verdade
-          // (via GitHub ou GTM) — antes só checava a URL, então um cliente com sensor
-          // instalado mas sem site_url preenchido aparecia como "não conectado" à toa.
-          site:     !!p.site_url || !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at,
+          // "Site" conectado = o sensor foi instalado por um dos nossos botões OU já existe
+          // visita de verdade registrada pra esse cliente (prova de que está funcionando,
+          // mesmo que tenha sido configurado manualmente, fora do nosso fluxo automático).
+          // Só ter a URL cadastrada NÃO conta mais sozinho — isso dava falso positivo
+          // (cliente "conectado" só por ter digitado o site, sem o sensor existir de verdade).
+          site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || !!visitasPorUsuario[p.id]?.total,
           email:    !!p.email_connected,
           minichat: !!minichatAtivoPorUsuario[p.id],
           googleAds: !!googleAdsPorUsuario[p.id],
@@ -2744,6 +2746,63 @@ app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, r
   }
 });
 
+// Lê o conteúdo de um arquivo do repositório (com fallback pra arquivos grandes,
+// que a Contents API não devolve inline) — usado tanto pelo scan simples quanto
+// pelo scan de código React abaixo.
+async function readGithubFile(repo, filePath, headers, token) {
+  const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+  if (resp.data.content) return Buffer.from(resp.data.content, "base64").toString("utf8");
+  if (resp.data.download_url) {
+    const raw = await axios.get(resp.data.download_url, { headers: { Authorization: `Bearer ${token}` } });
+    return typeof raw.data === "string" ? raw.data : JSON.stringify(raw.data);
+  }
+  return "";
+}
+
+// Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
+// index.html — a página raiz só carrega o JS, e os botões de verdade vivem dentro do
+// código-fonte (.tsx/.jsx), renderizados no navegador. Quando o scan simples não acha
+// nada, varre os arquivos de código do repositório procurando href="…", <Link to="…">
+// e links de WhatsApp escritos direto no código (comum em onClick).
+async function scanRepoJsxLinks(repo, headers, token) {
+  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+  const branch = repoInfo.data.default_branch;
+  const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+  const arquivos = (treeResp.data.tree || [])
+    .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
+    .slice(0, 80);
+
+  const groups = {};
+  const registra = (href, text, filePath) => {
+    href = (href || "").trim();
+    if (!href || href.startsWith("#")) return;
+    const key = `${filePath}::${href}`;
+    if (!groups[key]) groups[key] = { href, file: filePath, count: 0, samples: [] };
+    groups[key].count++;
+    text = (text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (text && groups[key].samples.length < 3 && !groups[key].samples.includes(text)) groups[key].samples.push(text);
+  };
+
+  // Processa em lotes pra não estourar o rate limit da API do GitHub nem demorar demais.
+  const LOTE = 10;
+  for (let i = 0; i < arquivos.length; i += LOTE) {
+    const lote = arquivos.slice(i, i + LOTE);
+    await Promise.all(lote.map(async item => {
+      let content;
+      try { content = await readGithubFile(repo, item.path, headers, token); }
+      catch { return; }
+      let m;
+      const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      while ((m = reHref.exec(content))) registra(m[1], m[2], item.path);
+      const reLink = /<Link\b[^>]*\bto\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi;
+      while ((m = reLink.exec(content))) registra(m[1], m[2], item.path);
+      const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
+      while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", item.path);
+    }));
+  }
+  return Object.values(groups).sort((a, b) => b.count - a.count);
+}
+
 // Lê os links (<a href>) que existem de verdade num arquivo do repositório — pra mostrar
 // pro admin escolher quais devem passar a apontar pro Mini Chat, antes de aplicar qualquer coisa.
 app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, res) => {
@@ -2753,18 +2812,7 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(file)}`, { headers });
-    // Arquivos >=1MB não vêm com "content" preenchido na Contents API (a GitHub exige
-    // buscar o conteúdo bruto separado nesse caso) — sem esse fallback, um arquivo grande
-    // (comum quando o site inteiro vem num HTML só, com o JS embutido) faz o scan "achar
-    // 0 links" silenciosamente, mesmo o arquivo tendo links de verdade.
-    let content = "";
-    if (fileResp.data.content) {
-      content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
-    } else if (fileResp.data.download_url) {
-      const raw = await axios.get(fileResp.data.download_url, { headers: { Authorization: `Bearer ${token}` } });
-      content = typeof raw.data === "string" ? raw.data : JSON.stringify(raw.data);
-    }
+    const content = await readGithubFile(repo, file, headers, token);
     const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     const groups = {};
     let m;
@@ -2772,12 +2820,20 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
       const href = m[1].trim();
       const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
       if (!href || href.startsWith("#")) continue;
-      if (!groups[href]) groups[href] = { href, count: 0, samples: [] };
+      if (!groups[href]) groups[href] = { href, file, count: 0, samples: [] };
       groups[href].count++;
       if (text && groups[href].samples.length < 3 && !groups[href].samples.includes(text)) groups[href].samples.push(text);
     }
-    const links = Object.values(groups).sort((a, b) => b.count - a.count);
-    res.json({ links });
+    let links = Object.values(groups).sort((a, b) => b.count - a.count);
+    let source = "html";
+    // Nada achado no arquivo escolhido — provável site em React/Vite (Lovable e
+    // similares), onde os botões vivem no código-fonte, não no HTML raiz. Varre o
+    // repositório inteiro procurando os links de verdade antes de desistir.
+    if (!links.length) {
+      links = await scanRepoJsxLinks(repo, headers, token);
+      source = "code";
+    }
+    res.json({ links, source });
   } catch (err) {
     console.error("[github/scan-links]", err.response?.data || err.message);
     if (err.response?.status === 404) return res.status(400).json({ error: "Não encontrei esse arquivo nesse repositório." });
@@ -2790,34 +2846,51 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
 app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { hrefs } = req.body;
-    if (!Array.isArray(hrefs) || !hrefs.length) return res.status(400).json({ error: "Nenhum link selecionado" });
+    // Aceita tanto o formato antigo ({hrefs:[...]}, sempre no arquivo vinculado) quanto
+    // o novo ({links:[{href,file}]}), usado quando os links vieram do scan de código
+    // React (podem estar espalhados em vários arquivos .tsx diferentes).
+    const { hrefs, links } = req.body;
     const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
-    if (!profile?.github_repo || !profile?.github_file_path) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const itens = Array.isArray(links) ? links : Array.isArray(hrefs) ? hrefs.map(href => ({ href, file: profile.github_file_path })) : [];
+    if (!itens.length) return res.status(400).json({ error: "Nenhum link selecionado" });
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const { github_repo: repo, github_file_path: filePath } = profile;
-
-    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-    const sha = fileResp.data.sha;
-    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    const repo = profile.github_repo;
     const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
-    let changed = 0;
-    hrefs.forEach(href => {
-      const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const re = new RegExp(`href\\s*=\\s*(["'])${escaped}\\1`, "g");
-      const before = content;
-      content = content.replace(re, `href="${minichatLink}"`);
-      if (content !== before) changed++;
-    });
-    if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
 
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-      message: "JosephPay: aponta botões do site pro Mini Chat",
-      content: Buffer.from(content, "utf8").toString("base64"),
-      sha,
-    }, { headers });
+    const porArquivo = {};
+    itens.forEach(({ href, file }) => {
+      if (!href || !file) return;
+      (porArquivo[file] = porArquivo[file] || []).push(href);
+    });
+    if (!Object.keys(porArquivo).length) return res.status(400).json({ error: "Nenhum link selecionado" });
+
+    let changed = 0;
+    for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
+      const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      const sha = fileResp.data.sha;
+      let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+      let mudouAqui = false;
+      hrefsDoArquivo.forEach(href => {
+        const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const before = content;
+        // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
+        content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3`, "g"), `$1$2$3${minichatLink}$3`);
+        // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
+        //    num onClick, sem estar num atributo href/to)
+        content = content.replace(new RegExp(`(["'\`])${escaped}\\1`, "g"), `$1${minichatLink}$1`);
+        if (content !== before) { changed++; mudouAqui = true; }
+      });
+      if (!mudouAqui) continue;
+      await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+        message: "JosephPay: aponta botões do site pro Mini Chat",
+        content: Buffer.from(content, "utf8").toString("base64"),
+        sha,
+      }, { headers });
+    }
+    if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
 
     res.json({ ok: true, changed });
   } catch (err) {
