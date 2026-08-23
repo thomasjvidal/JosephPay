@@ -14,6 +14,7 @@ const crypto     = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { Resend }       = require("resend");
 const nodemailer       = require("nodemailer");
+const webpush          = require("web-push");
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -302,6 +303,79 @@ async function requireAdmin(req, res, next) {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", req.user.id).single();
   if (profile?.role !== "admin") return res.status(403).json({ error: "Acesso restrito ao admin" });
   next();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTIFICAÇÕES PUSH — avisa o produtor no celular quando entra um interessado
+// novo ou uma venda é paga, mesmo com o app fechado (Web Push padrão do
+// navegador, sem depender de nenhum app de terceiro).
+// ══════════════════════════════════════════════════════════════════════════════
+const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY  || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:contato@josephpay.com", VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+app.get("/api/push/vapid-public-key", (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      return res.status(400).json({ error: "Inscrição inválida" });
+    }
+    const { error } = await supabase.from("push_subscriptions").upsert({
+      owner_id: req.user.id,
+      endpoint: subscription.endpoint,
+      p256dh:   subscription.keys.p256dh,
+      auth:     subscription.keys.auth,
+    }, { onConflict: "endpoint" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[push/subscribe]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/push/unsubscribe", requireAuth, async (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) return res.status(400).json({ error: "endpoint ausente" });
+  await supabase.from("push_subscriptions").delete().eq("owner_id", req.user.id).eq("endpoint", endpoint);
+  res.json({ ok: true });
+});
+
+app.get("/api/push/status", requireAuth, async (req, res) => {
+  const { count } = await supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", req.user.id);
+  res.json({ active: (count || 0) > 0 });
+});
+
+// Manda a notificação pra todos os aparelhos em que esse produtor ativou (pode ter
+// mais de um — celular e computador, por exemplo). Fire-and-forget: nunca trava o
+// fluxo principal (criar lead / confirmar venda) por causa de notificação.
+async function sendPushToOwner(ownerId, { title, body, url }) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !ownerId) return;
+  try {
+    const { data: subs } = await supabase.from("push_subscriptions").select("id,endpoint,p256dh,auth").eq("owner_id", ownerId);
+    if (!subs?.length) return;
+    const payload = JSON.stringify({ title, body, url: url || "/" });
+    await Promise.all(subs.map(async (s) => {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+      } catch (err) {
+        // 404/410 = inscrição expirada ou o usuário desativou no navegador — limpa do banco.
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          await supabase.from("push_subscriptions").delete().eq("id", s.id);
+        } else {
+          console.warn("[push] falha ao enviar:", err.statusCode || err.message);
+        }
+      }
+    }));
+  } catch (err) {
+    console.error("[push/send]", err.message);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -750,6 +824,11 @@ app.post("/api/mp/webhook", async (req, res) => {
       }).eq("id", targetSale.id);
       console.log(`[mp/webhook] sale ${targetSale.id} paga | produtor=R$${baseProductPrice} | mp_fee=R$${mpFee} | customer=${targetSale.customer_id}`);
       await updateCustomerStats(targetSale.customer_id);
+      sendPushToOwner(targetSale.owner_id, {
+        title: "Nova venda! 🎉",
+        body:  `R$ ${Number(baseProductPrice).toFixed(2).replace(".", ",")} — ${prod?.title || "Produto"}`,
+        url:   "/",
+      });
 
       // ── Stape sGTM relay para conversão server-side (fire-and-forget) ──
       // Manda o objeto completo do MP (resultado do GET /v1/payments/{id})
@@ -1774,6 +1853,11 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
     if (!rows.length) return res.status(400).json({ error: "Nenhum contato válido (precisa de nome)" });
     const { data, error } = await supabase.from("customers").insert(rows).select("id");
     if (error) return res.status(500).json({ error: error.message });
+    if (rows.length === 1) {
+      sendPushToOwner(id, { title: "Novo interessado!", body: rows[0].name, url: "/" });
+    } else {
+      sendPushToOwner(id, { title: "Novos interessados!", body: `${rows.length} contatos adicionados`, url: "/" });
+    }
     res.json({ ok: true, count: data.length });
   } catch (err) {
     console.error("[admin/producers customers bulk]", err.message);
@@ -3412,10 +3496,23 @@ app.get("/api/public/checkout/:chargeId/status", async (req, res) => {
     }
     // Persiste confirmação no banco
     if (status === "CONFIRMED") {
-      await supabase.from("sales")
+      const { data: updatedSales } = await supabase.from("sales")
         .update({ status: "pago" })
         .eq("asaas_id", chargeId)
-        .eq("status", "pendente");
+        .eq("status", "pendente")
+        .select("owner_id, producer_amount, amount, product_id");
+      const updatedSale = updatedSales?.[0];
+      if (updatedSale) {
+        const amountPaid = Number(updatedSale.producer_amount ?? updatedSale.amount ?? 0);
+        supabase.from("products").select("title").eq("id", updatedSale.product_id).maybeSingle()
+          .then(({ data: p }) => {
+            sendPushToOwner(updatedSale.owner_id, {
+              title: "Nova venda! 🎉",
+              body:  `R$ ${amountPaid.toFixed(2).replace(".", ",")} — ${p?.title || "Produto"}`,
+              url:   "/",
+            });
+          });
+      }
     }
     res.json({ status });
   } catch (err) {
@@ -3567,6 +3664,7 @@ app.post("/api/leads/create", (req, res, next) => {
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
+  sendPushToOwner(profile.id, { title: "Novo interessado!", body: name.trim(), url: "/" });
   res.json(data);
 });
 

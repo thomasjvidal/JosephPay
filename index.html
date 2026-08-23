@@ -256,6 +256,51 @@ const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.aut
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});const json=await res.json();if(res.status===402||json?.error==="subscription_required"){window.dispatchEvent(new CustomEvent("jp:paywall",{detail:json}));}return json;}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Notificações push (celular) ─────────────────────────────────────────────
+const urlBase64ToUint8Array=(base64String)=>{
+  const padding="=".repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/");
+  const rawData=atob(base64);
+  const outputArray=new Uint8Array(rawData.length);
+  for(let i=0;i<rawData.length;i++)outputArray[i]=rawData.charCodeAt(i);
+  return outputArray;
+};
+const pushSupported=()=>("serviceWorker"in navigator)&&("PushManager"in window);
+const checkPushAtivo=async()=>{
+  if(!pushSupported())return false;
+  try{
+    const reg=await navigator.serviceWorker.getRegistration("/sw.js");
+    const sub=await reg?.pushManager?.getSubscription();
+    return!!sub;
+  }catch{return false;}
+};
+const ativarPush=async()=>{
+  if(!pushSupported())throw new Error("Este navegador não suporta notificações");
+  const perm=await Notification.requestPermission();
+  if(perm!=="granted")throw new Error("Permissão de notificação negada");
+  const reg=await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  const {publicKey}=await apiCall("/api/push/vapid-public-key");
+  if(!publicKey)throw new Error("Notificações ainda não configuradas no servidor");
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub){
+    sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(publicKey)});
+  }
+  const r=await apiCall("/api/push/subscribe",{method:"POST",body:JSON.stringify({subscription:sub})});
+  if(r?.error)throw new Error(r.error);
+  return true;
+};
+const desativarPush=async()=>{
+  if(!pushSupported())return;
+  const reg=await navigator.serviceWorker.getRegistration("/sw.js");
+  const sub=await reg?.pushManager?.getSubscription();
+  if(sub){
+    await apiCall("/api/push/unsubscribe",{method:"POST",body:JSON.stringify({endpoint:sub.endpoint})});
+    await sub.unsubscribe();
+  }
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B8DEF";
 const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
 const BDR="rgba(255,255,255,0.06)", MUTED="#B0A894", TEXT="#F2EFEA";
@@ -2897,6 +2942,19 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   const [croppedBlob,setCroppedBlob]=useState(null);
   const [cropSrc,setCropSrc]=useState(null);
   const [saveError,setSaveError]=useState("");
+  const [pushAtivo,setPushAtivo]=useState(null);
+  const [pushLoading,setPushLoading]=useState(false);
+  const [pushErro,setPushErro]=useState("");
+  useEffect(()=>{checkPushAtivo().then(setPushAtivo);},[]);
+  const handlePush=async()=>{
+    if(pushLoading)return;
+    setPushLoading(true);setPushErro("");
+    try{
+      if(pushAtivo){await desativarPush();setPushAtivo(false);}
+      else{await ativarPush();setPushAtivo(true);}
+    }catch(e){setPushErro(e.message||"Erro ao ativar notificações");}
+    setPushLoading(false);
+  };
   const statusItems=[
     {label:"WhatsApp",val:wapConnected===true?"conectado":"não configurado",c:wapConnected===true?GREEN:MUTED,action:wapConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
     {label:"E-mail",val:emailConnected===true?"conectado":"não configurado",c:emailConnected===true?GREEN:MUTED,action:emailConnected!==true?()=>{onNavigate&&onNavigate("clientes",3);}:null},
@@ -2951,6 +3009,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
   const contaItems=[
     {icon:"📧",label:email||"—",onClick:null},
     {icon:"🔒",label:senhaMsg||"Alterar senha",onClick:handleSenha},
+    {icon:"🔔",label:pushLoading?"…":pushErro?pushErro:pushAtivo?"Notificações ativadas":"Ativar notificações no celular",onClick:handlePush},
     ...(isAdmin?[
       {icon:"⚙",label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")},
       {icon:"⎈",label:"Integrações",onClick:()=>onNavigate&&onNavigate("integracoes")},

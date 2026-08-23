@@ -4,12 +4,14 @@
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "checkout.html", "use": "@vercel/static" },
     { "src": "minichat.html", "use": "@vercel/static" },
-    { "src": "favicon.jpeg", "use": "@vercel/static" }
+    { "src": "favicon.jpeg", "use": "@vercel/static" },
+    { "src": "sw.js", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/checkout.html", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/checkout.html" },
     { "src": "/minichat.html", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/minichat.html" },
     { "src": "/favicon.jpeg", "dest": "/favicon.jpeg" },
+    { "src": "/sw.js", "headers": { "cache-control": "no-store, max-age=0, must-revalidate", "content-type": "application/javascript" }, "dest": "/sw.js" },
     { "src": "/(.*)", "headers": { "cache-control": "no-store, max-age=0, must-revalidate" }, "dest": "/index.html" }
   ]
 }
