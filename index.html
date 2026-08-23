@@ -1021,7 +1021,10 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   useEffect(()=>{
     apiCall('/api/admin/google/status').then(d=>{
       setGoogleConnected(!!d?.connected);
-      if(d?.connected)apiCall('/api/admin/google/tagmanager/accounts').then(a=>{if(a?.accounts)setAccounts(a.accounts);});
+      if(d?.connected)apiCall('/api/admin/google/tagmanager/accounts').then(a=>{
+        if(a?.accounts)setAccounts(a.accounts);
+        else{setAccounts([]);setGtmMsg(a?.error||"Não consegui buscar as contas do Tag Manager.");}
+      });
     });
   },[]);
   const onAccountChange=async(val)=>{
