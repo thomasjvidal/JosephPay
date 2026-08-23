@@ -1930,6 +1930,19 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           </div>
         ))}
         <button onClick={addQuestion} style={{width:"100%",background:"none",border:`1px dashed ${BDR}`,borderRadius:12,padding:10,color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:16}}>+ Adicionar pergunta</button>
+
+        <div style={{background:`${GREEN}0d`,border:`1px solid ${GREEN}30`,borderRadius:14,padding:"12px 14px",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+            <span style={{color:GREEN,fontSize:13}}>✓</span>
+            <span style={{color:GREEN,fontSize:12,fontWeight:700}}>Sempre incluídas no final, automaticamente</span>
+          </div>
+          <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta mais 3 coisas antes de liberar o botão do WhatsApp — pra garantir que todo interessado que aparece no CRM já venha com nome e telefone reais. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"].map((q,i)=>(
+              <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>
+            ))}
+          </div>
+        </div>
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
       </div>)}
