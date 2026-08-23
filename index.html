@@ -2011,6 +2011,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [editName,setEditName]=useState("");
   const [editCompany,setEditCompany]=useState("");
   const [editEmail,setEditEmail]=useState("");
+  const [editSiteUrl,setEditSiteUrl]=useState("");
   const [saving,setSaving]=useState(false);
   const [saveErr,setSaveErr]=useState("");
   const [subTab,setSubTab]=useState(initialSubTab||"geral");
@@ -2036,15 +2037,15 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
     reader.readAsDataURL(file);
   };
   useEffect(()=>{
-    if(c){setEditName(c.name||"");setEditCompany(c.company_name||"");setEditEmail(c.email||"");}
+    if(c){setEditName(c.name||"");setEditCompany(c.company_name||"");setEditEmail(c.email||"");setEditSiteUrl(c.site_url||"");}
   },[c?.id]);
   const cancelarEdicao=()=>{
     setEditing(false);setSaveErr("");
-    setEditName(c?.name||"");setEditCompany(c?.company_name||"");setEditEmail(c?.email||"");
+    setEditName(c?.name||"");setEditCompany(c?.company_name||"");setEditEmail(c?.email||"");setEditSiteUrl(c?.site_url||"");
   };
   const salvarPerfil=async()=>{
     setSaving(true);setSaveErr("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/profile`,{method:'PATCH',body:JSON.stringify({name:editName.trim(),company_name:editCompany.trim(),email:editEmail.trim()})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/profile`,{method:'PATCH',body:JSON.stringify({name:editName.trim(),company_name:editCompany.trim(),email:editEmail.trim(),site_url:editSiteUrl.trim()})});
     setSaving(false);
     if(d.error){setSaveErr(d.error);return;}
     setEditing(false);
@@ -2090,6 +2091,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
                 <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Nome" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
                 <input value={editCompany} onChange={e=>setEditCompany(e.target.value)} placeholder="Nome da empresa" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
                 <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="E-mail de login" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editSiteUrl} onChange={e=>setEditSiteUrl(e.target.value)} placeholder="Site do cliente (ex: meusite.com.br)" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
               </div>
             )}
           </div>

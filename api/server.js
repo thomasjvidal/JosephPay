@@ -1689,10 +1689,11 @@ app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, a
 app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, company_name, email } = req.body;
+    const { name, company_name, email, site_url } = req.body;
     const updates = {};
     if (name         !== undefined) updates.name         = name?.trim()         || null;
     if (company_name !== undefined) updates.company_name = company_name?.trim() || null;
+    if (site_url     !== undefined) updates.site_url     = site_url?.trim()     || null;
     if (email?.trim()) {
       const newEmail = email.trim();
       const { data: current } = await supabase.from("profiles").select("email").eq("id", id).maybeSingle();
