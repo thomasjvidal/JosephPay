@@ -1142,6 +1142,19 @@ app.post("/api/whatsapp/webhook", async (req, res) => {
 // própria conta de e-mail (ex: Gmail + senha de app) para os disparos do CRM.
 // ══════════════════════════════════════════════════════════════════════════════
 
+// Traduz o erro técnico do nodemailer pra algo que dá pra agir, em vez do genérico
+// "verifique os dados". EAUTH = login/senha errados; timeout/ECONNREFUSED geralmente
+// é a porta SMTP bloqueada na rede (comum em alguns hosts de nuvem), não credencial.
+function describeSmtpError(err) {
+  if (err.code === "EAUTH") return "E-mail ou senha incorretos — se for Gmail/Outlook, use uma senha de app, não a senha normal da conta.";
+  if (err.code === "ETIMEDOUT" || err.code === "ESOCKET" || err.responseCode === undefined && /timeout/i.test(err.message || "")) {
+    return "O servidor não respondeu a tempo — confira o host/porta, ou pode ser a porta SMTP bloqueada na rede do servidor.";
+  }
+  if (err.code === "ECONNREFUSED") return "Conexão recusada pelo servidor — confira o host e a porta.";
+  if (err.code === "ENOTFOUND") return "Não encontrei esse servidor SMTP — confira se o host está escrito certo.";
+  return `Não foi possível conectar (${err.code || err.message || "erro desconhecido"}).`;
+}
+
 async function getUserEmailConn(userId) {
   const { data } = await supabase.from("profiles")
     .select("email_smtp_host,email_smtp_port,email_smtp_user,email_smtp_pass,email_from_name,email_connected")
@@ -1155,6 +1168,12 @@ function buildTransport(conn) {
     port: conn.email_smtp_port,
     secure: Number(conn.email_smtp_port) === 465,
     auth: { user: conn.email_smtp_user, pass: conn.email_smtp_pass },
+    // Sem isso, se a porta SMTP estiver bloqueada na rede (comum em alguns hosts de
+    // nuvem), a conexão fica pendurada por minutos em vez de falhar rápido com um
+    // erro que dá pra entender.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
@@ -1177,7 +1196,7 @@ app.post("/api/email/connect", requireAuth, async (req, res) => {
     res.json({ connected: true, email: user });
   } catch (err) {
     console.error("[email/connect]", err.message);
-    res.status(400).json({ error: "Não foi possível conectar. Verifique os dados e a senha de app." });
+    res.status(400).json({ error: describeSmtpError(err) });
   }
 });
 
@@ -1862,7 +1881,7 @@ app.post("/api/admin/producers/:id/email/connect", requireAuth, requireAdmin, as
     res.json({ connected: true, email: user });
   } catch (err) {
     console.error("[admin/producers email/connect]", err.message);
-    res.status(400).json({ error: "Não foi possível conectar. Verifique os dados e a senha de app." });
+    res.status(400).json({ error: describeSmtpError(err) });
   }
 });
 
