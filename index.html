@@ -1167,12 +1167,14 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
       if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
     });
   },[]);
+  const [filesHtmlFound,setFilesHtmlFound]=useState(true);
   useEffect(()=>{
     if(!repoFullName){setFiles(null);return;}
     setFiles(null);
     apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(repoFullName)}`).then(d=>{
       const list=d?.files||[];
       setFiles(list);
+      setFilesHtmlFound(d?.htmlFound!==false);
       // pré-seleciona index.html na raiz se existir; senão mantém o que já estava salvo pra esse cliente
       if(list.includes("index.html"))setFilePath("index.html");
       else if(c.github_repo===repoFullName&&c.github_file_path)setFilePath(c.github_file_path);
@@ -1259,6 +1261,9 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
                 loading={repos===null}
                 placeholder="Buscar/selecionar repositório…"
               />
+              {repoFullName&&!filesHtmlFound&&files&&files.length>0&&(
+                <div style={{color:MUTED,fontSize:11,marginBottom:8,lineHeight:1.4}}>Não achei nenhum .html de verdade nesse repositório (comum em sites React/Vite/Next) — listei os arquivos de rota/layout mais prováveis pra você escolher.</div>
+              )}
               {repoFullName&&files&&files.length>0?(
                 <SearchSelect
                   value={filePath}
@@ -1267,7 +1272,7 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
                   placeholder="Buscar/selecionar arquivo…"
                 />
               ):(
-                <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum .html encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+                <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum arquivo encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
               )}
               {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
               <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>

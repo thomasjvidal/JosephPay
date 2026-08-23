@@ -1256,6 +1256,37 @@ function buildTransport(conn) {
   });
 }
 
+// Verifica a conexão SMTP tentando a porta informada e, se der timeout/conexão
+// recusada (sinal de porta bloqueada na rede, não senha errada), tenta
+// automaticamente a porta alternativa mais comum (465 SSL ↔ 587 STARTTLS)
+// antes de desistir — evita o produtor/Thomas ter que adivinhar qual porta
+// funciona na rede do servidor.
+async function verifySmtpWithFallback({ host, port, user, pass }) {
+  const tried = [];
+  const attempt = async (p) => {
+    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: p, email_smtp_user: user, email_smtp_pass: pass });
+    await transporter.verify();
+    return p;
+  };
+  try {
+    const okPort = await attempt(Number(port));
+    return { port: okPort };
+  } catch (err) {
+    tried.push(err);
+    const isNetworkIssue = err.code === "ETIMEDOUT" || err.code === "ESOCKET" || err.code === "ECONNREFUSED";
+    const altPort = Number(port) === 465 ? 587 : Number(port) === 587 ? 465 : null;
+    if (isNetworkIssue && altPort) {
+      try {
+        const okPort = await attempt(altPort);
+        return { port: okPort };
+      } catch (err2) {
+        tried.push(err2);
+      }
+    }
+    throw tried[0];
+  }
+}
+
 app.get("/api/email/status", requireAuth, async (req, res) => {
   const conn = await getUserEmailConn(req.user.id);
   res.json({ connected: !!conn?.email_connected, email: conn?.email_smtp_user || null, fromName: conn?.email_from_name || null });
@@ -1265,14 +1296,13 @@ app.post("/api/email/connect", requireAuth, async (req, res) => {
   const { host, port, user, pass, fromName } = req.body || {};
   if (!host || !port || !user || !pass) return res.status(400).json({ error: "Preencha host, porta, e-mail e senha." });
   try {
-    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: port, email_smtp_user: user, email_smtp_pass: pass });
-    await transporter.verify();
+    const { port: workingPort } = await verifySmtpWithFallback({ host, port, user, pass });
     const { error } = await supabase.from("profiles").update({
-      email_smtp_host: host, email_smtp_port: Number(port), email_smtp_user: user,
+      email_smtp_host: host, email_smtp_port: workingPort, email_smtp_user: user,
       email_smtp_pass: pass, email_from_name: fromName || null, email_connected: true,
     }).eq("id", req.user.id);
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ connected: true, email: user });
+    res.json({ connected: true, email: user, port: workingPort });
   } catch (err) {
     console.error("[email/connect]", err.message);
     res.status(400).json({ error: describeSmtpError(err) });
@@ -1957,14 +1987,13 @@ app.post("/api/admin/producers/:id/email/connect", requireAuth, requireAdmin, as
   const { host, port, user, pass, fromName } = req.body || {};
   if (!host || !port || !user || !pass) return res.status(400).json({ error: "Preencha host, porta, e-mail e senha." });
   try {
-    const transporter = buildTransport({ email_smtp_host: host, email_smtp_port: port, email_smtp_user: user, email_smtp_pass: pass });
-    await transporter.verify();
+    const { port: workingPort } = await verifySmtpWithFallback({ host, port, user, pass });
     const { error } = await supabase.from("profiles").update({
-      email_smtp_host: host, email_smtp_port: Number(port), email_smtp_user: user,
+      email_smtp_host: host, email_smtp_port: workingPort, email_smtp_user: user,
       email_smtp_pass: pass, email_from_name: fromName || null, email_connected: true,
     }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ connected: true, email: user });
+    res.json({ connected: true, email: user, port: workingPort });
   } catch (err) {
     console.error("[admin/producers email/connect]", err.message);
     res.status(400).json({ error: describeSmtpError(err) });
@@ -2347,7 +2376,7 @@ app.get("/api/admin/google/tagmanager/accounts", requireAuth, requireAdmin, asyn
     res.json({ accounts: (resp.data.account || []).map(a => ({ id: a.accountId, name: a.name })) });
   } catch (err) {
     console.error("[gtm/accounts]", err.response?.data || err.message);
-    res.status(500).json({ error: "Falha ao buscar contas do GTM" });
+    res.status(500).json({ error: describeGoogleAdsError(err) });
   }
 });
 
@@ -2361,7 +2390,7 @@ app.get("/api/admin/google/tagmanager/containers", requireAuth, requireAdmin, as
     res.json({ containers: (resp.data.container || []).map(c => ({ id: c.containerId, name: c.name, publicId: c.publicId })) });
   } catch (err) {
     console.error("[gtm/containers]", err.response?.data || err.message);
-    res.status(500).json({ error: "Falha ao buscar containers do GTM" });
+    res.status(500).json({ error: describeGoogleAdsError(err) });
   }
 });
 
@@ -2819,11 +2848,29 @@ app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, r
     const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
     const branch = repoInfo.data.default_branch;
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
-    const files = (treeResp.data.tree || [])
+    const tree = treeResp.data.tree || [];
+    const htmlFiles = tree
       .filter(item => item.type === "blob" && /\.html?$/i.test(item.path))
       .map(item => item.path)
       .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
-    res.json({ files });
+    if (htmlFiles.length) return res.json({ files: htmlFiles, htmlFound: true });
+
+    // Sites em React Router/Next.js/Vite normalmente não têm nenhum .html de verdade
+    // (só um shell vazio, se tiver) — os botões vivem em arquivos de rota/layout
+    // (.tsx/.jsx/.ts/.js). Lista esses como candidatos, com os mais prováveis
+    // (root/app/layout/index/router) primeiro, pra o admin escolher sem precisar
+    // adivinhar o caminho.
+    const PRIORIDADE = /(_root|app|layout|index|router)\.[jt]sx?$/i;
+    const sourceFiles = tree
+      .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
+      .map(item => item.path)
+      .sort((a, b) => {
+        const pa = PRIORIDADE.test(a) ? 0 : 1, pb = PRIORIDADE.test(b) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return a.split("/").length - b.split("/").length || a.localeCompare(b);
+      })
+      .slice(0, 200);
+    res.json({ files: sourceFiles, htmlFound: false });
   } catch (err) {
     console.error("[github/repo-files]", err.response?.data || err.message);
     res.status(500).json({ error: "Falha ao listar os arquivos do repositório" });
@@ -2841,6 +2888,28 @@ async function readGithubFile(repo, filePath, headers, token) {
     return typeof raw.data === "string" ? raw.data : JSON.stringify(raw.data);
   }
   return "";
+}
+
+// Extrai todos os "links" de verdade de um arquivo (HTML ou código-fonte React) — não
+// só <a href>, porque muitos botões (principalmente os que abrem WhatsApp) são feitos
+// via onClick + window.open/window.location em vez de um <a> de verdade. Chama registra()
+// pra cada ocorrência encontrada.
+function extractLinksFromContent(content, filePath, registra) {
+  let m;
+  const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((m = reHref.exec(content))) registra(m[1], m[2], filePath);
+  const reLink = /<Link\b[^>]*\bto\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi;
+  while ((m = reLink.exec(content))) registra(m[1], m[2], filePath);
+  // href/to passado como expressão JSX com string estática: href={"..."} ou href={'...'}
+  const reHrefExpr = /\b(?:href|to)\s*=\s*\{\s*["'`]([^"'`]+)["'`]\s*\}/gi;
+  while ((m = reHrefExpr.exec(content))) registra(m[1], "(atributo href={...})", filePath);
+  // botão que redireciona via JS em vez de <a href> — comum pra abrir WhatsApp num onClick
+  const reWinOpen = /window\.open\(\s*["'`]([^"'`]+)["'`]/gi;
+  while ((m = reWinOpen.exec(content))) registra(m[1], "(window.open no código)", filePath);
+  const reWinLoc = /window\.location(?:\.href)?\s*=\s*["'`]([^"'`]+)["'`]/gi;
+  while ((m = reWinLoc.exec(content))) registra(m[1], "(window.location no código)", filePath);
+  const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
+  while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", filePath);
 }
 
 // Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
@@ -2875,13 +2944,7 @@ async function scanRepoJsxLinks(repo, headers, token) {
       let content;
       try { content = await readGithubFile(repo, item.path, headers, token); }
       catch { return; }
-      let m;
-      const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      while ((m = reHref.exec(content))) registra(m[1], m[2], item.path);
-      const reLink = /<Link\b[^>]*\bto\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi;
-      while ((m = reLink.exec(content))) registra(m[1], m[2], item.path);
-      const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
-      while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", item.path);
+      extractLinksFromContent(content, item.path, registra);
     }));
   }
   return Object.values(groups).sort((a, b) => b.count - a.count);
@@ -2897,17 +2960,16 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const content = await readGithubFile(repo, file, headers, token);
-    const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     const groups = {};
-    let m;
-    while ((m = re.exec(content))) {
-      const href = m[1].trim();
-      const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-      if (!href || href.startsWith("#")) continue;
-      if (!groups[href]) groups[href] = { href, file, count: 0, samples: [] };
+    const registra = (href, text, filePath) => {
+      href = (href || "").trim();
+      if (!href || href.startsWith("#")) return;
+      if (!groups[href]) groups[href] = { href, file: filePath, count: 0, samples: [] };
       groups[href].count++;
+      text = (text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
       if (text && groups[href].samples.length < 3 && !groups[href].samples.includes(text)) groups[href].samples.push(text);
-    }
+    };
+    extractLinksFromContent(content, file, registra);
     let links = Object.values(groups).sort((a, b) => b.count - a.count);
     let source = "html";
     // Nada achado no arquivo escolhido — provável site em React/Vite (Lovable e
