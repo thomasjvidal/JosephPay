@@ -1126,12 +1126,11 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
   );
 }
 
-function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
+// ── CARD 1: Site ─────────────────────────────────────────────────────────────
+function SiteAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(!!initialOpen);
-  const [showTecnico,setShowTecnico]=useState(false);
-  const [metodo,setMetodo]=useState(c.github_repo?"github":"gtm");
-  const sensorSnippet=`<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${c.id}"><\/script>`;
-  // ── Google Tag Manager ──
+  const [metodo,setMetodo]=useState(c.github_repo?"github":(c.gtm_container_id?"gtm":"gtm"));
+  // GTM
   const [googleConnected,setGoogleConnected]=useState(null);
   const [accounts,setAccounts]=useState(null);
   const [containers,setContainers]=useState(null);
@@ -1139,18 +1138,41 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const [containerId,setContainerId]=useState(c.gtm_container_id||"");
   const [containerName,setContainerName]=useState(c.gtm_container_name||"");
   const [gtmSaving,setGtmSaving]=useState(false);
-  const [gtmInstalling,setGtmInstalling]=useState(false);
-  const [gtmInstalledAt,setGtmInstalledAt]=useState(c.gtm_sensor_installed_at||null);
   const [gtmMsg,setGtmMsg]=useState("");
+  // GitHub
+  const [githubConnected,setGithubConnected]=useState(null);
+  const [repos,setRepos]=useState(null);
+  const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
+  const [files,setFiles]=useState(null);
+  const [filePath,setFilePath]=useState(c.github_file_path||"");
+  const [filesHtmlFound,setFilesHtmlFound]=useState(true);
+  const [ghSaving,setGhSaving]=useState(false);
+  const [ghMsg,setGhMsg]=useState("");
   useEffect(()=>{
     apiCall('/api/admin/google/status').then(d=>{
       setGoogleConnected(!!d?.connected);
       if(d?.connected)apiCall('/api/admin/google/tagmanager/accounts').then(a=>{
         if(a?.accounts)setAccounts(a.accounts);
-        else{setAccounts([]);setGtmMsg(a?.error||"Não consegui buscar as contas do Tag Manager.");}
+        else setAccounts([]);
       });
     });
+    apiCall('/api/admin/github/status').then(d=>{
+      setGithubConnected(!!d?.connected);
+      if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
+    });
   },[]);
+  useEffect(()=>{
+    if(!repoFullName){setFiles(null);return;}
+    setFiles(null);
+    apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(repoFullName)}`).then(d=>{
+      const list=d?.files||[];
+      setFiles(list);setFilesHtmlFound(d?.htmlFound!==false);
+      if(list.includes("index.html"))setFilePath("index.html");
+      else if(c.github_repo===repoFullName&&c.github_file_path)setFilePath(c.github_file_path);
+      else if(list.length===1)setFilePath(list[0]);
+      else setFilePath("");
+    });
+  },[repoFullName]);
   const onAccountChange=async(val)=>{
     setAccountId(val);setContainerId("");setContainers(null);
     if(!val)return;
@@ -1164,206 +1186,179 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
     const d=await apiCall(`/api/admin/producers/${c.id}/gtm`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId,container_name:nome})});
     setGtmSaving(false);
     if(d.error)setGtmMsg(d.error);
-    else{setContainerName(nome);setGtmMsg("Container vinculado.");setTimeout(()=>setGtmMsg(""),2500);onUpdated&&onUpdated();}
+    else{setContainerName(nome);setGtmMsg("✓ Vinculado.");setTimeout(()=>setGtmMsg(""),2500);onUpdated&&onUpdated();}
   };
-  const instalarGtm=async()=>{
-    if(!accountId||!containerId)return;
-    setGtmInstalling(true);setGtmMsg("");
-    // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
-    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId})});
-    setGtmInstalling(false);
-    if(d.error)setGtmMsg(d.error);
-    else{setGtmInstalledAt(new Date().toISOString());setGtmMsg("Sensor instalado e publicado no GTM.");onUpdated&&onUpdated();}
-  };
-  // ── GitHub ──
-  const [githubConnected,setGithubConnected]=useState(null);
-  const [repos,setRepos]=useState(null);
-  const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
-  const [files,setFiles]=useState(null);
-  const [filePath,setFilePath]=useState(c.github_file_path||"");
-  const [ghSaving,setGhSaving]=useState(false);
-  const [ghInstalling,setGhInstalling]=useState(false);
-  const [ghInstalledAt,setGhInstalledAt]=useState(c.github_sensor_installed_at||null);
-  const [ghMsg,setGhMsg]=useState("");
-  const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
-  const [editingMinichatPath,setEditingMinichatPath]=useState(false);
-  const [installingMinichat,setInstallingMinichat]=useState(false);
-  const [minichatInstalledAt,setMinichatInstalledAt]=useState(c.github_minichat_installed_at||null);
-  const [msgMinichat,setMsgMinichat]=useState("");
-  const [vercelReadyAt,setVercelReadyAt]=useState(c.github_vercel_ready_at||null);
-  const [preparingVercel,setPreparingVercel]=useState(false);
-  const [msgVercel,setMsgVercel]=useState("");
-  const prepararVercel=async()=>{
-    setPreparingVercel(true);setMsgVercel("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/prepare-vercel`,{method:'POST'});
-    setPreparingVercel(false);
-    if(d?.error){setMsgVercel(d.error);return;}
-    setVercelReadyAt(new Date().toISOString());
-    setMsgVercel("✓ Pronto — pode importar esse repositório direto na Vercel.");
-    onUpdated&&onUpdated();
-  };
-  const instalarMinichat=async()=>{
-    if(!repoFullName||!minichatPath.trim())return;
-    setInstallingMinichat(true);setMsgMinichat("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
-    setInstallingMinichat(false);
-    if(d.error){setMsgMinichat(d.error);return;}
-    setMinichatInstalledAt(new Date().toISOString());
-    setMsgMinichat(`✓ Página criada em ${d.file_path}.`);
-    onUpdated&&onUpdated();
-  };
-  useEffect(()=>{
-    apiCall('/api/admin/github/status').then(d=>{
-      setGithubConnected(!!d?.connected);
-      if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
-    });
-  },[]);
-  const [filesHtmlFound,setFilesHtmlFound]=useState(true);
-  useEffect(()=>{
-    if(!repoFullName){setFiles(null);return;}
-    setFiles(null);
-    apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(repoFullName)}`).then(d=>{
-      const list=d?.files||[];
-      setFiles(list);
-      setFilesHtmlFound(d?.htmlFound!==false);
-      // pré-seleciona index.html na raiz se existir; senão mantém o que já estava salvo pra esse cliente
-      if(list.includes("index.html"))setFilePath("index.html");
-      else if(c.github_repo===repoFullName&&c.github_file_path)setFilePath(c.github_file_path);
-      else if(list.length===1)setFilePath(list[0]);
-      else setFilePath("");
-    });
-  },[repoFullName]);
   const salvarVinculoGh=async()=>{
     if(!repoFullName||!filePath.trim())return;
     setGhSaving(true);setGhMsg("");
     const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
     setGhSaving(false);
-    if(d.error){setGhMsg(d.error);}else{setGhMsg("Repositório vinculado.");setTimeout(()=>setGhMsg(""),2500);onUpdated&&onUpdated();}
-  };
-  const instalarGh=async()=>{
-    if(!repoFullName||!filePath.trim())return;
-    setGhInstalling(true);setGhMsg("");
-    // Manda sempre o que está selecionado agora na tela — não depende de ter clicado em "Vincular" antes.
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
-    setGhInstalling(false);
     if(d.error)setGhMsg(d.error);
-    else{setGhInstalledAt(new Date().toISOString());setGhMsg(d.already?"Sensor já estava instalado neste arquivo.":"Sensor commitado no repositório.");onUpdated&&onUpdated();}
+    else{setGhMsg("✓ Repositório vinculado.");setTimeout(()=>setGhMsg(""),2500);onUpdated&&onUpdated();}
   };
   if(googleConnected===null||githubConnected===null)return null;
-  const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código próprio (GitHub)"}];
+  const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código (GitHub)"}];
+  return(
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          {METODOS.map(m=>(
+            <button key={m.id} onClick={()=>setMetodo(m.id)} style={{flex:1,padding:"10px",borderRadius:14,border:`1px solid ${m.id===metodo?GOLD+"55":BDR}`,background:m.id===metodo?`${GOLD}14`:CARD2,color:m.id===metodo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{m.label}</button>
+          ))}
+        </div>
+        {metodo==="gtm"&&(!googleConnected?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
+        ):(
+          <>
+            <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:accountId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
+              <option value="">{accounts===null?"Carregando…":"Selecione a conta GTM"}</option>
+              {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
+            </select>
+            {accountId&&(
+              <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:containerId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
+                <option value="">{containers===null?"Carregando…":"Selecione o container"}</option>
+                {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
+              </select>
+            )}
+            {c.gtm_container_name&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:8}}>✓ Vinculado: {c.gtm_container_name}</div>}
+            <button onClick={salvarVinculoGtm} disabled={!accountId||!containerId||gtmSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.4:1}}>{gtmSaving?"Salvando…":"Vincular container"}</button>
+            {gtmMsg&&<div style={{color:gtmMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{gtmMsg}</div>}
+          </>
+        ))}
+        {metodo==="github"&&(!githubConnected?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
+        ):(
+          <>
+            <SearchSelect value={repoFullName} onChange={setRepoFullName} options={(repos||[]).map(r=>r.fullName)} loading={repos===null} placeholder="Selecionar repositório…"/>
+            {repoFullName&&!filesHtmlFound&&files&&files.length>0&&<div style={{color:MUTED,fontSize:11,marginBottom:6,lineHeight:1.4}}>Site React/Vite — listei os arquivos de layout prováveis.</div>}
+            {repoFullName&&files&&files.length>0?(
+              <SearchSelect value={filePath} onChange={setFilePath} options={files} placeholder="Selecionar arquivo…"/>
+            ):(
+              <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+            )}
+            {c.github_repo&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:8}}>✓ Vinculado: {c.github_repo} · {c.github_file_path}</div>}
+            <button onClick={salvarVinculoGh} disabled={!repoFullName||!filePath.trim()||ghSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.4:1}}>{ghSaving?"Salvando…":"Vincular repositório"}</button>
+            {ghMsg&&<div style={{color:ghMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{ghMsg}</div>}
+          </>
+        ))}
+      </div>)}
+    </div>
+  );
+}
+
+// ── CARD 2: Sensor ────────────────────────────────────────────────────────────
+function SensorAdmin({c,onUpdated,initialOpen,done}){
+  const [open,setOpen]=useState(!!initialOpen);
+  const metodo=c.github_repo?"github":(c.gtm_container_id?"gtm":null);
+  const [installing,setInstalling]=useState(false);
+  const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||c.gtm_sensor_installed_at||null);
+  const [msg,setMsg]=useState("");
+  const instalar=async()=>{
+    setInstalling(true);setMsg("");
+    if(metodo==="github"){
+      const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:c.github_repo,file_path:c.github_file_path})});
+      setInstalling(false);
+      if(d.error){setMsg(d.error);return;}
+      setInstalledAt(new Date().toISOString());
+      setMsg(d.already?"Sensor já estava instalado.":"✓ Sensor instalado no repositório.");
+      onUpdated&&onUpdated();
+    } else if(metodo==="gtm"){
+      const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST',body:JSON.stringify({account_id:c.gtm_account_id,container_id:c.gtm_container_id})});
+      setInstalling(false);
+      if(d.error){setMsg(d.error);return;}
+      setInstalledAt(new Date().toISOString());
+      setMsg("✓ Sensor instalado e publicado no GTM.");
+      onUpdated&&onUpdated();
+    }
+  };
+  const semSite=!metodo;
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Sensor" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:showTecnico?12:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
-        {showTecnico&&(<>
-          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Status real de conexão</div>
-          <StatusBadges status={c.conn}/>
-          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Script do sensor</div>
-          <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginBottom:16}}>
-            <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",margin:0}}>{sensorSnippet}</pre>
-            <button onClick={()=>navigator.clipboard?.writeText(sensorSnippet)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
+        {semSite?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Vincule o site no card <b style={{color:TEXT}}>Site</b> primeiro.</div>
+        ):(
+          <>
+            <div style={{background:CARD2,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:MUTED,fontSize:11}}>Destino:</span>
+              <span style={{color:TEXT,fontSize:12,fontWeight:600}}>
+                {metodo==="github"?`${c.github_repo} · ${c.github_file_path}`:c.gtm_container_name||"GTM container"}
+              </span>
+            </div>
+            {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
+            <button onClick={instalar} disabled={installing} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:installing?"default":"pointer",fontFamily:F}}>{installing?"Instalando…":done?"Reinstalar sensor":"Instalar sensor"}</button>
+            {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10}}>{msg}</div>}
+          </>
+        )}
+      </div>)}
+    </div>
+  );
+}
+
+// ── CARD 3: Vercel (GitHub only) ──────────────────────────────────────────────
+function VercelAdmin({c,onUpdated,initialOpen,done}){
+  const [open,setOpen]=useState(!!initialOpen);
+  const [preparing,setPreparing]=useState(false);
+  const [readyAt,setReadyAt]=useState(c.github_vercel_ready_at||null);
+  const [msg,setMsg]=useState("");
+  const preparar=async()=>{
+    setPreparing(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/prepare-vercel`,{method:'POST'});
+    setPreparing(false);
+    if(d?.error){setMsg(d.error);return;}
+    setReadyAt(new Date().toISOString());
+    setMsg("✓ Pronto — importe o repositório na Vercel.");
+    onUpdated&&onUpdated();
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Vercel" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Se o site foi feito no Lovable (ou outro Vite) e você importa direto na Vercel, geralmente falta uma config — esse botão adiciona sozinho.</div>
+        {readyAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Preparado em {new Date(readyAt).toLocaleString('pt-BR')}</div>}
+        <button onClick={preparar} disabled={preparing} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:preparing?"default":"pointer",fontFamily:F}}>{preparing?"Preparando…":readyAt?"Preparar de novo":"Preparar repositório"}</button>
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msg}</div>}
+      </div>)}
+    </div>
+  );
+}
+
+// ── CARD 4: Mini Chat no site (GitHub only) ───────────────────────────────────
+function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
+  const [open,setOpen]=useState(!!initialOpen);
+  const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
+  const [editingPath,setEditingPath]=useState(false);
+  const [installing,setInstalling]=useState(false);
+  const [installedAt,setInstalledAt]=useState(c.github_minichat_installed_at||null);
+  const [msg,setMsg]=useState("");
+  const instalar=async()=>{
+    if(!c.github_repo||!minichatPath.trim())return;
+    setInstalling(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
+    setInstalling(false);
+    if(d.error){setMsg(d.error);return;}
+    setInstalledAt(new Date().toISOString());
+    setMsg(`✓ Página criada em ${d.file_path}.`);
+    onUpdated&&onUpdated();
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria uma página no repositório do cliente que abre o Mini Chat. Quando você atualizar o Mini Chat no JosephPay, todos os clientes recebem automaticamente.</div>
+        {!editingPath?(
+          <div style={{color:MUTED,fontSize:12,marginBottom:10}}>
+            Arquivo: <b style={{color:TEXT}}>{minichatPath}</b>{" "}
+            <button onClick={()=>setEditingPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>mudar</button>
           </div>
-        </>)}
-        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Como o site desse cliente foi feito?</div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          {METODOS.map(m=>(
-            <button key={m.id} onClick={()=>setMetodo(m.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${m.id===metodo?GOLD+"55":BDR}`,background:m.id===metodo?`${GOLD}14`:CARD2,color:m.id===metodo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{m.label}</button>
-          ))}
-        </div>
-
-        {metodo==="gtm"&&(
-          !googleConnected?(
-            <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor remotamente neste cliente, sem colar código no site dele.</div>
-          ):(
-            <>
-              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Escolha qual container GTM é o site deste cliente. Isso instala o mesmo sensor de sempre, só que remotamente.</div>
-              <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
-                <option value="">{accounts===null?"Carregando contas…":"Selecione a conta GTM"}</option>
-                {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
-              </select>
-              {accountId&&(
-                <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
-                  <option value="">{containers===null?"Carregando containers…":"Selecione o container deste cliente"}</option>
-                  {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
-                </select>
-              )}
-              {containerName&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{containerName}</b></div>}
-              <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                <button onClick={salvarVinculoGtm} disabled={!accountId||!containerId||gtmSaving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!accountId||!containerId||gtmSaving)?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{gtmSaving?"Salvando…":"Vincular container"}</button>
-                <button onClick={instalarGtm} disabled={!accountId||!containerId||gtmInstalling} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:gtmInstalling?"default":"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.5:1}}>{gtmInstalling?"Instalando…":"Instalar sensor"}</button>
-              </div>
-              {gtmInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(gtmInstalledAt).toLocaleString('pt-BR')}</div>}
-              {gtmMsg&&<div style={{color:MUTED,fontSize:11}}>{gtmMsg}</div>}
-            </>
-          )
+        ):(
+          <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
         )}
-
-        {metodo==="github"&&(
-          !githubConnected?(
-            <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub na aba <b style={{color:TEXT}}>Integrações</b> do menu para instalar o sensor direto no código deste cliente.</div>
-          ):(
-            <>
-              <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Só para clientes com site em código próprio, num repositório seu. Escolha o repositório e o arquivo onde o sensor deve entrar (precisa ter uma tag &lt;/head&gt;).</div>
-              <SearchSelect
-                value={repoFullName}
-                onChange={setRepoFullName}
-                options={(repos||[]).map(r=>r.fullName)}
-                loading={repos===null}
-                placeholder="Buscar/selecionar repositório…"
-              />
-              {repoFullName&&!filesHtmlFound&&files&&files.length>0&&(
-                <div style={{color:MUTED,fontSize:11,marginBottom:8,lineHeight:1.4}}>Não achei nenhum .html de verdade nesse repositório (comum em sites React/Vite/Next) — listei os arquivos de rota/layout mais prováveis pra você escolher.</div>
-              )}
-              {repoFullName&&files&&files.length>0?(
-                <SearchSelect
-                  value={filePath}
-                  onChange={setFilePath}
-                  options={files}
-                  placeholder="Buscar/selecionar arquivo…"
-                />
-              ):(
-                <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":repoFullName&&files&&files.length===0?"Nenhum arquivo encontrado — digite o caminho":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-              )}
-              {c.github_repo&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Vinculado hoje: <b style={{color:TEXT}}>{c.github_repo} · {c.github_file_path}</b></div>}
-              <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                <button onClick={salvarVinculoGh} disabled={!repoFullName||!filePath.trim()||ghSaving} style={{background:"transparent",border:`1.5px solid ${GOLD}70`,borderRadius:100,padding:"8px 22px",color:GOLD,fontWeight:600,fontSize:13,cursor:(!repoFullName||!filePath.trim()||ghSaving)?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{ghSaving?"Salvando…":"Vincular repositório"}</button>
-                <button onClick={instalarGh} disabled={!repoFullName||!filePath.trim()||ghInstalling} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:ghInstalling?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.5:1}}>{ghInstalling?"Instalando…":"Instalar sensor"}</button>
-              </div>
-              {ghInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(ghInstalledAt).toLocaleString('pt-BR')}</div>}
-              {c.github_repo&&(
-                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
-                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Preparar pra Vercel</div>
-                  <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Se o site desse cliente foi feito no Lovable (ou outra ferramenta baseada em Vite) e você importa o repositório direto na Vercel, geralmente falta uma configuração — esse botão adiciona ela sozinho, sem precisar pedir pra outra IA preparar antes.</div>
-                  <Btn sm outline color={GOLD} onClick={prepararVercel}>{preparingVercel?"Preparando…":vercelReadyAt?"Preparar de novo":"Preparar repositório pra Vercel"}</Btn>
-                  {vercelReadyAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginTop:8}}>✓ Preparado em {new Date(vercelReadyAt).toLocaleString('pt-BR')}</div>}
-                  {msgVercel&&<div style={{color:msgVercel.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msgVercel}</div>}
-                </div>
-              )}
-              {ghMsg&&<div style={{color:MUTED,fontSize:11}}>{ghMsg}</div>}
-
-              {repoFullName&&(
-                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
-                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Instalar Mini Chat no repositório</div>
-                  <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página dentro do repositório do cliente que abre o Mini Chat. O conteúdo continua vindo do JosephPay — quando eu melhorar o Mini Chat, todos os clientes recebem a atualização sozinhos, sem precisar reinstalar nada aqui.</div>
-                  {!editingMinichatPath?(
-                    <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:8}}>
-                      Vamos criar o arquivo <b style={{color:TEXT}}>{minichatPath}</b> no repositório do cliente.{" "}
-                      <button onClick={()=>setEditingMinichatPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>usar outro nome</button>
-                    </div>
-                  ):(
-                    <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="Caminho do arquivo (ex: minichat.html)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
-                  )}
-                  {c.github_minichat_path&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Instalado hoje em: <b style={{color:TEXT}}>{c.github_minichat_path}</b></div>}
-                  <button onClick={instalarMinichat} disabled={!repoFullName||!minichatPath.trim()||installingMinichat} style={{background:"transparent",border:`1.5px solid ${GREEN}70`,borderRadius:100,padding:"8px 22px",color:GREEN,fontWeight:600,fontSize:13,cursor:installingMinichat?"default":"pointer",fontFamily:F,opacity:(!repoFullName||!minichatPath.trim())?0.5:1,marginBottom:8}}>{installingMinichat?"Instalando…":"Instalar Mini Chat"}</button>
-                  {minichatInstalledAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:4}}>✓ Instalado em {new Date(minichatInstalledAt).toLocaleString('pt-BR')}</div>}
-                  {msgMinichat&&<div style={{color:MUTED,fontSize:11}}>{msgMinichat}</div>}
-                </div>
-              )}
-
-            </>
-          )
-        )}
+        {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
+        <button onClick={instalar} disabled={!c.github_repo||installing} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:installing?"default":"pointer",fontFamily:F}}>{installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}</button>
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10}}>{msg}</div>}
       </div>)}
     </div>
   );
@@ -2049,18 +2044,19 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   },[metodoAtual,c.github_repo,c.github_file_path,c.id]);
 
   const steps=[
-    {id:"site",label:"Site conectado",done:siteOk,cardKeys:["instalacao"]},
-    {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["instalacao"]},
-    ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado",done:minichatInstOk,cardKeys:["instalacao"]}]:[]),
+    {id:"site",label:"Site conectado",done:siteOk,cardKeys:["site"]},
+    {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["sensor"]},
+    ...(metodoAtual==="github"?[{id:"vercel",label:"Vercel preparado",done:!!c.github_vercel_ready_at,cardKeys:["vercel"]}]:[]),
+    ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado no site",done:minichatInstOk,cardKeys:["minichat_repo"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
     {id:"email",label:"E-mail conectado",done:emailOk,cardKeys:["email"]},
   ];
   const currentStep=steps.find(s=>!s.done);
-  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
+  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||(minichatInstOk&&!!c.github_vercel_ready_at));
 
   const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
-  const cardDone=key=>steps.filter(s=>s.cardKeys.includes(key)).every(s=>s.done);
+  const cardDone=key=>steps.filter(s=>s.cardKeys.includes(key)).every(s=>!!s.done);
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -2090,10 +2086,13 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
         {!c.github_repo&&!c.gtm_container_id&&siteOk&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente já está funcionando de verdade (visitas reais detectadas), mas foi configurado fora do fluxo automático — não sei se é GTM ou GitHub. Vincule em "Instalação técnica" se quiser usar a instalação automática pra próximas mudanças (opcional, não é obrigatório já estando ativo).</div>}
         {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — instalar a página do Mini Chat direto no site ainda só funciona para clientes com GitHub. Configure o Mini Chat normalmente; o link continua funcionando, só não dá pra criar a página automaticamente no site dele.</div>}
       </div>
+      <SiteAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("site")} done={cardDone("site")}/>
+      <SensorAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("sensor")} done={cardDone("sensor")}/>
+      {metodoAtual==="github"&&<VercelAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("vercel")} done={cardDone("vercel")}/>}
+      {metodoAtual==="github"&&<MinichatRepoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("minichat_repo")} done={cardDone("minichat_repo")}/>}
       <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
-      <InstalacaoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("instalacao")} done={cardDone("instalacao")}/>
-      {(c.github_repo||c.github_file_path)&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}
+      {metodoAtual==="github"&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}
       <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
     </div>
   );
