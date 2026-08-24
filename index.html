@@ -1101,9 +1101,9 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
                     <label key={linkKey(l)} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
                       <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l)} style={{marginTop:3}}/>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
-                        <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
-                        {l.file&&l.file!==c.github_file_path&&<div style={{color:MUTED,fontSize:10,marginTop:2,fontStyle:"italic"}}>em {l.file}</div>}
+                        <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||l.href||"(botão sem texto)"}</div>
+                        <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href.length>50?l.href.slice(0,47)+"…":l.href}{l.count>1?` · ${l.count}x`:""}</div>
+                        {l.file&&<div style={{color:MUTED,fontSize:10,marginTop:2,fontStyle:"italic"}}>{l.file.split("/").pop()}</div>}
                       </div>
                     </label>
                   );
@@ -1211,7 +1211,10 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
         ):(
           <div style={{marginBottom:14}}>
             {!accounts?.length&&accountsErr?(
-              <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{accountsErr}</div>
+              <div style={{lineHeight:1.5}}>
+                <div style={{color:MUTED,fontSize:12,marginBottom:8}}>{accountsErr.includes("403")||accountsErr.includes("Tag Manager API")||accountsErr.includes("disabled")?"A API do Tag Manager não está ativada no Google Cloud. Clique no botão abaixo para ativar e depois recarregue a página.":accountsErr}</div>
+                {(accountsErr.includes("403")||accountsErr.includes("Tag Manager API")||accountsErr.includes("disabled"))&&<a href="https://console.developers.google.com/apis/api/tagmanager.googleapis.com" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",background:GOLD,color:"#0C0C0C",fontWeight:700,fontSize:12,borderRadius:100,padding:"8px 16px",textDecoration:"none",fontFamily:F}}>Ativar API no Google Cloud →</a>}
+              </div>
             ):(
               <>
                 <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:accountId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
@@ -1262,14 +1265,16 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
   const [installing,setInstalling]=useState(false);
   const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||c.gtm_sensor_installed_at||null);
   const [msg,setMsg]=useState("");
+  const [installedFile,setInstalledFile]=useState(c.github_file_path&&!c.github_file_path.startsWith(".")&&!/minichat/i.test(c.github_file_path)?c.github_file_path:null);
   const instalar=async()=>{
     setInstalling(true);setMsg("");
     if(metodo==="github"){
-      const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:c.github_repo,file_path:c.github_file_path})});
+      const d=await apiCall(`/api/admin/producers/${c.id}/github/install-sensor`,{method:'POST',body:JSON.stringify({repo:c.github_repo})});
       setInstalling(false);
       if(d.error){setMsg(d.error);return;}
+      if(d.file)setInstalledFile(d.file);
       setInstalledAt(new Date().toISOString());
-      setMsg(d.already?"Sensor já estava instalado.":"✓ Sensor instalado no repositório.");
+      setMsg(d.already?"Sensor já estava instalado.":"✓ Sensor instalado com sucesso.");
       onUpdated&&onUpdated();
     } else if(metodo==="gtm"){
       const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-sensor`,{method:'POST',body:JSON.stringify({account_id:c.gtm_account_id,container_id:c.gtm_container_id})});
@@ -1289,12 +1294,12 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
           <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Vincule o site no card <b style={{color:TEXT}}>Site</b> primeiro.</div>
         ):(
           <>
-            <div style={{background:CARD2,borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-              <span style={{color:MUTED,fontSize:11}}>Destino:</span>
-              <span style={{color:TEXT,fontSize:12,fontWeight:600}}>
-                {metodo==="github"?`${c.github_repo} · ${c.github_file_path}`:c.gtm_container_name||"GTM container"}
-              </span>
+            <div style={{background:CARD2,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:MUTED,fontSize:11}}>Repositório:</span>
+              <span style={{color:TEXT,fontSize:12,fontWeight:600}}>{metodo==="github"?c.github_repo:c.gtm_container_name||"GTM"}</span>
             </div>
+            {metodo==="github"&&installedFile&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Instalado em: <span style={{color:TEXT}}>{installedFile}</span></div>}
+            {metodo==="github"&&!installedFile&&<div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>O arquivo de destino é detectado automaticamente ao instalar.</div>}
             {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
             <button onClick={instalar} disabled={installing} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:installing?"default":"pointer",fontFamily:F}}>{installing?"Instalando…":done?"Reinstalar sensor":"Instalar sensor"}</button>
             {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10}}>{msg}</div>}

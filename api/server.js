@@ -2837,7 +2837,29 @@ app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
-// Lista os arquivos .html do repositório (recursivo), pra escolher clicando em vez de digitar o caminho.
+// Detecta o arquivo principal do site num repo GitHub, ignorando arquivos que
+// o próprio JosephPay criou (minichat.html). Funciona pra HTML, Vite/React, Next.js, SvelteKit.
+async function detectSiteEntryFile(allPaths) {
+  // 1. HTML padrão (Vite, sites simples, SvelteKit)
+  const HTML_PRIORITY = ["index.html", "public/index.html", "src/app.html", "src/index.html"];
+  let f = HTML_PRIORITY.find(p => allPaths.includes(p));
+  if (f) return { file: f, type: "html" };
+  // 2. Next.js App Router
+  f = allPaths.find(p => /^(src\/)?app\/layout\.[jt]sx?$/.test(p));
+  if (f) return { file: f, type: "nextjs-app" };
+  // 3. Next.js Pages Router
+  f = allPaths.find(p => /^(src\/)?pages\/_document\.[jt]sx?$/.test(p));
+  if (f) return { file: f, type: "nextjs-pages" };
+  // 4. React/Vite main entry
+  f = allPaths.find(p => /^(src\/)(main|index)\.[jt]sx?$/.test(p));
+  if (f) return { file: f, type: "react-main" };
+  // 5. Qualquer HTML que NÃO seja do minichat (último recurso)
+  const anyHtml = allPaths.filter(p => /\.html?$/i.test(p) && !/minichat/i.test(p))
+    .sort((a,b) => a.split("/").length - b.split("/").length)[0];
+  if (anyHtml) return { file: anyHtml, type: "html" };
+  return null;
+}
+
 app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { repo } = req.query;
@@ -2851,33 +2873,13 @@ app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, r
     const tree = treeResp.data.tree || [];
     const allPaths = tree.filter(i => i.type === "blob").map(i => i.path);
 
-    // Auto-detecção do arquivo de entrada principal, por ordem de prioridade
-    const HTML_PRIORITY = ["index.html", "public/index.html", "src/app.html", "src/index.html"];
-    let autoFile = HTML_PRIORITY.find(p => allPaths.includes(p));
-    let fileType = "html";
-    if (!autoFile) {
-      // Next.js App Router
-      const appLayout = allPaths.find(p => /^(src\/)?app\/layout\.[jt]sx?$/.test(p));
-      if (appLayout) { autoFile = appLayout; fileType = "nextjs-app"; }
-    }
-    if (!autoFile) {
-      // Next.js Pages Router
-      const doc = allPaths.find(p => /^(src\/)?pages\/_document\.[jt]sx?$/.test(p));
-      if (doc) { autoFile = doc; fileType = "nextjs-pages"; }
-    }
-    if (!autoFile) {
-      // qualquer .html
-      const anyHtml = allPaths.filter(p => /\.html?$/i.test(p)).sort((a,b) => a.split("/").length - b.split("/").length)[0];
-      if (anyHtml) { autoFile = anyHtml; fileType = "html"; }
-    }
-    if (!autoFile) {
-      // Fallback: index ou app root em tsx/jsx
-      const root = allPaths.find(p => /^(src\/)?(index|App)\.[jt]sx?$/.test(p));
-      if (root) { autoFile = root; fileType = "jsx"; }
-    }
+    const detected = await detectSiteEntryFile(allPaths);
+    const autoFile = detected?.file || null;
+    const fileType = detected?.type || "html";
 
-    const htmlFiles = allPaths.filter(p => /\.html?$/i.test(p)).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
-    if (htmlFiles.length) return res.json({ files: htmlFiles, htmlFound: true, autoFile: autoFile||htmlFiles[0], fileType });
+    const htmlFiles = allPaths.filter(p => /\.html?$/i.test(p) && !/minichat/i.test(p))
+      .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+    if (htmlFiles.length) return res.json({ files: htmlFiles, htmlFound: true, autoFile, fileType });
 
     const PRIORIDADE = /(_root|app|layout|index|router)\.[jt]sx?$/i;
     const sourceFiles = allPaths
@@ -3171,33 +3173,76 @@ app.post("/api/admin/producers/:id/github", requireAuth, requireAdmin, async (re
 app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    // Aceita repo/file_path direto do corpo (o que está selecionado na tela agora) — evita instalar
-    // num caminho antigo caso o admin tenha trocado a seleção sem clicar em "Vincular" de novo.
-    let { repo, file_path: filePath } = req.body || {};
-    if (!repo?.trim() || !filePath?.trim()) {
-      const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
-      repo = repo?.trim() || profile?.github_repo;
-      filePath = filePath?.trim() || profile?.github_file_path;
-    } else {
-      repo = repo.trim(); filePath = filePath.trim();
-      await supabase.from("profiles").update({ github_repo: repo, github_file_path: filePath }).eq("id", id);
-    }
-    if (!repo || !filePath) return res.status(400).json({ error: "Vincule um repositório e um arquivo a este cliente primeiro" });
+    let { repo } = req.body || {};
+    const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path").eq("id", id).maybeSingle();
+    repo = repo?.trim() || profile?.github_repo;
+    let filePath = profile?.github_file_path;
+    if (!repo) return res.status(400).json({ error: "Vincule um repositório GitHub a este cliente primeiro" });
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
 
-    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    // Valida se o caminho armazenado é válido; se não, auto-detecta no repo
+    const isBadPath = !filePath || filePath === ".html" || filePath.startsWith(".") || /minichat/i.test(filePath);
+    const getRepoTree = async () => {
+      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
+      return (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+    };
+
+    if (isBadPath) {
+      const allPaths = await getRepoTree();
+      const detected = await detectSiteEntryFile(allPaths);
+      if (!detected) return res.status(400).json({ error: "Não encontrei nenhum arquivo de entrada nesse repositório. Verifique se o repositório tem código enviado." });
+      // Para projetos React/Vite prefere o index.html público (onde o sensor precisa estar)
+      if (detected.type === "react-main" || detected.type === "nextjs-app" || detected.type === "nextjs-pages") {
+        const htmlAlts = ["index.html", "public/index.html"];
+        const htmlFile = htmlAlts.find(p => allPaths.includes(p));
+        filePath = htmlFile || detected.file;
+      } else {
+        filePath = detected.file;
+      }
+      await supabase.from("profiles").update({ github_file_path: filePath }).eq("id", id);
+    }
+
+    // Tenta ler o arquivo; se 404, re-detecta uma vez
+    let fileResp;
+    try {
+      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    } catch (e) {
+      if (e.response?.status === 404) {
+        const allPaths = await getRepoTree();
+        const detected = await detectSiteEntryFile(allPaths);
+        if (!detected) return res.status(400).json({ error: "Não encontrei o arquivo de entrada no repositório. Verifique se já tem código enviado." });
+        if (detected.type === "react-main" || detected.type === "nextjs-app" || detected.type === "nextjs-pages") {
+          const htmlFile = ["index.html","public/index.html"].find(p => allPaths.includes(p));
+          filePath = htmlFile || detected.file;
+        } else {
+          filePath = detected.file;
+        }
+        await supabase.from("profiles").update({ github_file_path: filePath }).eq("id", id);
+        fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      } else throw e;
+    }
+
     const sha = fileResp.data.sha;
     const currentContent = Buffer.from(fileResp.data.content, "base64").toString("utf8");
-
     const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
+
     if (currentContent.includes(`uid=${id}`)) {
       await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
-      return res.json({ ok: true, already: true });
+      return res.json({ ok: true, already: true, file: filePath });
     }
-    if (!currentContent.match(/<\/head>/i)) return res.status(400).json({ error: "Não encontrei uma tag </head> nesse arquivo — insira manualmente pra não arriscar quebrar o site" });
-    const newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
+
+    let newContent;
+    if (currentContent.match(/<\/head>/i)) {
+      newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
+    } else if (/\.[jt]sx?$/.test(filePath)) {
+      // Arquivo React/JS — injeta via createElement no topo
+      const loader = `// JosephPay sensor\n(function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';document.head.appendChild(s);})();\n`;
+      newContent = loader + currentContent;
+    } else {
+      return res.status(400).json({ error: `Arquivo ${filePath} detectado mas não tem <\/head>. Copie a tag <script> manualmente antes de <\/head>.` });
+    }
 
     await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
       message: "JosephPay: instala sensor de visitas",
@@ -3205,13 +3250,10 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
       sha,
     }, { headers });
 
-    await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
-    res.json({ ok: true });
+    await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString(), github_file_path: filePath }).eq("id", id);
+    res.json({ ok: true, file: filePath });
   } catch (err) {
     console.error("[github/install-sensor]", err.response?.data || err.message);
-    if (err.response?.status === 404) {
-      return res.status(400).json({ error: "Não encontrei esse arquivo nesse repositório. Confira se o caminho está certo (ex: index.html, ou public/index.html se o arquivo estiver dentro de uma pasta) e se o repositório já tem algum código enviado." });
-    }
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o sensor via GitHub" });
   }
 });
