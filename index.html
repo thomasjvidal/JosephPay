@@ -1049,7 +1049,7 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
 }
 
 function BotoesAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
   const [links,setLinks]=useState(null);
   const [linksSource,setLinksSource]=useState("html");
@@ -1060,14 +1060,14 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
   const toggleLink=l=>setSelected(s=>({...s,[linkKey(l)]:!s[linkKey(l)]}));
   const selecionados=(links||[]).filter(l=>selected[linkKey(l)]);
   const carregar=()=>{
-    if(!c.github_repo||!c.github_file_path)return;
+    if(!c.github_repo)return;
     setLinks(null);setMsg("");setSelected({});
-    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}`).then(d=>{
       if(d.error){setMsg(d.error);setLinks([]);return;}
-      setLinks(d.links||[]);setLinksSource(d.source||"html");
+      setLinks(d.links||[]);setLinksSource(d.source||"code");
     });
   };
-  useEffect(()=>{if(open&&c.github_repo&&c.github_file_path)carregar();},[open,c.github_repo,c.github_file_path]);
+  useEffect(()=>{if(open&&c.github_repo)carregar();},[open,c.github_repo]);
   const aplicar=async()=>{
     if(!selecionados.length)return;
     setApplying(true);setMsg("");
@@ -1077,19 +1077,16 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
     setMsg(`✓ ${d.changed} link(s) atualizado(s).`);
     carregar();
   };
-  const semGithub=!c.github_repo||!c.github_file_path;
+  const semGithub=!c.github_repo;
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Botões do site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         {semGithub?(
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Configure o repositório GitHub no card <b style={{color:TEXT}}>Sensor</b> primeiro para poder redirecionar os botões do site.</div>
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Vincule o repositório GitHub no card <b style={{color:TEXT}}>Site</b> primeiro.</div>
         ):(
           <>
-            <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>
-              {linksSource==="code"
-                ?<>Não achei links diretos em <b style={{color:TEXT}}>{c.github_file_path}</b> (comum em React/Lovable) — procurei no código-fonte. Marque quais botões devem abrir o Mini Chat.</>
-                :<>Links encontrados em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marque quais devem abrir o Mini Chat — nada muda até clicar em Aplicar.</>}
+            <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Todos os botões e links do site — marque quais devem abrir o Mini Chat. Nada muda até clicar em Aplicar.</div>
             </div>
             {links===null&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Lendo o repositório…</div>}
             {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Nenhum link encontrado nesse arquivo nem no restante do código.</div>}
@@ -1128,120 +1125,132 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
 
 // ── CARD 1: Site ─────────────────────────────────────────────────────────────
 function SiteAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
-  const [metodo,setMetodo]=useState(c.github_repo?"github":(c.gtm_container_id?"gtm":"gtm"));
+  const [open,setOpen]=useState(false);
   // GTM
   const [googleConnected,setGoogleConnected]=useState(null);
   const [accounts,setAccounts]=useState(null);
+  const [accountsErr,setAccountsErr]=useState("");
   const [containers,setContainers]=useState(null);
   const [accountId,setAccountId]=useState(c.gtm_account_id||"");
   const [containerId,setContainerId]=useState(c.gtm_container_id||"");
   const [containerName,setContainerName]=useState(c.gtm_container_name||"");
+  const [editingGtm,setEditingGtm]=useState(false);
   const [gtmSaving,setGtmSaving]=useState(false);
   const [gtmMsg,setGtmMsg]=useState("");
   // GitHub
   const [githubConnected,setGithubConnected]=useState(null);
   const [repos,setRepos]=useState(null);
   const [repoFullName,setRepoFullName]=useState(c.github_repo||"");
-  const [files,setFiles]=useState(null);
-  const [filePath,setFilePath]=useState(c.github_file_path||"");
-  const [filesHtmlFound,setFilesHtmlFound]=useState(true);
+  const [autoFile,setAutoFile]=useState(c.github_file_path||"");
+  const [detecting,setDetecting]=useState(false);
+  const [editingGh,setEditingGh]=useState(false);
   const [ghSaving,setGhSaving]=useState(false);
   const [ghMsg,setGhMsg]=useState("");
   useEffect(()=>{
     apiCall('/api/admin/google/status').then(d=>{
       setGoogleConnected(!!d?.connected);
-      if(d?.connected)apiCall('/api/admin/google/tagmanager/accounts').then(a=>{
-        if(a?.accounts)setAccounts(a.accounts);
-        else setAccounts([]);
+      if(d?.connected) apiCall('/api/admin/google/tagmanager/accounts').then(a=>{
+        if(a?.accounts&&a.accounts.length){setAccounts(a.accounts);}
+        else{setAccounts([]);setAccountsErr(a?.error||(!a?.accounts?"Erro ao carregar":"Nenhuma conta GTM encontrada nessa conta Google."));}
       });
     });
     apiCall('/api/admin/github/status').then(d=>{
       setGithubConnected(!!d?.connected);
-      if(d?.connected)apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
+      if(d?.connected) apiCall('/api/admin/github/repos').then(r=>{if(r?.repos)setRepos(r.repos);});
     });
   },[]);
-  useEffect(()=>{
-    if(!repoFullName){setFiles(null);return;}
-    setFiles(null);
-    apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(repoFullName)}`).then(d=>{
-      const list=d?.files||[];
-      setFiles(list);setFilesHtmlFound(d?.htmlFound!==false);
-      if(list.includes("index.html"))setFilePath("index.html");
-      else if(c.github_repo===repoFullName&&c.github_file_path)setFilePath(c.github_file_path);
-      else if(list.length===1)setFilePath(list[0]);
-      else setFilePath("");
-    });
-  },[repoFullName]);
+  const onRepoChange=async(val)=>{
+    setRepoFullName(val);setAutoFile("");
+    if(!val)return;
+    setDetecting(true);
+    const d=await apiCall(`/api/admin/github/repo-files?repo=${encodeURIComponent(val)}`);
+    setDetecting(false);
+    if(d?.autoFile)setAutoFile(d.autoFile);
+  };
   const onAccountChange=async(val)=>{
     setAccountId(val);setContainerId("");setContainers(null);
     if(!val)return;
     const d=await apiCall(`/api/admin/google/tagmanager/containers?accountId=${val}`);
     if(d?.containers)setContainers(d.containers);
   };
-  const salvarVinculoGtm=async()=>{
+  const salvarGtm=async()=>{
     if(!accountId||!containerId)return;
     setGtmSaving(true);setGtmMsg("");
     const nome=containers?.find(x=>x.id===containerId)?.name||containerName;
     const d=await apiCall(`/api/admin/producers/${c.id}/gtm`,{method:'POST',body:JSON.stringify({account_id:accountId,container_id:containerId,container_name:nome})});
     setGtmSaving(false);
-    if(d.error)setGtmMsg(d.error);
-    else{setContainerName(nome);setGtmMsg("✓ Vinculado.");setTimeout(()=>setGtmMsg(""),2500);onUpdated&&onUpdated();}
+    if(d.error){setGtmMsg(d.error);return;}
+    setContainerName(nome);setEditingGtm(false);onUpdated&&onUpdated();
   };
-  const salvarVinculoGh=async()=>{
-    if(!repoFullName||!filePath.trim())return;
+  const salvarGh=async()=>{
+    if(!repoFullName||!autoFile.trim())return;
     setGhSaving(true);setGhMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:filePath.trim()})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/github`,{method:'POST',body:JSON.stringify({repo:repoFullName,file_path:autoFile.trim()})});
     setGhSaving(false);
-    if(d.error)setGhMsg(d.error);
-    else{setGhMsg("✓ Repositório vinculado.");setTimeout(()=>setGhMsg(""),2500);onUpdated&&onUpdated();}
+    if(d.error){setGhMsg(d.error);return;}
+    setEditingGh(false);onUpdated&&onUpdated();
   };
-  if(googleConnected===null||githubConnected===null)return null;
-  const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código (GitHub)"}];
+  const gtmOk=!!c.gtm_container_id;
+  const ghOk=!!c.github_repo;
+  const PencilBtn=({onClick})=><button onClick={onClick} title="Editar" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}>✏️</button>;
+  const DoneRow=({label,onEdit})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:CARD2,borderRadius:12,padding:"10px 14px"}}>
+      <span style={{color:GREEN,fontSize:12,fontWeight:600}}>✓ {label}</span>
+      <PencilBtn onClick={onEdit}/>
+    </div>
+  );
+  const SLabel=({t})=><div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>{t}</div>;
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{display:"flex",gap:8,marginBottom:14}}>
-          {METODOS.map(m=>(
-            <button key={m.id} onClick={()=>setMetodo(m.id)} style={{flex:1,padding:"10px",borderRadius:14,border:`1px solid ${m.id===metodo?GOLD+"55":BDR}`,background:m.id===metodo?`${GOLD}14`:CARD2,color:m.id===metodo?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{m.label}</button>
-          ))}
-        </div>
-        {metodo==="gtm"&&(!googleConnected?(
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta Google em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
+        <SLabel t="Google Tag Manager"/>
+        {googleConnected===false?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:14}}>Conecte sua conta Google em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
+        ):gtmOk&&!editingGtm?(
+          <div style={{marginBottom:14}}><DoneRow label={c.gtm_container_name||containerName} onEdit={()=>setEditingGtm(true)}/></div>
         ):(
-          <>
-            <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:accountId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
-              <option value="">{accounts===null?"Carregando…":"Selecione a conta GTM"}</option>
-              {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
-            </select>
-            {accountId&&(
-              <select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:containerId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
-                <option value="">{containers===null?"Carregando…":"Selecione o container"}</option>
-                {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
-              </select>
-            )}
-            {c.gtm_container_name&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:8}}>✓ Vinculado: {c.gtm_container_name}</div>}
-            <button onClick={salvarVinculoGtm} disabled={!accountId||!containerId||gtmSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.4:1}}>{gtmSaving?"Salvando…":"Vincular container"}</button>
-            {gtmMsg&&<div style={{color:gtmMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{gtmMsg}</div>}
-          </>
-        ))}
-        {metodo==="github"&&(!githubConnected?(
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
-        ):(
-          <>
-            <SearchSelect value={repoFullName} onChange={setRepoFullName} options={(repos||[]).map(r=>r.fullName)} loading={repos===null} placeholder="Selecionar repositório…"/>
-            {repoFullName&&!filesHtmlFound&&files&&files.length>0&&<div style={{color:MUTED,fontSize:11,marginBottom:6,lineHeight:1.4}}>Site React/Vite — listei os arquivos de layout prováveis.</div>}
-            {repoFullName&&files&&files.length>0?(
-              <SearchSelect value={filePath} onChange={setFilePath} options={files} placeholder="Selecionar arquivo…"/>
+          <div style={{marginBottom:14}}>
+            {!accounts?.length&&accountsErr?(
+              <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{accountsErr}</div>
             ):(
-              <input value={filePath} onChange={e=>setFilePath(e.target.value)} placeholder={repoFullName&&files===null?"Carregando arquivos…":"Caminho do arquivo (ex: index.html)"} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+              <>
+                <select value={accountId} onChange={e=>onAccountChange(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:accountId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}>
+                  <option value="">{accounts===null?"Carregando…":"Conta GTM"}</option>
+                  {(accounts||[]).map(a=>(<option key={a.id} value={a.id}>{a.name}</option>))}
+                </select>
+                {accountId&&(<select value={containerId} onChange={e=>setContainerId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:containerId?TEXT:MUTED,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}>
+                  <option value="">{containers===null?"Carregando…":"Container"}</option>
+                  {(containers||[]).map(ct=>(<option key={ct.id} value={ct.id}>{ct.name}</option>))}
+                </select>)}
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <button onClick={salvarGtm} disabled={!accountId||!containerId||gtmSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"9px 20px",color:"#0C0C0C",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,opacity:(!accountId||!containerId)?0.4:1}}>{gtmSaving?"Salvando…":"Vincular"}</button>
+                  {gtmOk&&<button onClick={()=>setEditingGtm(false)} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F}}>Cancelar</button>}
+                </div>
+                {gtmMsg&&<div style={{color:RED,fontSize:11,marginTop:8}}>{gtmMsg}</div>}
+              </>
             )}
-            {c.github_repo&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:8}}>✓ Vinculado: {c.github_repo} · {c.github_file_path}</div>}
-            <button onClick={salvarVinculoGh} disabled={!repoFullName||!filePath.trim()||ghSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,opacity:(!repoFullName||!filePath.trim())?0.4:1}}>{ghSaving?"Salvando…":"Vincular repositório"}</button>
-            {ghMsg&&<div style={{color:ghMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{ghMsg}</div>}
+          </div>
+        )}
+        <div style={{height:1,background:BDR,margin:"4px 0 14px"}}/>
+        <SLabel t="Código (GitHub)"/>
+        {githubConnected===false?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Conecte sua conta GitHub em <b style={{color:TEXT}}>Integrações</b> primeiro.</div>
+        ):ghOk&&!editingGh?(
+          <DoneRow label={c.github_repo} onEdit={()=>{setEditingGh(true);setRepoFullName(c.github_repo||"");setAutoFile(c.github_file_path||"");}}/>
+        ):(
+          <>
+            <SearchSelect value={repoFullName} onChange={onRepoChange} options={(repos||[]).map(r=>r.fullName)} loading={repos===null} placeholder="Selecionar repositório…"/>
+            {detecting&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>Detectando arquivo…</div>}
+            {!detecting&&autoFile&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>Arquivo detectado: <span style={{color:TEXT}}>{autoFile}</span></div>}
+            {!detecting&&repoFullName&&!autoFile&&<div style={{color:"#f87171",fontSize:11,marginTop:4}}>Não foi possível detectar o arquivo. O repositório pode estar vazio.</div>}
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
+              <button onClick={salvarGh} disabled={!repoFullName||!autoFile||ghSaving} style={{background:GOLD,border:"none",borderRadius:100,padding:"9px 20px",color:"#0C0C0C",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,opacity:(!repoFullName||!autoFile)?0.4:1}}>{ghSaving?"Salvando…":"Vincular"}</button>
+              {ghOk&&<button onClick={()=>setEditingGh(false)} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F}}>Cancelar</button>}
+            </div>
+            {ghMsg&&<div style={{color:RED,fontSize:11,marginTop:8}}>{ghMsg}</div>}
           </>
-        ))}
+        )}
       </div>)}
     </div>
   );
@@ -1249,7 +1258,7 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
 
 // ── CARD 2: Sensor ────────────────────────────────────────────────────────────
 function SensorAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const metodo=c.github_repo?"github":(c.gtm_container_id?"gtm":null);
   const [installing,setInstalling]=useState(false);
   const [installedAt,setInstalledAt]=useState(c.github_sensor_installed_at||c.gtm_sensor_installed_at||null);
@@ -1299,27 +1308,36 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
 
 // ── CARD 3: Vercel (GitHub only) ──────────────────────────────────────────────
 function VercelAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const [preparing,setPreparing]=useState(false);
   const [readyAt,setReadyAt]=useState(c.github_vercel_ready_at||null);
+  const [editing,setEditing]=useState(false);
   const [msg,setMsg]=useState("");
   const preparar=async()=>{
     setPreparing(true);setMsg("");
     const d=await apiCall(`/api/admin/producers/${c.id}/github/prepare-vercel`,{method:'POST'});
     setPreparing(false);
     if(d?.error){setMsg(d.error);return;}
-    setReadyAt(new Date().toISOString());
-    setMsg("✓ Pronto — importe o repositório na Vercel.");
+    setReadyAt(new Date().toISOString());setEditing(false);
     onUpdated&&onUpdated();
   };
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Vercel" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Se o site foi feito no Lovable (ou outro Vite) e você importa direto na Vercel, geralmente falta uma config — esse botão adiciona sozinho.</div>
-        {readyAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Preparado em {new Date(readyAt).toLocaleString('pt-BR')}</div>}
-        <button onClick={preparar} disabled={preparing} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:preparing?"default":"pointer",fontFamily:F}}>{preparing?"Preparando…":readyAt?"Preparar de novo":"Preparar repositório"}</button>
-        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msg}</div>}
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Adiciona o arquivo de config que a Vercel precisa pra fazer o deploy (Lovable/Vite).</div>
+        {readyAt&&!editing?(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:CARD2,borderRadius:12,padding:"10px 14px"}}>
+            <span style={{color:GREEN,fontSize:12,fontWeight:600}}>✓ Preparado em {new Date(readyAt).toLocaleDateString('pt-BR')}</span>
+            <button onClick={()=>setEditing(true)} title="Preparar de novo" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}>✏️</button>
+          </div>
+        ):(
+          <>
+            <button onClick={preparar} disabled={preparing} style={{background:GOLD,border:"none",borderRadius:100,padding:"10px 24px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:preparing?"default":"pointer",fontFamily:F}}>{preparing?"Preparando…":"Preparar repositório"}</button>
+            {readyAt&&<button onClick={()=>setEditing(false)} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,marginLeft:10}}>Cancelar</button>}
+            {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msg}</div>}
+          </>
+        )}
       </div>)}
     </div>
   );
@@ -1327,7 +1345,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
 
 // ── CARD 4: Mini Chat no site (GitHub only) ───────────────────────────────────
 function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
   const [editingPath,setEditingPath]=useState(false);
   const [installing,setInstalling]=useState(false);
@@ -1365,7 +1383,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
 }
 
 function EmailAdmin({c,onUpdated,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const [status,setStatus]=useState(null);
   const [host,setHost]=useState("");
   const [port,setPort]=useState("465");
@@ -1874,7 +1892,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     linhas.push("Com base nisso, sugira melhorias no texto das perguntas e opções pra deixar o diagnóstico mais natural e no tom de voz dessa empresa.");
     setPromptText(linhas.join("\n"));
   };
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
@@ -1931,7 +1949,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
 }
 
 function PerguntasMinichatAdmin({c,initialOpen,done}){
-  const [open,setOpen]=useState(!!initialOpen);
+  const [open,setOpen]=useState(false);
   const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
@@ -2071,11 +2089,10 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
         <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{steps.filter(s=>s.done).length} de {steps.length} etapas concluídas</div>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {steps.map(s=>{
-            const isCurrent=currentStep&&s.id===currentStep.id;
-            const color=s.done?GREEN:isCurrent?GOLD:MUTED;
-            const icone=s.done?"✓":isCurrent?"→":"○";
+            const color=s.done?GREEN:"#f87171";
+            const icone=s.done?"✓":"○";
             return(
-              <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:isCurrent?700:500,color}}>
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:500,color}}>
                 <span style={{width:16,textAlign:"center"}}>{icone}</span>
                 <span>{s.label}</span>
               </div>

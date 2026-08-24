@@ -2849,28 +2849,46 @@ app.get("/api/admin/github/repo-files", requireAuth, requireAdmin, async (req, r
     const branch = repoInfo.data.default_branch;
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
     const tree = treeResp.data.tree || [];
-    const htmlFiles = tree
-      .filter(item => item.type === "blob" && /\.html?$/i.test(item.path))
-      .map(item => item.path)
-      .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
-    if (htmlFiles.length) return res.json({ files: htmlFiles, htmlFound: true });
+    const allPaths = tree.filter(i => i.type === "blob").map(i => i.path);
 
-    // Sites em React Router/Next.js/Vite normalmente não têm nenhum .html de verdade
-    // (só um shell vazio, se tiver) — os botões vivem em arquivos de rota/layout
-    // (.tsx/.jsx/.ts/.js). Lista esses como candidatos, com os mais prováveis
-    // (root/app/layout/index/router) primeiro, pra o admin escolher sem precisar
-    // adivinhar o caminho.
+    // Auto-detecção do arquivo de entrada principal, por ordem de prioridade
+    const HTML_PRIORITY = ["index.html", "public/index.html", "src/app.html", "src/index.html"];
+    let autoFile = HTML_PRIORITY.find(p => allPaths.includes(p));
+    let fileType = "html";
+    if (!autoFile) {
+      // Next.js App Router
+      const appLayout = allPaths.find(p => /^(src\/)?app\/layout\.[jt]sx?$/.test(p));
+      if (appLayout) { autoFile = appLayout; fileType = "nextjs-app"; }
+    }
+    if (!autoFile) {
+      // Next.js Pages Router
+      const doc = allPaths.find(p => /^(src\/)?pages\/_document\.[jt]sx?$/.test(p));
+      if (doc) { autoFile = doc; fileType = "nextjs-pages"; }
+    }
+    if (!autoFile) {
+      // qualquer .html
+      const anyHtml = allPaths.filter(p => /\.html?$/i.test(p)).sort((a,b) => a.split("/").length - b.split("/").length)[0];
+      if (anyHtml) { autoFile = anyHtml; fileType = "html"; }
+    }
+    if (!autoFile) {
+      // Fallback: index ou app root em tsx/jsx
+      const root = allPaths.find(p => /^(src\/)?(index|App)\.[jt]sx?$/.test(p));
+      if (root) { autoFile = root; fileType = "jsx"; }
+    }
+
+    const htmlFiles = allPaths.filter(p => /\.html?$/i.test(p)).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+    if (htmlFiles.length) return res.json({ files: htmlFiles, htmlFound: true, autoFile: autoFile||htmlFiles[0], fileType });
+
     const PRIORIDADE = /(_root|app|layout|index|router)\.[jt]sx?$/i;
-    const sourceFiles = tree
-      .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
-      .map(item => item.path)
+    const sourceFiles = allPaths
+      .filter(p => /\.(tsx|jsx|ts|js)$/i.test(p) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(p))
       .sort((a, b) => {
         const pa = PRIORIDADE.test(a) ? 0 : 1, pb = PRIORIDADE.test(b) ? 0 : 1;
         if (pa !== pb) return pa - pb;
         return a.split("/").length - b.split("/").length || a.localeCompare(b);
       })
       .slice(0, 200);
-    res.json({ files: sourceFiles, htmlFound: false });
+    res.json({ files: sourceFiles, htmlFound: false, autoFile, fileType });
   } catch (err) {
     console.error("[github/repo-files]", err.response?.data || err.message);
     res.status(500).json({ error: "Falha ao listar os arquivos do repositório" });
@@ -2955,34 +2973,18 @@ async function scanRepoJsxLinks(repo, headers, token) {
 app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { repo, file } = req.query;
-    if (!repo || !file) return res.status(400).json({ error: "repo e file são obrigatórios" });
+    if (!repo) return res.status(400).json({ error: "repo é obrigatório" });
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const content = await readGithubFile(repo, file, headers, token);
-    const groups = {};
-    const registra = (href, text, filePath) => {
-      href = (href || "").trim();
-      if (!href || href.startsWith("#")) return;
-      if (!groups[href]) groups[href] = { href, file: filePath, count: 0, samples: [] };
-      groups[href].count++;
-      text = (text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-      if (text && groups[href].samples.length < 3 && !groups[href].samples.includes(text)) groups[href].samples.push(text);
-    };
-    extractLinksFromContent(content, file, registra);
-    let links = Object.values(groups).sort((a, b) => b.count - a.count);
-    let source = "html";
-    // Nada achado no arquivo escolhido — provável site em React/Vite (Lovable e
-    // similares), onde os botões vivem no código-fonte, não no HTML raiz. Varre o
-    // repositório inteiro procurando os links de verdade antes de desistir.
-    if (!links.length) {
-      links = await scanRepoJsxLinks(repo, headers, token);
-      source = "code";
-    }
-    res.json({ links, source });
+
+    // Sempre varre o repositório inteiro — assim funciona tanto pra sites HTML quanto
+    // React/Lovable/Vite onde os botões vivem em .tsx/.jsx. O `file` param é opcional
+    // e ignorado: escanear tudo é mais robusto e evita o bug do caminho errado.
+    const links = await scanRepoJsxLinks(repo, headers, token);
+    res.json({ links, source: "code" });
   } catch (err) {
     console.error("[github/scan-links]", err.response?.data || err.message);
-    if (err.response?.status === 404) return res.status(400).json({ error: "Não encontrei esse arquivo nesse repositório." });
     res.status(500).json({ error: "Falha ao ler os links do repositório" });
   }
 });
