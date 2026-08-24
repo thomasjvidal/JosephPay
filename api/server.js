@@ -1553,7 +1553,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     // Mini Chat "ativo" não pode significar "o admin preencheu o formulário de config" —
     // só é ativo de verdade se alguém abriu o widget pelo menos uma vez (visits.page ilike %minichat%).
     const { data: minichatVisits } = await supabase.from("visits")
-      .select("owner_id").ilike("page", "%minichat%");
+      .select("owner_id").ilike("page", "%minichat%").limit(100000);
     const minichatAtivoPorUsuario = {};
     (minichatVisits || []).forEach(v => { minichatAtivoPorUsuario[v.owner_id] = true; });
 
@@ -1573,7 +1573,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
 
     // Visitas ao site (sensor) e detecção real de Google Ads via gclid —
     // gclid só existe na URL quando o clique veio de um anúncio pago do Google.
-    const { data: visitRows } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview");
+    const { data: visitRows } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview").limit(100000);
     const visitasPorUsuario = {};
     const googleAdsPorUsuario = {};
     (visitRows || []).forEach(v => {
