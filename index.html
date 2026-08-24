@@ -2323,50 +2323,44 @@ function ClientesAdmin(){
       <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
         {FILTROS.map(f=>(
-          <button key={f.id} onClick={()=>setFiltro(f.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${f.id===filtro?GOLD+"55":BDR}`,background:f.id===filtro?`${GOLD}14`:"transparent",color:f.id===filtro?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{f.label}</button>
+          <button key={f.id} onClick={()=>setFiltro(f.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${f.id===filtro?GOLD+"55":BDR}`,background:f.id===filtro?`${GOLD}14`:"transparent",color:f.id===filtro?GOLD:MUTED,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{f.label}</button>
         ))}
         <div style={{width:1,background:BDR,flexShrink:0,margin:"2px 2px"}}/>
         {ORDENS.map(o=>(
-          <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
+          <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
         ))}
       </div>
-      <div className="jp-promo-card" style={{marginBottom:16}}>
-        <div style={{position:"absolute",top:0,right:0,width:"40%",height:"100%"}}>
-          <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=2070&auto=format&fit=crop" alt="gold" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45,mixBlendMode:"luminosity"}}/>
-          <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#1C1C1A 0%,transparent 65%)"}}/>
-        </div>
-        <div style={{position:"relative",zIndex:1,padding:"18px 20px",maxWidth:"62%"}}>
-          <div style={{color:GOLD,fontFamily:SF,fontSize:12,fontStyle:"italic",marginBottom:6}}>Gestão de Clientes</div>
-          <div style={{color:TEXT,fontSize:14,fontWeight:600,lineHeight:1.35}}>Todos os seus produtores em um só lugar</div>
-        </div>
-      </div>
-      {clients===null&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px",marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><div className="sk" style={{width:44,height:44,borderRadius:14,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:13,width:"40%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"55%",borderRadius:5}}/></div><div className="sk" style={{height:22,width:60,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div className="sk" style={{height:52,borderRadius:12}}/><div className="sk" style={{height:52,borderRadius:12}}/></div></div>))}
+      {clients===null&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
       {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
       {clientsOrdenados.map((c,i)=>(
-        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-            <Avatar url={c.avatar_url} name={c.name} size={44} radius={14} fontSize={18}/>
-            <div style={{flex:1}}>
-              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{c.name||"—"}</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:1}}>📧 {c.email||"—"}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:1}}>🕒 {fmtLastLogin(c.last_login_at)} · {c.logins_mes||0} dia(s) ativo(s) no mês</div>
+        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <Avatar url={c.avatar_url} name={c.name} size={36} radius={11} fontSize={14}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <div style={{color:TEXT,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"—"}</div>
+                <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
+              </div>
+              <div style={{color:MUTED,fontSize:10,marginTop:2}}>{fmtLastLogin(c.last_login_at)}</div>
             </div>
-            <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
           </div>
           <StatusBadges status={c.conn}/>
-          <QuickStats c={c}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+          <div style={{display:"flex",gap:10,marginBottom:10,fontSize:10,color:MUTED}}>
+            <span>👥 <b style={{color:TEXT}}>{c.leads_total||0}</b></span>
+            <span>✅ <b style={{color:TEXT}}>{c.clientes_total||0}</b></span>
+            <span>👁 <b style={{color:TEXT}}>{c.visitas_total||0}</b></span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
             {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
-              <div key={item.l} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
-                <div style={{color:item.c,fontWeight:700,fontSize:13,marginTop:3}}>{item.v}</div>
+              <div key={item.l} style={{background:CARD2,borderRadius:10,padding:"7px 10px"}}>
+                <div style={{color:MUTED,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
+                <div style={{color:item.c,fontWeight:700,fontSize:12,marginTop:2}}>{item.v}</div>
               </div>
             ))}
           </div>
-          <div style={{display:"flex",gap:10}}>
-            <Btn sm outline color={GOLD} onClick={()=>setSel(c.id)}>Ver perfil completo</Btn>
-            <Btn sm outline color={MUTED}>Config. taxa</Btn>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setSel(c.id)} style={{flex:1,background:"transparent",border:`1px solid ${GOLD}60`,borderRadius:100,padding:"7px",color:GOLD,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:F}}>Ver perfil</button>
+            <button style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:F}}>Taxa</button>
           </div>
         </div>
       ))}
@@ -3180,7 +3174,16 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           </div>
         )}
         {overview.adsConnected&&overview.adsError&&(
-          <div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar o investimento no Google Ads: {overview.adsError}</div>
+          <div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>
+            {overview.adsError.toLowerCase().includes("manager")||overview.adsError.includes("login-customer-id")?(
+              <>
+                <b style={{color:TEXT}}>Conta de gerente (MCC) não configurada.</b> Para buscar dados de contas-cliente, você precisa informar o ID da sua conta de gerente.{" "}
+                <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora →</button>
+              </>
+            ):(
+              `Não consegui buscar o investimento no Google Ads: ${overview.adsError}`
+            )}
+          </div>
         )}
       </>)}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -3529,6 +3532,8 @@ function GoogleAdsAdmin(){
   const [campanhaSel,setCampanhaSel]=useState(null);
   const [presetDias,setPresetDias]=useState(30);
   const [tipoRelatorio,setTipoRelatorio]=useState("mensal");
+  const [adsStatus,setAdsStatus]=useState(null);
+  useEffect(()=>{apiCall('/api/admin/google-ads/status').then(setAdsStatus);},[]);
   const carregarClientes=()=>apiCall('/api/admin/clients').then(d=>{
     if(d?.clients){
       setClientes(d.clients);
@@ -3551,6 +3556,14 @@ function GoogleAdsAdmin(){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {screen!=="visaogeral"&&(
         <button onClick={()=>setScreen("visaogeral")} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar pra Visão geral</button>
+      )}
+      {adsStatus&&!adsStatus.managerCustomerId&&(
+        <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}40`,borderRadius:14,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.4,flex:1}}>
+            <b style={{color:GOLD}}>Conta de gerente não configurada.</b> O investimento do Google Ads não aparece sem ela.
+          </div>
+          <button onClick={()=>setScreen("integracao")} style={{background:"transparent",border:`1px solid ${GOLD}60`,borderRadius:100,padding:"6px 14px",color:GOLD,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:F,flexShrink:0}}>Configurar →</button>
+        </div>
       )}
       {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={selecionarCliente} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
       {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
