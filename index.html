@@ -331,16 +331,16 @@ function Tag({status}){
   return <span style={{background:s.bg,color:s.tx,border:`1px solid ${s.bd}`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{status}</span>;
 }
 
-function KPICard({label,value,sub,accent,icon,vis=true,onClick}){
+function KPICard({label,value,sub,accent,icon,vis=true,onClick,compact=false}){
   const c=accent||GOLD;
   return(
-    <div onClick={onClick} style={{background:CARD,border:`1px solid rgba(212,175,55,0.06)`,borderRadius:16,padding:"20px 16px",cursor:onClick?"pointer":"default"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-        <span style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F}}>{label}</span>
-        <span style={{width:28,height:28,borderRadius:"50%",border:`1px solid ${c}30`,background:`${c}0D`,display:"flex",alignItems:"center",justifyContent:"center",color:c,fontSize:12,flexShrink:0}}>{icon}</span>
+    <div onClick={onClick} style={{background:CARD,border:`1px solid rgba(212,175,55,0.06)`,borderRadius:compact?12:16,padding:compact?"11px 10px":"20px 16px",cursor:onClick?"pointer":"default"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:compact?6:12}}>
+        <span style={{color:MUTED,fontSize:compact?8.5:10,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,lineHeight:1.3}}>{label}</span>
+        <span style={{width:compact?20:28,height:compact?20:28,borderRadius:"50%",border:`1px solid ${c}30`,background:`${c}0D`,display:"flex",alignItems:"center",justifyContent:"center",color:c,fontSize:compact?9:12,flexShrink:0}}>{icon}</span>
       </div>
-      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:20,letterSpacing:"-0.01em"}}>{vis?value:"••••••"}</div>
-      {sub&&<div style={{color:MUTED,fontSize:11,marginTop:5,fontFamily:F}}>{sub}</div>}
+      <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:compact?15:20,letterSpacing:"-0.01em"}}>{vis?value:"••••••"}</div>
+      {sub&&<div style={{color:MUTED,fontSize:compact?9.5:11,marginTop:4,fontFamily:F}}>{sub}</div>}
     </div>
   );
 }
@@ -2205,16 +2205,16 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       {subTab==="geral"&&(
         <>
           <div className="three-col">
-            <KPICard label="Volume total" value={volFmt} accent={accent} icon="◈"/>
-            <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
-            <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
-            <KPICard label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
-            <KPICard label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
-            <KPICard label="Dias ativos no mês" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
-            <KPICard label="Mensalidades pagas" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
-            <KPICard label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
-            <KPICard label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="👥"/>
-            <KPICard label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="✅"/>
+            <KPICard compact label="Volume total" value={volFmt} accent={accent} icon="◈"/>
+            <KPICard compact label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
+            <KPICard compact label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
+            <KPICard compact label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
+            <KPICard compact label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
+            <KPICard compact label="Dias ativos" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
+            <KPICard compact label="Mensalidades" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
+            <KPICard compact label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
+            <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="👥"/>
+            <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="✅"/>
           </div>
           <VisitasClienteAdmin ownerId={c.id}/>
           <FunilClienteAdmin ownerId={c.id}/>
