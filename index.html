@@ -41,6 +41,7 @@ textarea{resize:none}
 @media(min-width:640px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .jp-gold-card{background:linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%);border-radius:22px;position:relative;overflow:hidden;min-height:180px}
 .jp-gold-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.22) 0%,transparent 45%,rgba(0,0,0,0.08) 100%);pointer-events:none}
 .jp-sunburst{position:relative;overflow:hidden}
@@ -2203,7 +2204,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       </div>
       {subTab==="geral"&&(
         <>
-          <div className="two-col">
+          <div className="three-col">
             <KPICard label="Volume total" value={volFmt} accent={accent} icon="◈"/>
             <KPICard label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
             <KPICard label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
