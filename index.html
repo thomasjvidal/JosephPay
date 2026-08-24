@@ -42,7 +42,7 @@ textarea{resize:none}
 @media(min-width:900px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.jp-gold-card{background:linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%);border-radius:22px;position:relative;overflow:hidden;min-height:180px}
+.jp-gold-card{background:linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%);border-radius:22px;position:relative;overflow:hidden;min-height:120px}
 .jp-gold-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.22) 0%,transparent 45%,rgba(0,0,0,0.08) 100%);pointer-events:none}
 .jp-sunburst{position:relative;overflow:hidden}
 .jp-sunburst::after{content:'';position:absolute;top:-80%;left:50%;transform:translateX(-50%);width:220%;height:220%;background:conic-gradient(from 180deg at 50% 0%,transparent 0deg,rgba(212,175,55,0.07) 4deg,transparent 8deg,rgba(212,175,55,0.05) 12deg,transparent 16deg,rgba(212,175,55,0.06) 20deg,transparent 24deg,rgba(212,175,55,0.04) 28deg,transparent 32deg,rgba(212,175,55,0.07) 36deg,transparent 40deg,rgba(212,175,55,0.05) 44deg,transparent 48deg,rgba(212,175,55,0.06) 52deg,transparent 56deg,rgba(212,175,55,0.04) 60deg,transparent 64deg,rgba(212,175,55,0.07) 68deg,transparent 72deg,rgba(212,175,55,0.05) 76deg,transparent 80deg,rgba(212,175,55,0.06) 84deg,transparent 88deg,transparent 270deg,rgba(212,175,55,0.06) 274deg,transparent 278deg,rgba(212,175,55,0.05) 282deg,transparent 286deg,rgba(212,175,55,0.07) 290deg,transparent 294deg,rgba(212,175,55,0.04) 298deg,transparent 302deg,rgba(212,175,55,0.06) 306deg,transparent 310deg,rgba(212,175,55,0.05) 314deg,transparent 318deg,rgba(212,175,55,0.07) 322deg,transparent 326deg,rgba(212,175,55,0.04) 330deg,transparent 334deg,rgba(212,175,55,0.06) 338deg,transparent 342deg,rgba(212,175,55,0.05) 346deg,transparent 350deg,rgba(212,175,55,0.07) 354deg,transparent 358deg,transparent 360deg);pointer-events:none;z-index:0}
@@ -1048,6 +1048,84 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
   );
 }
 
+function BotoesAdmin({c,onUpdated,initialOpen,done}){
+  const [open,setOpen]=useState(!!initialOpen);
+  const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+  const [links,setLinks]=useState(null);
+  const [linksSource,setLinksSource]=useState("html");
+  const [selected,setSelected]=useState({});
+  const [applying,setApplying]=useState(false);
+  const [msg,setMsg]=useState("");
+  const linkKey=l=>`${l.file||c.github_file_path}::${l.href}`;
+  const toggleLink=l=>setSelected(s=>({...s,[linkKey(l)]:!s[linkKey(l)]}));
+  const selecionados=(links||[]).filter(l=>selected[linkKey(l)]);
+  const carregar=()=>{
+    if(!c.github_repo||!c.github_file_path)return;
+    setLinks(null);setMsg("");setSelected({});
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+      if(d.error){setMsg(d.error);setLinks([]);return;}
+      setLinks(d.links||[]);setLinksSource(d.source||"html");
+    });
+  };
+  useEffect(()=>{if(open&&c.github_repo&&c.github_file_path)carregar();},[open,c.github_repo,c.github_file_path]);
+  const aplicar=async()=>{
+    if(!selecionados.length)return;
+    setApplying(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:selecionados.map(l=>({href:l.href,file:l.file||c.github_file_path}))})});
+    setApplying(false);
+    if(d.error){setMsg(d.error);return;}
+    setMsg(`✓ ${d.changed} link(s) atualizado(s).`);
+    carregar();
+  };
+  const semGithub=!c.github_repo||!c.github_file_path;
+  return(
+    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Botões do site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        {semGithub?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>Configure o repositório GitHub no card <b style={{color:TEXT}}>Sensor</b> primeiro para poder redirecionar os botões do site.</div>
+        ):(
+          <>
+            <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>
+              {linksSource==="code"
+                ?<>Não achei links diretos em <b style={{color:TEXT}}>{c.github_file_path}</b> (comum em React/Lovable) — procurei no código-fonte. Marque quais botões devem abrir o Mini Chat.</>
+                :<>Links encontrados em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marque quais devem abrir o Mini Chat — nada muda até clicar em Aplicar.</>}
+            </div>
+            {links===null&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Lendo o repositório…</div>}
+            {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Nenhum link encontrado nesse arquivo nem no restante do código.</div>}
+            {links&&links.length>0&&(
+              <button onClick={()=>setSelected(Object.fromEntries(links.filter(l=>l.href!==minichatLink).map(l=>[linkKey(l),true])))} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10}}>Marcar todos</button>
+            )}
+            {links&&links.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
+                {links.map(l=>{
+                  const isMinichat=l.href===minichatLink;
+                  const checked=!!selected[linkKey(l)];
+                  return(
+                    <label key={linkKey(l)} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
+                      <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l)} style={{marginTop:3}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
+                        <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
+                        {l.file&&l.file!==c.github_file_path&&<div style={{color:MUTED,fontSize:10,marginTop:2,fontStyle:"italic"}}>em {l.file}</div>}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={carregar} style={{background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:"8px 18px",color:MUTED,fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:F}}>Recarregar</button>
+              <button onClick={aplicar} disabled={!selecionados.length||applying} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:10,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
+            </div>
+          </>
+        )}
+      </div>)}
+    </div>
+  );
+}
+
 function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(!!initialOpen);
   const [showTecnico,setShowTecnico]=useState(false);
@@ -1107,11 +1185,6 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const [ghInstalling,setGhInstalling]=useState(false);
   const [ghInstalledAt,setGhInstalledAt]=useState(c.github_sensor_installed_at||null);
   const [ghMsg,setGhMsg]=useState("");
-  const [links,setLinks]=useState(null);
-  const [linksSource,setLinksSource]=useState("html");
-  const [selected,setSelected]=useState({});
-  const [applying,setApplying]=useState(false);
-  const [msgLinks,setMsgLinks]=useState("");
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
   const [editingMinichatPath,setEditingMinichatPath]=useState(false);
   const [installingMinichat,setInstallingMinichat]=useState(false);
@@ -1129,7 +1202,6 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
     setMsgVercel("✓ Pronto — pode importar esse repositório direto na Vercel.");
     onUpdated&&onUpdated();
   };
-  const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
   const instalarMinichat=async()=>{
     if(!repoFullName||!minichatPath.trim())return;
     setInstallingMinichat(true);setMsgMinichat("");
@@ -1139,28 +1211,6 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
     setMinichatInstalledAt(new Date().toISOString());
     setMsgMinichat(`✓ Página criada em ${d.file_path}.`);
     onUpdated&&onUpdated();
-  };
-  const carregarLinks=()=>{
-    if(!c.github_repo||!c.github_file_path)return;
-    setLinks(null);setMsgLinks("");setSelected({});
-    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
-      if(d.error){setMsgLinks(d.error);setLinks([]);return;}
-      setLinks(d.links||[]);
-      setLinksSource(d.source||"html");
-    });
-  };
-  useEffect(()=>{if(open&&metodo==="github"&&c.github_repo&&c.github_file_path)carregarLinks();},[open,metodo,c.github_repo,c.github_file_path]);
-  const linkKey=l=>`${l.file||c.github_file_path}::${l.href}`;
-  const toggleLink=l=>setSelected(s=>({...s,[linkKey(l)]:!s[linkKey(l)]}));
-  const selecionados=(links||[]).filter(l=>selected[linkKey(l)]);
-  const aplicarLinks=async()=>{
-    if(!selecionados.length)return;
-    setApplying(true);setMsgLinks("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:selecionados.map(l=>({href:l.href,file:l.file||c.github_file_path}))})});
-    setApplying(false);
-    if(d.error){setMsgLinks(d.error);return;}
-    setMsgLinks(`✓ ${d.changed} link(s) atualizado(s) no repositório.`);
-    carregarLinks();
   };
   useEffect(()=>{
     apiCall('/api/admin/github/status').then(d=>{
@@ -1203,7 +1253,7 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
   const METODOS=[{id:"gtm",label:"Google Tag Manager"},{id:"github",label:"Código próprio (GitHub)"}];
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
-      <CardHeader title="Instalação técnica" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      <CardHeader title="Sensor" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:showTecnico?12:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
         {showTecnico&&(<>
@@ -1311,41 +1361,6 @@ function InstalacaoAdmin({c,onUpdated,initialOpen,done}){
                 </div>
               )}
 
-              {c.github_repo&&c.github_file_path&&(
-                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${BDR}`}}>
-                  <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:6}}>Botões do site → Mini Chat</div>
-                  <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>
-                    {linksSource==="code"
-                      ?<>Não achei links em <b style={{color:TEXT}}>{c.github_file_path}</b> (comum em sites React/Lovable, onde os botões ficam no código, não no HTML) — procurei direto no código-fonte do repositório. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</>
-                      :<>Encontrei estes links em <b style={{color:TEXT}}>{c.github_file_path}</b>. Marca quais devem passar a abrir o Mini Chat — nada muda até você clicar em "Aplicar".</>}
-                  </div>
-                  {links===null&&<div style={{color:MUTED,fontSize:12}}>Lendo o repositório…</div>}
-                  {links&&links.length===0&&!msgLinks&&<div style={{color:MUTED,fontSize:12}}>Nenhum link encontrado nesse arquivo nem no restante do código do repositório.</div>}
-                  {links&&links.length>0&&(
-                    <button onClick={()=>setSelected(Object.fromEntries(links.filter(l=>l.href!==minichatLink).map(l=>[linkKey(l),true])))} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10}}>Marcar todos</button>
-                  )}
-                  {links&&links.length>0&&(
-                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12,maxHeight:320,overflowY:"auto"}}>
-                      {links.map(l=>{
-                        const isMinichat=l.href===minichatLink;
-                        const checked=!!selected[linkKey(l)];
-                        return(
-                          <label key={linkKey(l)} style={{display:"flex",alignItems:"flex-start",gap:10,background:CARD2,border:`1px solid ${checked?GOLD+"55":BDR}`,borderRadius:12,padding:"10px 12px",cursor:isMinichat?"default":"pointer",opacity:isMinichat?0.55:1}}>
-                            <input type="checkbox" checked={checked} disabled={isMinichat} onChange={()=>toggleLink(l)} style={{marginTop:3}}/>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-word"}}>{l.samples.join(" · ")||"(sem texto)"}</div>
-                              <div style={{color:MUTED,fontSize:11,marginTop:2,wordBreak:"break-all"}}>{isMinichat?"já é o Mini Chat":l.href}{l.count>1?` · aparece ${l.count}x`:""}</div>
-                              {l.file&&l.file!==c.github_file_path&&<div style={{color:MUTED,fontSize:10,marginTop:2,fontStyle:"italic"}}>em {l.file}</div>}
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {msgLinks&&<div style={{color:msgLinks.startsWith("✓")?GREEN:RED,fontSize:12,marginBottom:10}}>{msgLinks}</div>}
-                  <button onClick={aplicarLinks} disabled={!selecionados.length||applying} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:12,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:(!selecionados.length||applying)?"default":"pointer",fontFamily:F,opacity:!selecionados.length?0.5:1}}>{applying?"Aplicando…":`Aplicar em ${selecionados.length||""} link(s)`}</button>
-                </div>
-              )}
             </>
           )
         )}
@@ -2038,7 +2053,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["instalacao"]},
     ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado",done:minichatInstOk,cardKeys:["instalacao"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
-    ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["instalacao"]}]:[]),
+    ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
     {id:"email",label:"E-mail conectado",done:emailOk,cardKeys:["email"]},
   ];
   const currentStep=steps.find(s=>!s.done);
@@ -2078,6 +2093,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <InstalacaoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("instalacao")} done={cardDone("instalacao")}/>
+      {(c.github_repo||c.github_file_path)&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}
       <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
     </div>
   );
@@ -2628,9 +2644,9 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <div style={{color:"rgba(12,12,12,0.55)",fontSize:10,fontWeight:700,letterSpacing:"0.13em",textTransform:"uppercase",fontFamily:F}}>Receita do mês</div>
           <button onClick={()=>{const nv=!vis;setVis(nv);localStorage.setItem('jp_vis',String(nv));}} style={{background:"rgba(12,12,12,0.12)",border:"none",borderRadius:20,padding:"4px 10px",color:"rgba(12,12,12,0.55)",cursor:"pointer",display:"flex",alignItems:"center"}}>{vis?<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>}</button>
         </div>
-        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:44,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):<div className="sk" style={{height:44,width:160,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>):"R$ ••••••"}</div>
+        <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:32,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):<div className="sk" style={{height:32,width:140,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>):"R$ ••••••"}</div>
       </div>
-      <button id="btn-sacar" onClick={()=>onNav("saque")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
+      <button id="btn-sacar" onClick={()=>onNav("saque")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"11px 20px",color:"#0C0C0A",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
       <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
           {kpis===null?[0,1,2,3].map(i=>(
@@ -2758,20 +2774,20 @@ function Sidebar({tab,setTab,nav,userName,initial}){
 function BottomNav({tab,setTab,nav}){
   const ICONS={
     dashboard:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
         <path d="M9 21V12h6v9"/>
       </svg>
     ),
     produtos:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
         <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
         <line x1="12" y1="22.08" x2="12" y2="12"/>
       </svg>
     ),
     clientes:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 00-3-3.87"/>
@@ -2779,33 +2795,33 @@ function BottomNav({tab,setTab,nav}){
       </svg>
     ),
     maquina:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <line x1="18" y1="20" x2="18" y2="10"/>
         <line x1="12" y1="20" x2="12" y2="4"/>
         <line x1="6" y1="20" x2="6" y2="14"/>
       </svg>
     ),
     financeiro:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="6" width="20" height="14" rx="2"/>
         <path d="M2 10h20"/>
         <path d="M6 15h4"/>
       </svg>
     ),
     googleads:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9"/>
         <circle cx="12" cy="12" r="4.5"/>
         <circle cx="12" cy="12" r="0.6" fill="currentColor" stroke="none"/>
       </svg>
     ),
     chat:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
       </svg>
     ),
     disparos:(
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
       </svg>
     ),
@@ -2841,9 +2857,9 @@ function BottomNav({tab,setTab,nav}){
               display:"flex",
               alignItems:"center",
               justifyContent:"center",
-              width:"52px",
-              height:"34px",
-              borderRadius:"17px",
+              width:"44px",
+              height:"28px",
+              borderRadius:"14px",
               background:a?"rgba(212,175,55,0.15)":"transparent",
               color:a?GOLD:"rgba(255,255,255,0.28)",
               transition:"all 0.2s cubic-bezier(0.4,0,0.2,1)",
@@ -3155,9 +3171,9 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
             {label:"Clientes",v:String(a.clientes),c:GREEN},
             {label:"Faturamento",v:fmtBRL(a.faturamento),c:GOLD},
           ].map(r=>(
-            <div key={r.label} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div key={r.label} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{r.label}</span>
-              <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:20}}>{r.v}</span>
+              <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:16}}>{r.v}</span>
             </div>
           ))}
         </div>
@@ -3174,11 +3190,14 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           </div>
         )}
         {overview.adsConnected&&overview.adsError&&(
-          <div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>
-            {overview.adsError.toLowerCase().includes("manager")||overview.adsError.includes("login-customer-id")?(
+          <div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.6}}>
+            {overview.adsError.includes("403")?(
               <>
-                <b style={{color:TEXT}}>Conta de gerente (MCC) não configurada.</b> Para buscar dados de contas-cliente, você precisa informar o ID da sua conta de gerente.{" "}
-                <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora →</button>
+                <b style={{color:TEXT}}>Google Ads recusou o acesso (403).</b> Com Manager ID e conta do cliente configurados, isso indica uma de duas coisas:{"\n"}
+                <br/>
+                <b style={{color:TEXT}}>1.</b> A conta <b style={{color:TEXT}}>{cliente?.google_ads_customer_id||"do cliente"}</b> não está vinculada ao seu MCC — acesse o Google Ads, abra a conta gerente e verifique se essa conta aparece como gerenciada.{"\n"}
+                <br/>
+                <b style={{color:TEXT}}>2.</b> O Developer Token ainda está em modo de teste — acesse Google Ads → Ferramentas → Central de API e veja o nível de acesso (precisa ser Basic ou Standard, não Test).
               </>
             ):(
               `Não consegui buscar o investimento no Google Ads: ${overview.adsError}`
