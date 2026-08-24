@@ -1087,7 +1087,6 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
         ):(
           <>
             <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Todos os botões e links do site — marque quais devem abrir o Mini Chat. Nada muda até clicar em Aplicar.</div>
-            </div>
             {links===null&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Lendo o repositório…</div>}
             {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Nenhum link encontrado nesse arquivo nem no restante do código.</div>}
             {links&&links.length>0&&(
