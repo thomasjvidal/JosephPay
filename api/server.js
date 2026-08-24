@@ -40,7 +40,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // ── Supabase Admin Client (service role — NUNCA exponha ao browser) ──────────
 const supabase = createClient(
