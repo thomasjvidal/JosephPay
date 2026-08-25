@@ -2856,10 +2856,14 @@ async function detectSiteEntryFile(allPaths) {
   // 3. Next.js Pages Router
   f = allPaths.find(p => /^(src\/)?pages\/_document\.[jt]sx?$/.test(p));
   if (f) return { file: f, type: "nextjs-pages" };
-  // 4. React/Vite main entry
+  // 4. React/Vite main entry (src/main.tsx etc.)
   f = allPaths.find(p => /^(src\/)(main|index)\.[jt]sx?$/.test(p));
   if (f) return { file: f, type: "react-main" };
-  // 5. Qualquer HTML que NÃO seja do minichat (último recurso)
+  // 5. Projeto Vite (tem vite.config.*) — index.html fica na raiz por convenção do Vite
+  if (allPaths.some(p => /^vite\.config\.[jt]sx?$/.test(p))) return { file: "index.html", type: "html" };
+  // 6. Qualquer projeto com .tsx/.jsx em src/ — muito provavelmente Vite ou CRA
+  if (allPaths.some(p => /^src\/.*\.[jt]sx$/.test(p))) return { file: "index.html", type: "html" };
+  // 7. Qualquer HTML que NÃO seja do minichat (último recurso)
   const anyHtml = allPaths.filter(p => /\.html?$/i.test(p) && !/minichat/i.test(p))
     .sort((a,b) => a.split("/").length - b.split("/").length)[0];
   if (anyHtml) return { file: anyHtml, type: "html" };
@@ -3210,24 +3214,26 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
       await supabase.from("profiles").update({ github_file_path: filePath }).eq("id", id);
     }
 
-    // Tenta ler o arquivo; se 404, re-detecta uma vez
-    let fileResp;
-    try {
-      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-    } catch (e) {
-      if (e.response?.status === 404) {
-        const allPaths = await getRepoTree();
-        const detected = await detectSiteEntryFile(allPaths);
-        if (!detected) return res.status(400).json({ error: "Não encontrei o arquivo de entrada no repositório. Verifique se já tem código enviado." });
-        if (detected.type === "react-main" || detected.type === "nextjs-app" || detected.type === "nextjs-pages") {
-          const htmlFile = ["index.html","public/index.html"].find(p => allPaths.includes(p));
-          filePath = htmlFile || detected.file;
-        } else {
-          filePath = detected.file;
+    // Tenta ler o arquivo com fallbacks (index.html → public/index.html)
+    let fileResp = null;
+    const pathsToTry = [filePath];
+    if (filePath === "index.html") pathsToTry.push("public/index.html");
+    else if (filePath === "public/index.html") pathsToTry.push("index.html");
+
+    for (const tryPath of pathsToTry) {
+      try {
+        fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(tryPath)}`, { headers });
+        if (tryPath !== filePath) {
+          filePath = tryPath;
+          await supabase.from("profiles").update({ github_file_path: filePath }).eq("id", id);
         }
-        await supabase.from("profiles").update({ github_file_path: filePath }).eq("id", id);
-        fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-      } else throw e;
+        break;
+      } catch (e) {
+        if (e.response?.status !== 404) throw e;
+      }
+    }
+    if (!fileResp) {
+      return res.status(400).json({ error: `Repositório detectado mas o arquivo de entrada (index.html / public/index.html) não existe ainda. Certifique-se de que o projeto já tem código publicado no GitHub.` });
     }
 
     const sha = fileResp.data.sha;
