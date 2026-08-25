@@ -1151,7 +1151,7 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
       if(d?.connected) apiCall('/api/admin/google/tagmanager/accounts').then(a=>{
         if(a?.accounts&&a.accounts.length){setAccounts(a.accounts);}
         else{setAccounts([]);setAccountsErr(a?.error||(!a?.accounts?"Erro ao carregar":"Nenhuma conta GTM encontrada nessa conta Google."));}
-      });
+      }).catch(()=>{setAccounts([]);setAccountsErr("TAG_MANAGER_API_DISABLED:205225004807");});
     });
     apiCall('/api/admin/github/status').then(d=>{
       setGithubConnected(!!d?.connected);
@@ -1212,8 +1212,20 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
           <div style={{marginBottom:14}}>
             {!accounts?.length&&accountsErr?(
               <div style={{lineHeight:1.5}}>
-                <div style={{color:MUTED,fontSize:12,marginBottom:8}}>{accountsErr.includes("403")||accountsErr.includes("Tag Manager API")||accountsErr.includes("disabled")?"A API do Tag Manager não está ativada no Google Cloud. Clique no botão abaixo para ativar e depois recarregue a página.":accountsErr}</div>
-                {(accountsErr.includes("403")||accountsErr.includes("Tag Manager API")||accountsErr.includes("disabled"))&&<a href="https://console.developers.google.com/apis/api/tagmanager.googleapis.com" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",background:GOLD,color:"#0C0C0C",fontWeight:700,fontSize:12,borderRadius:100,padding:"8px 16px",textDecoration:"none",fontFamily:F}}>Ativar API no Google Cloud →</a>}
+                {(()=>{
+                  const isApiDisabled=accountsErr.startsWith("TAG_MANAGER_API_DISABLED:")||accountsErr.includes("403")||accountsErr.includes("Tag Manager API")||accountsErr.includes("disabled");
+                  const projId=accountsErr.startsWith("TAG_MANAGER_API_DISABLED:")?accountsErr.split(":")[1]:"205225004807";
+                  if(isApiDisabled)return(
+                    <div>
+                      <div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.6}}>
+                        A API do Tag Manager precisa ser ativada uma vez no Google Cloud.<br/>
+                        <b style={{color:TEXT}}>Como fazer:</b> Clique no botão abaixo → Na página que abrir, clique no botão azul <b style={{color:TEXT}}>"Ativar"</b> → Volte aqui e recarregue.
+                      </div>
+                      <a href={`https://console.cloud.google.com/apis/library/tagmanager.googleapis.com?project=${projId}`} target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",background:GOLD,color:"#0C0C0C",fontWeight:700,fontSize:13,borderRadius:12,padding:"12px 20px",textDecoration:"none",fontFamily:F}}>Ativar Tag Manager API →</a>
+                    </div>
+                  );
+                  return <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{accountsErr}</div>;
+                })()}
               </div>
             ):(
               <>

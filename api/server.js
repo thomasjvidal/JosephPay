@@ -2376,6 +2376,12 @@ app.get("/api/admin/google/tagmanager/accounts", requireAuth, requireAdmin, asyn
     res.json({ accounts: (resp.data.account || []).map(a => ({ id: a.accountId, name: a.name })) });
   } catch (err) {
     console.error("[gtm/accounts]", err.response?.data || err.message);
+    const msg = err.response?.data?.error?.message || err.message || "";
+    const projectMatch = msg.match(/project\s+(\d+)/i);
+    const projectId = projectMatch?.[1] || "205225004807";
+    if (err.response?.status === 403 || msg.includes("Tag Manager API") || msg.includes("disabled")) {
+      return res.status(403).json({ error: `TAG_MANAGER_API_DISABLED:${projectId}` });
+    }
     res.status(500).json({ error: describeGoogleAdsError(err) });
   }
 });
