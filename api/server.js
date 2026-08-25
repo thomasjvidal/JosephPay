@@ -3264,7 +3264,7 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
     const currentContent = Buffer.from(fileResp.data.content, "base64").toString("utf8");
     const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
 
-    if (currentContent.includes(`uid=${id}`)) {
+    if (currentContent.includes(`sensor.js?uid=${id}`)) {
       await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
       return res.json({ ok: true, already: true, file: filePath });
     }
