@@ -2038,7 +2038,16 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nicho / setor deste negócio</div>
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
-        <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar todas com IA"}</Btn>
+        <div style={{display:"flex",gap:8,marginBottom:6}}>
+          <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
+          <button onClick={()=>{
+            const nome=c.name||"este produtor";
+            const area=nicho.trim()||"[descreva o nicho/área aqui]";
+            const prompt=`Crie ${questions.length} perguntas de qualificação para o Mini Chat de diagnóstico digital do(a) ${nome}, que trabalha com: ${area}.\n\nCada pergunta deve ter:\n- Um texto curto de transição (ex: "Perfeito!", "Entendido.")\n- A pergunta objetiva em si\n- Exatamente 4 opções de resposta curtas (máx 5 palavras cada)\n\nRetorne SOMENTE um JSON puro, sem markdown, no formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
+            navigator.clipboard.writeText(prompt).catch(()=>{});
+            alert("Prompt copiado! Cole no ChatGPT, copie a resposta e cole pergunta a pergunta abaixo.");
+          }} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Copiar prompt pro GPT</button>
+        </div>
         <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o nicho acima (salva sozinho ao gerar) pra montar as {questions.length} perguntas de uma vez, com coerência sobre serviços e público. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         {questions.map((q,qi)=>(
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
@@ -2073,6 +2082,32 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
               <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>
             ))}
           </div>
+        </div>
+        {/* Preview da mensagem WhatsApp */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"14px",marginBottom:16}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Preview da mensagem no WhatsApp do produtor</div>
+          <div style={{background:"#E5DDD5",borderRadius:12,padding:"14px 12px",fontFamily:"sans-serif"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
+              <div style={{background:"white",borderRadius:"12px 12px 12px 3px",padding:"9px 12px",maxWidth:"85%",boxShadow:"0 1px 1px rgba(0,0,0,0.08)"}}>
+                <div style={{color:"#128C7E",fontSize:11,fontWeight:700,marginBottom:3}}>Lead</div>
+                <div style={{color:"#111",fontSize:12,whiteSpace:"pre-wrap",lineHeight:1.5}}>
+{`Olá ${c.minichat_config?.brand_name||c.name||"[nome do produtor]"},
+
+Acabei de fazer o pré diagnóstico digital.
+
+*Meu perfil:*
+${questions.map((q,i)=>`• ${q.subtext||q.text||`Pergunta ${i+1}`}: [resposta do lead]`).join("\n")}
+• Qual seu nome completo?: João Silva
+• Qual seu telefone com WhatsApp?: 11999999999
+• Qual sua data de nascimento?: 01/01/1990
+
+Podemos conversar?`}
+                </div>
+                <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
+              </div>
+            </div>
+          </div>
+          <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Esta mensagem vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b> quando o lead clica no botão verde do Mini Chat.</div>
         </div>
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
