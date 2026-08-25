@@ -577,6 +577,7 @@
     let AVATAR_URL = "";
     let REDIRECT_LINK = "";
     let EMAIL_DESTINO = "";
+    let CLOSING_MESSAGE = "Podemos conversar?";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
 
     // ID único por visita, só pra agrupar as respostas de uma mesma sessão no
@@ -687,6 +688,7 @@
                 if (cfg?.avatar_url) AVATAR_URL = cfg.avatar_url;
                 if (cfg?.redirect_link) REDIRECT_LINK = cfg.redirect_link;
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
+                if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
                 if (EMAIL_DESTINO && !REDIRECT_LINK) {
                     const emailBtn = document.getElementById("emailBtn");
                     if (emailBtn) emailBtn.style.display = "flex";
@@ -941,7 +943,7 @@ Acabei de fazer o pré diagnóstico digital.
 *Meu perfil:*
 ${linhas}
 
-Podemos conversar?`;
+${CLOSING_MESSAGE}`;
     }
 
     function sendToWhatsApp() {

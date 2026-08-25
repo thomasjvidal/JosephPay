@@ -1875,8 +1875,9 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
 function AtivacaoAdmin({c,initialOpen,done}){
-  const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||"");
+  const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||c.phone||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
+  const [closingMsg,setClosingMsg]=useState(c.minichat_config?.closing_message||"");
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
@@ -1910,6 +1911,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       email_destino:emailDestino.trim(),
       objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
       business_context:businessContext.trim(),
+      closing_message:closingMsg.trim(),
     })});
     if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
   };
@@ -1941,7 +1943,9 @@ function AtivacaoAdmin({c,initialOpen,done}){
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-      <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+      <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      {c.phone&&wapNum.replace(/\D/g,"")!==c.phone.replace(/\D/g,"")&&<button onClick={()=>setWapNum(c.phone)} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:8,display:"block"}}>↑ Usar número do cadastro ({c.phone})</button>}
+      {!c.phone&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Coloque o WhatsApp do produtor — para onde os leads serão redirecionados.</div>}
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
@@ -1962,6 +1966,10 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Opções da pergunta "objetivo" (fluxo padrão)</div>
       <textarea value={objetivoOptions} onChange={e=>setObjetivoOptions(e.target.value)} placeholder={"Uma opção por linha (opcional)\nEx:\nAliviar dor\nMelhorar estética\nPrevenção"} rows={3} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4,resize:"vertical"}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se deixar em branco, a pergunta "qual seu objetivo?" vira campo de texto livre no Mini Chat. Só vale pro fluxo padrão (quando o cliente não tem perguntas personalizadas configuradas abaixo).</div>
+
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mensagem final ao lead</div>
+      <input value={closingMsg} onChange={e=>setClosingMsg(e.target.value)} placeholder='Frase de encerramento (padrão: "Podemos conversar?")' style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Aparece no final da mensagem que vai para o WhatsApp do produtor. Deixe em branco para usar "Podemos conversar?".</div>
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
       <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento (opcional — sobrepõe WhatsApp e E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
@@ -2139,7 +2147,7 @@ ${questions.map((q,i)=>`• ${q.subtext||q.text||`Pergunta ${i+1}`}: [resposta d
 • Qual seu telefone com WhatsApp?: 11999999999
 • Qual sua data de nascimento?: 01/01/1990
 
-Podemos conversar?`}
+${c.minichat_config?.closing_message||"Podemos conversar?"}`}
                 </div>
                 <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
               </div>

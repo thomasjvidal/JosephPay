@@ -1531,7 +1531,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id")
+      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1560,7 +1560,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
     // Interessados (lead) x Clientes convertidos (cliente/assinante) do CRM de cada produtor.
-    const { data: customerRows } = await supabase.from("customers").select("owner_id,status,created_at");
+    const { data: customerRows, error: customerErr } = await supabase.from("customers").select("owner_id,status,created_at");
+    if (customerErr) console.error("[admin/clients] customers query error:", customerErr.message, customerErr.details);
     const leadsPorUsuario = {};
     const clientesPorUsuario = {};
     (customerRows || []).forEach(row => {
@@ -1573,7 +1574,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
 
     // Visitas ao site (sensor) e detecção real de Google Ads via gclid —
     // gclid só existe na URL quando o clique veio de um anúncio pago do Google.
-    const { data: visitRows } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview").limit(100000);
+    const { data: visitRows, error: visitErr } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview").limit(100000);
+    if (visitErr) console.error("[admin/clients] visits query error:", visitErr.message, visitErr.details);
     const visitasPorUsuario = {};
     const googleAdsPorUsuario = {};
     (visitRows || []).forEach(v => {
@@ -2174,7 +2176,7 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options, business_context } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options, business_context, closing_message } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -2211,6 +2213,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       // Texto livre sobre o negócio (ramo, público, diferenciais) — usado só pra dar
       // contexto real pra IA quando o admin pede pra gerar/sugerir perguntas.
       business_context: business_context !== undefined ? (business_context?.trim() || null) : (existing.business_context ?? null),
+      closing_message: closing_message !== undefined ? (closing_message?.trim() || null) : (existing.closing_message ?? null),
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
@@ -2952,6 +2955,18 @@ function extractLinksFromContent(content, filePath, registra) {
   while ((m = reWinLoc.exec(content))) registra(m[1], "(window.location no código)", filePath);
   const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
   while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", filePath);
+  // Template literals com URL — ex: `https://wa.me/${phone}` ou `https://site.com/pagina`
+  const reTemplateUrl = /`(https?:\/\/[^`\n]{5,})`/gi;
+  while ((m = reTemplateUrl.exec(content))) {
+    const url = m[1].replace(/\$\{[^}]+\}/g, '{...}');
+    registra(url, "(URL em template literal)", filePath);
+  }
+  // tel: e mailto: como string
+  const reTelMail = /["'`]((?:tel|mailto):[^"'`\s<>]{3,})["'`]/gi;
+  while ((m = reTelMail.exec(content))) registra(m[1], "(link de contato)", filePath);
+  // router.push / navigate com rota estática
+  const reRouterPush = /(?:router|navigate)\s*(?:\.push)?\s*\(\s*["'`]([^"'`\n]+)["'`]/gi;
+  while ((m = reRouterPush.exec(content))) registra(m[1], "(router.push)", filePath);
 }
 
 // Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
