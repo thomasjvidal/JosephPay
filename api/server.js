@@ -1572,17 +1572,18 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
       acc.total++; if (hoje) acc.hoje++;
     });
 
-    // Visitas ao site (sensor) e detecção real de Google Ads via gclid —
-    // gclid só existe na URL quando o clique veio de um anúncio pago do Google.
-    const { data: visitRows, error: visitErr } = await supabase.from("visits").select("owner_id,created_at,has_gclid").eq("event_type", "pageview").limit(100000);
+    // Visitas ao site — query separada do has_gclid para não quebrar se a coluna não existir.
+    const { data: visitRows, error: visitErr } = await supabase.from("visits").select("owner_id,created_at").eq("event_type", "pageview").limit(100000);
     if (visitErr) console.error("[admin/clients] visits query error:", visitErr.message, visitErr.details);
     const visitasPorUsuario = {};
-    const googleAdsPorUsuario = {};
     (visitRows || []).forEach(v => {
       const acc = visitasPorUsuario[v.owner_id] || (visitasPorUsuario[v.owner_id] = { total: 0, hoje: 0 });
       acc.total++; if (new Date(v.created_at) >= todayStart) acc.hoje++;
-      if (v.has_gclid) googleAdsPorUsuario[v.owner_id] = true;
     });
+    // Detecção de Google Ads via gclid — query separada, falha silenciosa se coluna não existir.
+    const googleAdsPorUsuario = {};
+    const { data: gclidRows } = await supabase.from("visits").select("owner_id").eq("event_type", "pageview").eq("has_gclid", true).limit(10000);
+    (gclidRows || []).forEach(v => { googleAdsPorUsuario[v.owner_id] = true; });
 
     const enriched = await Promise.all((data || []).map(async (p) => {
       const [salesSum, prodCount, wapConnected] = await Promise.all([
