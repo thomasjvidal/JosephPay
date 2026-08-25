@@ -2433,9 +2433,12 @@ function ClientesAdmin(){
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
               <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
-              <div style={{display:"flex",gap:10,fontSize:10}}>
+              <div style={{display:"flex",gap:6,fontSize:9.5,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.leads_total||0}</b> leads</span>
+                <span style={{color:"rgba(255,255,255,0.2)"}}>·</span>
                 <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.clientes_total||0}</b> clientes</span>
+                <span style={{color:"rgba(255,255,255,0.2)"}}>·</span>
+                <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.visitas_total||0}</b> visitas</span>
               </div>
             </div>
           </div>
