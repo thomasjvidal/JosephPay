@@ -2002,6 +2002,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [regenerating,setRegenerating]=useState({});
   const [gerandoTudo,setGerandoTudo]=useState(false);
   const [nicho,setNicho]=useState(c.minichat_config?.business_context||"");
+  const [showJsonImport,setShowJsonImport]=useState(false);
+  const [jsonInput,setJsonInput]=useState("");
+  const [jsonErr,setJsonErr]=useState("");
   const gerarTodas=async()=>{
     if(gerandoTudo)return;
     setMsg("");setGerandoTudo(true);
@@ -2040,16 +2043,43 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nicho / setor deste negócio</div>
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
-        <div style={{display:"flex",gap:8,marginBottom:6}}>
+        <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
           <button onClick={()=>{
             const nome=c.name||"este produtor";
             const area=nicho.trim()||"[descreva o nicho/área aqui]";
             const prompt=`Crie ${questions.length} perguntas de qualificação para o Mini Chat de diagnóstico digital do(a) ${nome}, que trabalha com: ${area}.\n\nCada pergunta deve ter:\n- Um texto curto de transição (ex: "Perfeito!", "Entendido.")\n- A pergunta objetiva em si\n- Exatamente 4 opções de resposta curtas (máx 5 palavras cada)\n\nRetorne SOMENTE um JSON puro, sem markdown, no formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
             navigator.clipboard.writeText(prompt).catch(()=>{});
-            alert("Prompt copiado! Cole no ChatGPT, copie a resposta e cole pergunta a pergunta abaixo.");
+            alert("Prompt copiado! Cole no ChatGPT, copie a resposta JSON e clique em "Colar resposta do GPT" abaixo.");
           }} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Copiar prompt pro GPT</button>
+          <button onClick={()=>{setShowJsonImport(o=>!o);setJsonErr("");}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{showJsonImport?"▲ Fechar":"Colar resposta do GPT"}</button>
         </div>
+        {showJsonImport&&(
+          <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"12px",marginBottom:10}}>
+            <div style={{color:MUTED,fontSize:11,fontWeight:700,marginBottom:6}}>Cole o JSON do GPT aqui e clique em Importar:</div>
+            <textarea value={jsonInput} onChange={e=>{setJsonInput(e.target.value);setJsonErr("");}} placeholder={'[\n  {\n    "text": "Perfeito!",\n    "subtext": "Qual seu objetivo?",\n    "options": ["Opção 1","Opção 2","Opção 3","Opção 4"]\n  }\n]'} rows={8} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${jsonErr?RED:BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:12,outline:"none",fontFamily:"monospace",resize:"vertical",marginBottom:6}}/>
+            {jsonErr&&<div style={{color:RED,fontSize:11,marginBottom:6}}>{jsonErr}</div>}
+            <button onClick={()=>{
+              try{
+                let raw=jsonInput.trim();
+                // Remove backticks/markdown code fences if GPT wrapped in ```json ... ```
+                raw=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
+                const parsed=JSON.parse(raw);
+                if(!Array.isArray(parsed)||!parsed.length){setJsonErr("JSON inválido: esperado um array de perguntas.");return;}
+                const qs=parsed.map((q,i)=>({
+                  text:String(q.text||""),
+                  subtext:String(q.subtext||""),
+                  options:(Array.isArray(q.options)?q.options:[]).map(String).filter(Boolean),
+                })).filter(q=>q.text||q.subtext);
+                if(!qs.length){setJsonErr("Nenhuma pergunta válida encontrada.");return;}
+                setQuestions(qs);
+                setJsonInput("");
+                setShowJsonImport(false);
+                setJsonErr("");
+              }catch(e){setJsonErr("JSON inválido: "+e.message);}
+            }} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:"9px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar perguntas</button>
+          </div>
+        )}
         <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o nicho acima (salva sozinho ao gerar) pra montar as {questions.length} perguntas de uma vez, com coerência sobre serviços e público. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         {questions.map((q,qi)=>(
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>

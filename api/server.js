@@ -2233,8 +2233,11 @@ app.get("/api/minichat/config", async (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   const { uid } = req.query;
   if (!uid) return res.status(400).json({ error: "uid ausente" });
-  const { data } = await supabase.from("profiles").select("minichat_config").eq("id", uid).single();
-  res.json({ config: data?.minichat_config || null });
+  const { data } = await supabase.from("profiles").select("minichat_config, name").eq("id", uid).single();
+  const cfg = data?.minichat_config || {};
+  // Use producer name from profiles as fallback when brand_name not explicitly set
+  if (!cfg.brand_name && data?.name) cfg.brand_name = data.name;
+  res.json({ config: Object.keys(cfg).length ? cfg : null, producer_name: data?.name || null });
 });
 
 // Lista pública (só nome) dos produtos de um produtor — usada pelo Mini Chat como opções

@@ -625,37 +625,32 @@
     let usingDefaultFlow = true; // false quando o cliente configurou perguntas personalizadas no admin
 
     // FLUXO PADRÃO — usado quando o cliente não configurou perguntas próprias no admin.
-    // Modelo: produto/procedimento real do cliente → objetivo → quando → nome.
-    const QUANDO_OPTIONS = ["Quanto antes", "Este mês", "Próximos meses", "Só tirando dúvida"];
+    // Modelo: produto/procedimento real do cliente → objetivo → quando.
+    const QUANDO_OPTIONS = ["Quanto antes", "Este mês", "Próximos meses", "Só estou pesquisando"];
+    const PRODUTO_FALLBACK_OPTIONS = ["Procedimento estético", "Consulta inicial", "Tratamento facial", "Outro"];
+    const OBJETIVO_FALLBACK_OPTIONS = ["Melhorar minha aparência", "Tratar um problema específico", "Conhecer as opções", "Tirar dúvidas"];
 
     function buildDefaultQuestions(products, objetivoOptions) {
         const steps = [];
-        if (products && products.length) {
-            steps.push({
-                id: 'produto',
-                text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
-                subtext: "Qual procedimento ou produto desperta seu interesse?",
-                label: "Procedimento de interesse",
-                type: 'options',
-                options: products,
-            });
-        } else {
-            steps.push({
-                id: 'produto',
-                text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
-                subtext: "Qual procedimento ou produto desperta seu interesse?",
-                label: "Procedimento de interesse",
-                type: 'text',
-                placeholder: 'Digite o procedimento…',
-            });
-        }
-        if (objetivoOptions && objetivoOptions.length) {
-            steps.push({ id: 'objetivo', text: "Perfeito.", subtext: "Qual seu objetivo?", label: "Objetivo", type: 'options', options: objetivoOptions });
-        } else {
-            steps.push({ id: 'objetivo', text: "Perfeito.", subtext: "Qual seu objetivo?", label: "Objetivo", type: 'text', placeholder: 'Digite seu objetivo…' });
-        }
+        // Product question — always uses clickable options (never free text)
+        steps.push({
+            id: 'produto',
+            text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
+            subtext: "Qual procedimento ou serviço desperta seu interesse?",
+            label: "Procedimento de interesse",
+            type: 'options',
+            options: (products && products.length) ? products : PRODUTO_FALLBACK_OPTIONS,
+        });
+        // Objetivo question — always uses clickable options
+        steps.push({
+            id: 'objetivo',
+            text: "Perfeito.",
+            subtext: "Qual seu objetivo?",
+            label: "Objetivo",
+            type: 'options',
+            options: (objetivoOptions && objetivoOptions.length) ? objetivoOptions : OBJETIVO_FALLBACK_OPTIONS,
+        });
         steps.push({ id: 'quando', text: "Entendido.", subtext: "Quando pretende realizar?", label: "Momento para iniciar", type: 'options', options: QUANDO_OPTIONS });
-        steps.push({ id: 'nome', text: "Última pergunta.", subtext: "Qual seu nome?", label: "Nome", type: 'text', placeholder: 'Digite seu nome…' });
         return steps;
     }
 
@@ -683,20 +678,20 @@
             const res = await fetch(`${JOSEPHPAY_API}/api/minichat/config?uid=${encodeURIComponent(uid)}`);
             const data = await res.json();
             const cfg = data?.config;
-            if (cfg) {
-                if (cfg.whatsapp_number) WHATSAPP_NUMBER = cfg.whatsapp_number;
-                if (cfg.brand_name) BRAND_NAME = cfg.brand_name;
-                GREETING_NAME = cfg.greeting_name || cfg.brand_name || GREETING_NAME;
-                if (cfg.avatar_url) AVATAR_URL = cfg.avatar_url;
-                if (cfg.redirect_link) REDIRECT_LINK = cfg.redirect_link;
-                if (cfg.email_destino) EMAIL_DESTINO = cfg.email_destino;
-                // Botão de e-mail só aparece se tiver e-mail configurado e nenhum link de
-                // redirecionamento próprio (esse último sobrepõe tudo, é uma escolha única do admin).
+            if (cfg || data?.producer_name) {
+                if (cfg?.whatsapp_number) WHATSAPP_NUMBER = cfg.whatsapp_number;
+                // brand_name from config, or producer name from profiles as fallback
+                const resolvedName = cfg?.brand_name || data?.producer_name;
+                if (resolvedName) BRAND_NAME = resolvedName;
+                GREETING_NAME = cfg?.greeting_name || resolvedName || GREETING_NAME;
+                if (cfg?.avatar_url) AVATAR_URL = cfg.avatar_url;
+                if (cfg?.redirect_link) REDIRECT_LINK = cfg.redirect_link;
+                if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (EMAIL_DESTINO && !REDIRECT_LINK) {
                     const emailBtn = document.getElementById("emailBtn");
                     if (emailBtn) emailBtn.style.display = "flex";
                 }
-                if (Array.isArray(cfg.questions) && cfg.questions.length) {
+                if (cfg && Array.isArray(cfg.questions) && cfg.questions.length) {
                     const custom = cfg.questions
                         .map((q, i) => ({
                             id: `q${i}`,
@@ -705,7 +700,7 @@
                             type: 'options',
                             options: (q.options || []).filter(Boolean),
                         }))
-                        .filter(q => q.text && q.options.length >= 2);
+                        .filter(q => (q.text || q.subtext) && q.options.length >= 2);
                     if (custom.length) {
                         questions = custom;
                         usingDefaultFlow = false;
