@@ -2174,6 +2174,45 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
+// Após salvar o minichat, corrige silenciosamente qualquer link josephpay.com/minichat
+// nos arquivos do repositório do produtor que estejam sem o ?uid= correto.
+// Fire-and-forget: não bloqueia a resposta, erros só aparecem no log.
+async function autoFixMinichatLink(id) {
+  try {
+    const { data: profile } = await supabase.from("profiles")
+      .select("github_repo,github_file_path,github_minichat_path")
+      .eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return;
+    const token = await getGithubToken();
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const correctLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    // Regex: qualquer link josephpay.com/minichat (com ou sem .html, com ou sem ?uid=qualquer-coisa)
+    const re = /https:\/\/josephpay\.com\/minichat(?:\.html)?(?:\?[^"'`\s<>]*)*/g;
+    const files = [...new Set([profile.github_file_path, profile.github_minichat_path].filter(Boolean))];
+    for (const filePath of files) {
+      try {
+        const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+        const sha = resp.data.sha;
+        const original = Buffer.from(resp.data.content, "base64").toString("utf8");
+        const updated = original.replace(re, correctLink);
+        if (updated === original) continue;
+        await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+          message: "JosephPay: corrige link do Mini Chat com uid do produtor",
+          content: Buffer.from(updated, "utf8").toString("base64"),
+          sha,
+        }, { headers });
+        console.log(`[minichat/auto-link] ${repo}/${filePath} atualizado com uid=${id}`);
+      } catch(e) {
+        console.warn(`[minichat/auto-link] ${repo}/${filePath}:`, e.response?.data?.message || e.message);
+      }
+    }
+  } catch(e) {
+    console.warn("[minichat/auto-link]", e.message);
+  }
+}
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2220,6 +2259,8 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
     if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
+    // Corrige o link do minichat no repositório do produtor de forma assíncrona (não bloqueia)
+    autoFixMinichatLink(id).catch(() => {});
     res.json({ ok: true, minichat_config });
   } catch (err) {
     console.error("[admin/producers minichat]", err.message);
