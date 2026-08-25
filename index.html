@@ -2228,48 +2228,54 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+      <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:22,padding:"20px 18px"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:14}}>
           <label style={{position:"relative",cursor:uploadingAvatar?"default":"pointer",flexShrink:0}}>
-            <Avatar url={avatarPreview||c.avatar_url} name={nome} size={50} radius={16} fontSize={22}/>
-            <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,border:`2px solid ${CARD}`}}>{uploadingAvatar?"…":"✎"}</div>
+            <Avatar url={avatarPreview||c.avatar_url} name={nome} size={54} radius={17} fontSize={22}/>
+            <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,border:`2px solid #111`}}>{uploadingAvatar?"…":"✎"}</div>
             <input type="file" accept="image/*" onChange={enviarFotoPerfil} disabled={uploadingAvatar} style={{display:"none"}}/>
           </label>
           <div style={{flex:1,minWidth:0}}>
             {!editing?(
               <>
-                <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{nome}</div>
-                {c.company_name&&<div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.company_name}</div>}
-                <div style={{color:MUTED,fontSize:12,marginTop:3}}>📧 {c.email||"—"}</div>
-                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{c.produtos||0} produto(s)</div>
+                <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.02em",lineHeight:1.2}}>{nome}</div>
+                {c.company_name&&<div style={{color:MUTED,fontSize:12,marginTop:3,fontWeight:500}}>{c.company_name}</div>}
+                <div style={{color:"rgba(255,255,255,0.35)",fontSize:11,marginTop:4,letterSpacing:"0.01em"}}>{c.email||"—"}</div>
+                <div style={{color:"rgba(255,255,255,0.3)",fontSize:11,marginTop:2}}>{c.produtos||0} produto{c.produtos!==1?"s":""}</div>
               </>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Nome" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                <input value={editCompany} onChange={e=>setEditCompany(e.target.value)} placeholder="Nome da empresa" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="E-mail de login" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
-                <input value={editSiteUrl} onChange={e=>setEditSiteUrl(e.target.value)} placeholder="Site do cliente (ex: meusite.com.br)" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Nome" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editCompany} onChange={e=>setEditCompany(e.target.value)} placeholder="Nome da empresa" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} placeholder="E-mail de login" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
+                <input value={editSiteUrl} onChange={e=>setEditSiteUrl(e.target.value)} placeholder="Site do cliente (ex: meusite.com.br)" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F}}/>
               </div>
             )}
           </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,flexShrink:0}}>
             <Tag status="ativo"/>
             <div style={{display:"flex",gap:6}}>
-              {c.site_url&&<a href={c.site_url.startsWith("http")?c.site_url:`https://${c.site_url}`} target="_blank" rel="noopener noreferrer" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:20,padding:"5px 12px",color:GOLD,fontSize:11,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>↗ Site</a>}
-              {!editing&&<button onClick={()=>setEditing(true)} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:20,padding:"5px 12px",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>✎ Editar</button>}
+              {c.site_url&&<a href={c.site_url.startsWith("http")?c.site_url:`https://${c.site_url}`} target="_blank" rel="noopener noreferrer" style={{background:"none",border:"1px solid rgba(255,255,255,0.12)",borderRadius:20,padding:"5px 12px",color:GOLD,fontSize:11,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>↗ Site</a>}
+              {!editing&&<button onClick={()=>setEditing(true)} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"5px 12px",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>Editar</button>}
             </div>
           </div>
         </div>
         {editing&&(
           <div style={{display:"flex",gap:8,marginBottom:14}}>
             <button onClick={salvarPerfil} disabled={saving} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:10,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F,opacity:saving?0.7:1}}>{saving?"Salvando…":"Salvar"}</button>
-            <button onClick={cancelarEdicao} style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:10,color:MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>
+            <button onClick={cancelarEdicao} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:100,padding:10,color:MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>
           </div>
         )}
         {saveErr&&<div style={{color:RED,fontSize:11,marginBottom:10}}>{saveErr}</div>}
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Volume: {volFmt}</span>
-          <span style={{background:`${GOLD}14`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>Taxas: {taxaFmt}</span>
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"10px 14px"}}>
+            <div style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>Volume total</div>
+            <div style={{color:TEXT,fontWeight:700,fontSize:15,letterSpacing:"-0.02em"}}>{volFmt}</div>
+          </div>
+          <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"10px 14px"}}>
+            <div style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>Taxas geradas</div>
+            <div style={{color:GOLD,fontWeight:700,fontSize:15,letterSpacing:"-0.02em"}}>{taxaFmt}</div>
+          </div>
         </div>
       </div>
       {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={onUpdated}/>}
@@ -2286,12 +2292,12 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
             <KPICard compact label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
             <KPICard compact label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
             <KPICard compact label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
-            <KPICard compact label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="🕒"/>
+            <KPICard compact label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="◷"/>
             <KPICard compact label="Dias ativos" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
             <KPICard compact label="Mensalidades" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
             <KPICard compact label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
-            <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="👥"/>
-            <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="✅"/>
+            <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="◈"/>
+            <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="◉"/>
           </div>
           <VisitasClienteAdmin ownerId={c.id}/>
           <FunilClienteAdmin ownerId={c.id}/>
@@ -2329,13 +2335,21 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
 
 function StatusBadges({status}){
   if(!status)return null;
-  const items=[["WhatsApp",status.whatsapp],["Site",status.site],["E-mail",status.email],["Mini Chat",status.minichat],["Google Ads",status.googleAds]];
+  const items=[["WhatsApp",status.whatsapp],["Site",status.site],["E-mail",status.email],["Mini Chat",status.minichat],["Ads",status.googleAds]];
+  const active=items.filter(([,on])=>on);
+  const inactive=items.filter(([,on])=>!on);
   return(
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-      {items.map(([label,on])=>(
-        <span key={label} style={{display:"flex",alignItems:"center",gap:5,background:CARD2,border:`1px solid ${BDR}`,borderRadius:20,padding:"4px 10px 4px 8px"}}>
-          <span style={{width:6,height:6,borderRadius:"50%",background:on?GREEN:"rgba(255,255,255,0.2)",flexShrink:0}}/>
-          <span style={{color:on?TEXT:MUTED,fontSize:10,fontWeight:600}}>{label}</span>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
+      {active.map(([label])=>(
+        <span key={label} style={{display:"flex",alignItems:"center",gap:4,background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:20,padding:"3px 9px 3px 7px"}}>
+          <span style={{width:5,height:5,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+          <span style={{color:GREEN,fontSize:9.5,fontWeight:700,letterSpacing:"0.02em"}}>{label}</span>
+        </span>
+      ))}
+      {inactive.map(([label])=>(
+        <span key={label} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:20,padding:"3px 9px 3px 7px"}}>
+          <span style={{width:5,height:5,borderRadius:"50%",background:"rgba(255,255,255,0.15)",flexShrink:0}}/>
+          <span style={{color:"rgba(255,255,255,0.3)",fontSize:9.5,fontWeight:600}}>{label}</span>
         </span>
       ))}
     </div>
@@ -2346,10 +2360,10 @@ function QuickStats({c}){
   const leadsHoje=c.leads_hoje||0;
   const visitasHoje=c.visitas_hoje||0;
   return(
-    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14,fontSize:11,color:MUTED}}>
-      <span>👥 <b style={{color:TEXT}}>{c.leads_total||0}</b> interessado(s){leadsHoje>0&&<span style={{color:GREEN}}> · +{leadsHoje} hoje</span>}</span>
-      <span>✅ <b style={{color:TEXT}}>{c.clientes_total||0}</b> cliente(s)</span>
-      <span>👁 <b style={{color:TEXT}}>{c.visitas_total||0}</b> visita(s){visitasHoje>0&&<span style={{color:GREEN}}> · +{visitasHoje} hoje</span>}</span>
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:12,fontSize:11,color:MUTED}}>
+      <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:9,opacity:0.5}}>interessados</span> <b style={{color:TEXT,fontWeight:700}}>{c.leads_total||0}</b>{leadsHoje>0&&<span style={{color:GREEN,fontSize:10}}> +{leadsHoje}</span>}</span>
+      <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:9,opacity:0.5}}>clientes</span> <b style={{color:TEXT,fontWeight:700}}>{c.clientes_total||0}</b></span>
+      <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:9,opacity:0.5}}>visitas</span> <b style={{color:TEXT,fontWeight:700}}>{c.visitas_total||0}</b>{visitasHoje>0&&<span style={{color:GREEN,fontSize:10}}> +{visitasHoje}</span>}</span>
     </div>
   );
 }
@@ -2410,34 +2424,32 @@ function ClientesAdmin(){
       {clients===null&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
       {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
       {clientsOrdenados.map((c,i)=>(
-        <div key={c.id||i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <Avatar url={c.avatar_url} name={c.name} size={36} radius={11} fontSize={14}/>
+        <div key={c.id||i} onClick={()=>setSel(c.id)} style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px",cursor:"pointer",transition:"border-color 0.15s"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:11}}>
+            <Avatar url={c.avatar_url} name={c.name} size={42} radius={14} fontSize={16}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                <div style={{color:TEXT,fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"—"}</div>
-                <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.name||"—"}</div>
+              {c.company_name&&<div style={{color:MUTED,fontSize:11,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.company_name}</div>}
+              <div style={{color:"rgba(255,255,255,0.28)",fontSize:10,marginTop:2}}>{fmtLastLogin(c.last_login_at)}</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+              <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
+              <div style={{display:"flex",gap:10,fontSize:10}}>
+                <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.leads_total||0}</b> leads</span>
+                <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.clientes_total||0}</b> clientes</span>
               </div>
-              <div style={{color:MUTED,fontSize:10,marginTop:2}}>{fmtLastLogin(c.last_login_at)}</div>
             </div>
           </div>
           <StatusBadges status={c.conn}/>
-          <div style={{display:"flex",gap:10,marginBottom:10,fontSize:10,color:MUTED}}>
-            <span>👥 <b style={{color:TEXT}}>{c.leads_total||0}</b></span>
-            <span>✅ <b style={{color:TEXT}}>{c.clientes_total||0}</b></span>
-            <span>👁 <b style={{color:TEXT}}>{c.visitas_total||0}</b></span>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
-            {[{l:"Volume",v:fmtBRL(c.vol),c:TEXT},{l:"Taxas",v:fmtBRL(c.taxa),c:GOLD}].map(item=>(
-              <div key={item.l} style={{background:CARD2,borderRadius:10,padding:"7px 10px"}}>
-                <div style={{color:MUTED,fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{item.l}</div>
-                <div style={{color:item.c,fontWeight:700,fontSize:12,marginTop:2}}>{item.v}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setSel(c.id)} style={{flex:1,background:"transparent",border:`1px solid ${GOLD}60`,borderRadius:100,padding:"7px",color:GOLD,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:F}}>Ver perfil</button>
-            <button style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:F}}>Taxa</button>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"8px 12px"}}>
+              <div style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:3}}>Volume</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:13,letterSpacing:"-0.01em"}}>{fmtBRL(c.vol)}</div>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"8px 12px"}}>
+              <div style={{color:"rgba(255,255,255,0.35)",fontSize:9,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:3}}>Taxas</div>
+              <div style={{color:GOLD,fontWeight:700,fontSize:13,letterSpacing:"-0.01em"}}>{fmtBRL(c.taxa)}</div>
+            </div>
           </div>
         </div>
       ))}
