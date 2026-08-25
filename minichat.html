@@ -2,113 +2,86 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>vJoseph — Atendimento Online</title>
     <style>
-        :root {
-            --wa-header: #075E54;
-            --bg-chat: #E5DDD5;
-            --bubble-received: #FFFFFF;
-            --bubble-sent: #DCF8C6;
-            --text-primary: #111B21;
-            --text-secondary: #667781;
-            --accent: #128C7E;
-            --accent-hover: #075E54;
-            --success: #25D366;
-            --success-dark: #1DA851;
-            --border: rgba(0, 0, 0, 0.08);
-            --input-bg: #FFFFFF;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-            background: #0b0b0b;
-            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
-        .app-container {
-            max-width: 430px;
-            margin: 0 auto;
-            min-height: 100vh;
-            background: var(--bg-chat);
+        .phone-container {
+            width: 100%;
+            max-width: 400px;
+            background: #E5DDD5;
+            border-radius: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
             position: relative;
+            height: 800px;
             display: flex;
             flex-direction: column;
         }
 
-        .header {
-            padding: calc(18px + env(safe-area-inset-top)) 16px 14px;
-            background: var(--wa-header);
-            position: sticky;
+        .progress-bar {
+            position: absolute;
             top: 0;
-            z-index: 100;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+            left: 0;
+            height: 3px;
+            background: #25D366;
+            transition: width 0.35s ease;
+            z-index: 20;
         }
 
-        .brand {
+        .chat-header {
+            background: #075E54;
+            color: white;
+            padding: 15px 20px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+            z-index: 10;
+            flex-shrink: 0;
         }
 
-        .brand-mark {
-            width: 40px;
-            height: 40px;
-            background: #ffffff;
+        .avatar {
+            width: 42px;
+            height: 42px;
+            background: #128C7E;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 16px;
-            color: var(--wa-header);
+            font-size: 17px;
+            color: white;
             flex-shrink: 0;
             overflow: hidden;
         }
 
-        .brand-text {
-            display: flex;
-            flex-direction: column;
-            gap: 1px;
-            min-width: 0;
-        }
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-        .brand-name {
-            font-size: 17px;
-            font-weight: 600;
-            letter-spacing: -0.2px;
-            color: #ffffff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .header-info h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+        .header-info p { font-size: 13px; opacity: 0.9; color: #d1fae5; }
 
-        .header-subtitle {
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.85);
-            font-weight: 400;
-        }
-
-        .chat-container {
+        .chat-messages {
             flex: 1;
-            padding: 20px 16px;
+            padding: 20px;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            background-color: var(--bg-chat);
+            gap: 12px;
+            background-color: #E5DDD5;
             background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
         }
 
@@ -118,148 +91,96 @@
             border-radius: 18px;
             font-size: 14.5px;
             line-height: 1.4;
-            font-weight: 400;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            animation: messageSlide 0.3s ease forwards;
-            opacity: 0;
-            transform: translateY(10px);
+            word-wrap: break-word;
+            animation: fadeInUp 0.3s ease-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
 
-        @keyframes messageSlide {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .message-received {
-            background: var(--bubble-received);
-            align-self: flex-start;
-            border-bottom-left-radius: 4px;
-            color: var(--text-primary);
-        }
+        .message.received { background: white; align-self: flex-start; border-bottom-left-radius: 4px; color: #262626; }
+        .message.sent { background: #DCF8C6; align-self: flex-end; border-bottom-right-radius: 4px; color: #262626; }
 
-        .message-sent {
-            background: var(--bubble-sent);
-            align-self: flex-end;
-            border-bottom-right-radius: 4px;
-            color: var(--text-primary);
-        }
+        .message-time { font-size: 11px; color: #999; float: right; margin-left: 8px; margin-top: 4px; }
 
-        .typing-indicator {
+        .typing {
             display: flex;
-            align-items: center;
             gap: 4px;
             padding: 15px 20px;
-            background: var(--bubble-received);
+            background: white;
             border-radius: 18px;
             border-bottom-left-radius: 4px;
             align-self: flex-start;
             width: fit-content;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
 
-        .typing-dot {
-            width: 7px;
-            height: 7px;
-            background: var(--text-secondary);
-            border-radius: 50%;
-            animation: typingPulse 1.4s infinite;
-        }
-
+        .typing-dot { width: 8px; height: 8px; background: #999; border-radius: 50%; animation: typingBounce 1.4s infinite; }
         .typing-dot:nth-child(2) { animation-delay: 0.2s; }
         .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
-        @keyframes typingPulse {
-            0%, 60%, 100% { transform: scale(1); opacity: 0.4; }
-            30% { transform: scale(1.2); opacity: 1; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
         }
 
         .options-container {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 4px;
-            animation: fadeIn 0.4s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+            margin-top: 6px;
+            animation: fadeInUp 0.4s ease-out;
         }
 
         .option-btn {
-            background: #ffffff;
-            border: 2px solid var(--accent);
-            color: var(--accent);
+            background: white;
+            border: 2px solid #128C7E;
+            color: #128C7E;
             padding: 12px 16px;
             border-radius: 20px;
+            cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            cursor: pointer;
-            text-align: left;
             transition: all 0.2s;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .option-btn:hover {
-            background: var(--accent);
-            color: #ffffff;
-            transform: translateX(4px);
-        }
-
-        .option-btn:active {
-            transform: scale(0.98);
-        }
-
-        .option-btn.selected {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #ffffff;
-        }
-
-        .input-area {
-            padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
-            background: #F0F0F0;
-            border-top: 1px solid var(--border);
-        }
-
-        .input-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--input-bg);
-            border-radius: 24px;
-            padding: 6px 6px 6px 18px;
-            border: 1px solid var(--border);
-            transition: border-color 0.2s;
-        }
-
-        .input-wrapper:focus-within {
-            border-color: var(--accent);
-        }
-
-        .text-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: var(--text-primary);
-            font-size: 15px;
-            padding: 8px 0;
+            text-align: left;
             font-family: inherit;
         }
 
-        .text-input::placeholder {
-            color: var(--text-secondary);
+        .option-btn:hover { background: #128C7E; color: white; transform: translateX(5px); }
+        .option-btn:active { transform: scale(0.98); }
+        .option-btn.selected { background: #128C7E; color: white; border-color: #128C7E; }
+
+        .chat-input {
+            background: #F0F0F0;
+            padding: 12px 15px calc(12px + env(safe-area-inset-bottom));
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-top: 1px solid #E0E0E0;
+            flex-shrink: 0;
         }
+
+        .input-box {
+            flex: 1;
+            background: white;
+            border-radius: 25px;
+            padding: 12px 18px;
+            border: none;
+            outline: none;
+            font-size: 15px;
+            color: #333;
+            font-family: inherit;
+        }
+
+        .input-box::placeholder { color: #999; }
 
         .send-btn {
             width: 45px;
             height: 45px;
-            background: var(--accent);
+            background: #128C7E;
             border: none;
             border-radius: 50%;
             color: white;
@@ -272,296 +193,207 @@
             flex-shrink: 0;
         }
 
-        .send-btn:hover {
-            background: var(--accent-hover);
-            transform: scale(1.1);
-        }
+        .send-btn:hover { transform: scale(1.1); background: #075E54; }
+        .send-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
 
-        .send-btn:disabled {
-            background: #cccccc;
-            color: #999;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* TELA DE CONCLUSÃO */
-        .completion-overlay {
-            position: fixed;
+        /* Dark result overlay */
+        .result-overlay {
+            position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--bg-chat);
-            z-index: 1000;
-            display: flex;
+            width: 100%;
+            height: 100%;
+            background: #0f0f0f;
+            z-index: 100;
+            display: none;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 40px 24px;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.5s ease;
+            padding: 45px 22px 28px;
+            box-sizing: border-box;
+            color: white;
+            animation: fadeIn 0.5s ease-out;
+            overflow-y: auto;
         }
 
-        .completion-overlay.active {
-            opacity: 1;
-            pointer-events: all;
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
-        .check-container {
-            position: relative;
-            margin-bottom: 32px;
-        }
-
-        .check-circle {
-            width: 110px;
-            height: 110px;
-            background: var(--success);
+        .result-overlay .check-icon {
+            flex-shrink: 0;
+            min-width: 90px;
+            min-height: 90px;
+            width: 90px;
+            height: 90px;
+            background: #25D366;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
-            transform: scale(0);
-            box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4);
-            animation: checkScale 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-                       pulseSuccess 2s infinite 0.6s;
+            margin-bottom: 22px;
+            box-shadow: 0 0 30px rgba(37, 211, 102, 0.3);
         }
 
-        @keyframes checkScale {
-            to { transform: scale(1); }
+        .result-overlay .check-icon svg {
+            width: 45px;
+            height: 45px;
+            fill: none;
+            stroke: white;
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        @keyframes pulseSuccess {
-            0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4); }
-            70% { box-shadow: 0 0 0 30px rgba(37, 211, 102, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
-        }
-
-        .check-icon {
-            font-size: 56px;
-            color: white;
-            font-weight: 300;
-            opacity: 0;
-            animation: checkDraw 0.4s 0.3s ease-out forwards;
-        }
-
-        @keyframes checkDraw {
-            from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
-            to { opacity: 1; transform: scale(1) rotate(0deg); }
-        }
-
-        .completion-title {
-            font-size: 28px;
+        .result-overlay h2 {
+            font-size: 24px;
             font-weight: 700;
-            letter-spacing: -0.3px;
-            margin-bottom: 10px;
+            margin: 0 0 10px 0;
             text-align: center;
-            color: var(--text-primary);
-            opacity: 0;
-            transform: translateY(20px);
-            animation: slideUpFade 0.5s 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            letter-spacing: -0.4px;
         }
 
-        .completion-subtitle {
-            font-size: 15px;
-            color: var(--text-secondary);
+        .result-overlay > p {
+            font-size: 14px;
+            color: #b0b0b0;
+            text-align: center;
+            margin: 0 0 24px 0;
             line-height: 1.5;
-            text-align: center;
-            margin-bottom: 32px;
-            max-width: 300px;
-            opacity: 0;
-            transform: translateY(20px);
-            animation: slideUpFade 0.5s 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        @keyframes slideUpFade {
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .diagnostic-card {
-            background: #ffffff;
+        .profile-card {
+            background: #1e1e1e;
             border-radius: 20px;
-            padding: 24px;
             width: 100%;
-            max-width: 360px;
-            margin-bottom: 28px;
-            border: 1px solid var(--border);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            opacity: 0;
-            transform: translateY(20px);
-            animation: slideUpFade 0.5s 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            padding: 22px;
+            box-sizing: border-box;
+            margin-bottom: 22px;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        .diagnostic-title {
-            font-size: 12px;
+        .profile-card-title {
+            font-size: 11px;
+            color: #888;
+            letter-spacing: 1.5px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-secondary);
-            margin-bottom: 18px;
             font-weight: 700;
+            margin-bottom: 16px;
         }
 
-        .diagnostic-item {
+        .profile-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
             padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .diagnostic-item:last-child {
-            border-bottom: none;
-        }
-
-        .diagnostic-label {
-            color: var(--text-secondary);
-            font-size: 14px;
-        }
-
-        .diagnostic-value {
-            color: var(--text-primary);
-            font-size: 14px;
-            font-weight: 600;
-            text-align: right;
-            max-width: 60%;
-        }
-
-        .cta-button {
-            width: 100%;
-            max-width: 360px;
-            background: var(--success);
-            color: white;
-            border: none;
-            padding: 18px 32px;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            opacity: 0;
-            transform: translateY(20px);
-            animation: slideUpFade 0.5s 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cta-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
-        }
-
-        .cta-button:active {
-            transform: scale(0.98);
-        }
-
-        .cta-button.sending {
-            background: var(--success-dark);
-            pointer-events: none;
-        }
-
-        .cta-button.sending::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 2px solid transparent;
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .whatsapp-icon {
-            font-size: 20px;
-        }
-
-        .redirect-status {
-            margin-top: 18px;
+            border-bottom: 1px solid #2a2a2a;
             font-size: 13px;
-            color: var(--text-secondary);
-            opacity: 0;
-            animation: fadeIn 0.3s 0.8s forwards;
+            align-items: flex-start;
+            gap: 12px;
         }
 
-        .hidden {
-            display: none !important;
+        .profile-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+        .profile-label { color: #888; flex: 0.9; }
+        .profile-value { color: white; font-weight: 600; flex: 1.1; text-align: right; }
+
+        .whatsapp-btn-full {
+            background: #25D366;
+            color: white;
+            width: 100%;
+            padding: 17px;
+            border-radius: 14px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 16px;
+            text-decoration: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            box-shadow: 0 8px 20px rgba(37, 211, 102, 0.25);
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
         }
 
-        @media (min-width: 431px) {
-            .app-container {
-                border-left: 1px solid rgba(255, 255, 255, 0.08);
-                border-right: 1px solid rgba(255, 255, 255, 0.08);
-            }
+        .whatsapp-btn-full:hover { transform: translateY(-2px); background: #20ba56; }
+        .whatsapp-btn-full:active { transform: scale(0.98); }
+
+        .email-btn-full {
+            background: transparent;
+            color: #25D366;
+            width: 100%;
+            padding: 14px;
+            border-radius: 14px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 15px;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            border: 1.5px solid #25D366;
+            margin-top: 10px;
+            font-family: inherit;
+        }
+
+        .redirect-status { margin-top: 14px; font-size: 12px; color: #888; text-align: center; }
+
+        @media (max-width: 480px) {
+            .phone-container { height: 100svh; max-width: 100%; border-radius: 0; }
+            body { padding: 0; background: #E5DDD5; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
+            * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
         }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <header class="header">
-        <div class="brand">
-            <div class="brand-mark" id="brandMark">
-                <img id="brandMarkImg" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%">
-                <span id="brandMarkLetter">v</span>
-            </div>
-            <div class="brand-text">
-                <div class="brand-name" id="brandName">vJoseph</div>
-                <div class="header-subtitle" id="headerSubtitle">Atendimento Online</div>
-            </div>
+<div class="phone-container">
+    <div class="progress-bar" id="progressBar" style="width:0%"></div>
+
+    <div class="chat-header">
+        <div class="avatar" id="avatar">
+            <img id="avatarImg" alt="" style="display:none;width:100%;height:100%;object-fit:cover">
+            <span id="avatarLetter">v</span>
         </div>
-    </header>
-
-    <main class="chat-container" id="chatContainer">
-        <!-- Mensagens aparecem aqui -->
-    </main>
-
-    <div class="input-area" id="inputArea">
-        <div class="input-wrapper">
-            <input type="text" class="text-input" id="textInput" placeholder="Digite sua resposta..." disabled>
-            <button class="send-btn" id="sendBtn" disabled>➤</button>
+        <div class="header-info">
+            <h3 id="brandName">vJoseph</h3>
+            <p>Atendimento Online</p>
         </div>
     </div>
 
-    <!-- TELA DE CONCLUSÃO -->
-    <div class="completion-overlay" id="completionOverlay">
-        <div class="check-container">
-            <div class="check-circle">
-                <span class="check-icon">✓</span>
-            </div>
+    <div class="chat-messages" id="chatMessages"></div>
+
+    <div class="chat-input" id="chatInput">
+        <input type="text" class="input-box" id="textInput" placeholder="Digite sua resposta..." disabled>
+        <button class="send-btn" id="sendBtn" disabled>➤</button>
+    </div>
+
+    <!-- Dark overlay de conclusão -->
+    <div class="result-overlay" id="resultOverlay">
+        <div class="check-icon">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
         </div>
 
-        <h2 class="completion-title">Análise Completa</h2>
-        <p class="completion-subtitle">Seu diagnóstico está pronto. Você está a um passo de falar com a gente.</p>
+        <h2>Análise Completa</h2>
+        <p>Seu diagnóstico está pronto. Você está a um passo de falar com a gente.</p>
 
-        <div class="diagnostic-card" id="diagnosticCard">
-            <div class="diagnostic-title">Resumo do Diagnóstico</div>
-            <!-- Items preenchidos via JS -->
+        <div class="profile-card" id="profileCard">
+            <div class="profile-card-title">SEU PERFIL</div>
+            <!-- preenchido via JS -->
         </div>
 
-        <button class="cta-button" id="whatsappBtn" onclick="sendToWhatsApp()">
-            <span class="whatsapp-icon">📱</span>
-            <span>Enviar para o WhatsApp</span>
+        <button class="whatsapp-btn-full" id="whatsappBtn" onclick="sendToWhatsApp()">
+            📱 Enviar para o WhatsApp
         </button>
 
-        <button class="cta-button" id="emailBtn" onclick="sendToEmail()" style="display:none;margin-top:12px;background:#ffffff;border:1.5px solid var(--accent);color:var(--accent);box-shadow:none;">
-            <span>✉️</span>
-            <span>Enviar por E-mail</span>
+        <button class="email-btn-full" id="emailBtn" onclick="sendToEmail()">
+            ✉️ Enviar por E-mail
         </button>
 
         <div class="redirect-status" id="redirectStatus"></div>
@@ -569,9 +401,8 @@
 </div>
 
 <script>
-    // CONFIGURAÇÃO
-    // Valores padrão (fallback quando não há ?uid= na URL ou a config remota falha)
-    let WHATSAPP_NUMBER = "5524999829182"; // Nexy
+    // Valores padrão — usados quando não há ?uid= ou a config remota falha
+    let WHATSAPP_NUMBER = "5524999829182";
     let BRAND_NAME = "vJoseph";
     let GREETING_NAME = "Nexy";
     let AVATAR_URL = "";
@@ -580,19 +411,17 @@
     let CLOSING_MESSAGE = "Podemos conversar?";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
 
-    // ID único por visita, só pra agrupar as respostas de uma mesma sessão no
-    // rastreio do funil — não é enviado a nenhum lugar além do JosephPay.
     function getVisitorId() {
         try {
             let v = sessionStorage.getItem("mc_visitor_id");
-            if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`); sessionStorage.setItem("mc_visitor_id", v); }
+            if (!v) {
+                v = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                sessionStorage.setItem("mc_visitor_id", v);
+            }
             return v;
-        } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+        } catch(e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     }
 
-    // Registra até qual pergunta a pessoa chegou e o que respondeu — só pro
-    // Admin ver o funil (onde as pessoas desistem). Fire-and-forget, nunca
-    // bloqueia o fluxo do chat nem dispara mensagem nenhuma.
     function trackProgress({ index, question, answer, questionsTotal, completed, finishedVia }) {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
@@ -600,19 +429,17 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                owner_id: uid,
-                visitor_id: getVisitorId(),
+                owner_id: uid, visitor_id: getVisitorId(),
                 index, question, answer,
                 questions_total: questionsTotal,
-                completed: !!completed,
-                finished_via: finishedVia,
+                completed: !!completed, finished_via: finishedVia,
             }),
         }).catch(() => {});
     }
 
     function applyAvatar() {
-        const img = document.getElementById("brandMarkImg");
-        const letter = document.getElementById("brandMarkLetter");
+        const img = document.getElementById("avatarImg");
+        const letter = document.getElementById("avatarLetter");
         if (AVATAR_URL && img) {
             img.src = AVATAR_URL;
             img.style.display = "block";
@@ -623,17 +450,14 @@
     // ESTADO
     let currentStep = 0;
     let userData = {};
-    let usingDefaultFlow = true; // false quando o cliente configurou perguntas personalizadas no admin
+    let usingDefaultFlow = true;
 
-    // FLUXO PADRÃO — usado quando o cliente não configurou perguntas próprias no admin.
-    // Modelo: produto/procedimento real do cliente → objetivo → quando.
     const QUANDO_OPTIONS = ["Quanto antes", "Este mês", "Próximos meses", "Só estou pesquisando"];
     const PRODUTO_FALLBACK_OPTIONS = ["Procedimento estético", "Consulta inicial", "Tratamento facial", "Outro"];
     const OBJETIVO_FALLBACK_OPTIONS = ["Melhorar minha aparência", "Tratar um problema específico", "Conhecer as opções", "Tirar dúvidas"];
 
     function buildDefaultQuestions(products, objetivoOptions) {
         const steps = [];
-        // Product question — always uses clickable options (never free text)
         steps.push({
             id: 'produto',
             text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
@@ -642,7 +466,6 @@
             type: 'options',
             options: (products && products.length) ? products : PRODUTO_FALLBACK_OPTIONS,
         });
-        // Objetivo question — always uses clickable options
         steps.push({
             id: 'objetivo',
             text: "Perfeito.",
@@ -651,18 +474,23 @@
             type: 'options',
             options: (objetivoOptions && objetivoOptions.length) ? objetivoOptions : OBJETIVO_FALLBACK_OPTIONS,
         });
-        steps.push({ id: 'quando', text: "Entendido.", subtext: "Quando pretende realizar?", label: "Momento para iniciar", type: 'options', options: QUANDO_OPTIONS });
+        steps.push({
+            id: 'quando',
+            text: "Entendido.",
+            subtext: "Quando pretende realizar?",
+            label: "Momento para iniciar",
+            type: 'options',
+            options: QUANDO_OPTIONS,
+        });
         return steps;
     }
 
-    // Perguntas fixas de contato — sempre aparecem por último, antes do redirecionamento
-    // final (WhatsApp/e-mail), em QUALQUER fluxo (padrão ou personalizado pelo admin).
-    // Garante que todo lead capturado tenha nome, telefone e data de nascimento reais.
     const CONTACT_QUESTIONS = [
-        { id: 'nome', text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?", type: 'text', placeholder: 'Digite seu nome…' },
-        { id: 'telefone', text: "Perfeito.", subtext: "Qual seu telefone com WhatsApp?", type: 'text', placeholder: '(21) 99999-9999' },
-        { id: 'nascimento', text: "Última pergunta.", subtext: "Qual sua data de nascimento?", type: 'text', placeholder: 'DD/MM/AAAA' },
+        { id: 'nome',       text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?",            label: "Nome",              type: 'text', placeholder: 'Digite seu nome…' },
+        { id: 'telefone',   text: "Perfeito.",                          subtext: "Qual seu telefone com WhatsApp?",    label: "WhatsApp",          type: 'text', placeholder: '(21) 99999-9999' },
+        { id: 'nascimento', text: "Última pergunta.",                    subtext: "Qual sua data de nascimento?",       label: "Data de nascimento", type: 'text', placeholder: 'DD/MM/AAAA' },
     ];
+
     function withContactQuestions(steps) {
         const semDuplicata = (steps || []).filter(q => !['nome', 'telefone', 'nascimento'].includes(q.id));
         return [...semDuplicata, ...CONTACT_QUESTIONS];
@@ -670,8 +498,6 @@
 
     let questions = withContactQuestions(buildDefaultQuestions([], null));
 
-    // Carrega configuração do produtor via ?uid= (multi-cliente).
-    // Se ausente ou falhar, mantém os valores padrão acima — não quebra o widget.
     async function loadMinichatConfig() {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
@@ -681,7 +507,6 @@
             const cfg = data?.config;
             if (cfg || data?.producer_name) {
                 if (cfg?.whatsapp_number) WHATSAPP_NUMBER = cfg.whatsapp_number;
-                // brand_name from config, or producer name from profiles as fallback
                 const resolvedName = cfg?.brand_name || data?.producer_name;
                 if (resolvedName) BRAND_NAME = resolvedName;
                 GREETING_NAME = cfg?.greeting_name || resolvedName || GREETING_NAME;
@@ -699,6 +524,7 @@
                             id: `q${i}`,
                             text: q.text || "",
                             subtext: q.subtext || "",
+                            label: q.subtext || q.text || `Pergunta ${i+1}`,
                             type: 'options',
                             options: (q.options || []).filter(Boolean),
                         }))
@@ -708,32 +534,28 @@
                         usingDefaultFlow = false;
                     }
                 }
-                const letter = document.getElementById("brandMarkLetter");
+                const letter = document.getElementById("avatarLetter");
                 const name = document.getElementById("brandName");
                 if (letter) letter.textContent = BRAND_NAME[0] || "v";
                 if (name) name.textContent = BRAND_NAME;
                 applyAvatar();
                 document.title = `${BRAND_NAME} — Atendimento Online`;
             }
-            // Só busca produtos reais se ainda estiver no fluxo padrão (perguntas personalizadas
-            // não usam a lista de produtos).
             if (usingDefaultFlow) {
                 let products = [];
                 try {
                     const rp = await fetch(`${JOSEPHPAY_API}/api/minichat/products?uid=${encodeURIComponent(uid)}`);
                     const dp = await rp.json();
                     products = Array.isArray(dp?.products) ? dp.products : [];
-                } catch (e) {}
+                } catch(e) {}
                 questions = buildDefaultQuestions(products, cfg?.objetivo_options);
             }
-        } catch (e) {
+        } catch(e) {
             console.warn("[minichat] config remota indisponível, usando padrão", e.message);
         }
         questions = withContactQuestions(questions);
     }
 
-    // Avisa que alguém abriu o Mini Chat de verdade — é o sinal real de "está ativo",
-    // diferente de só ter uma configuração salva no admin.
     function reportMinichatOpen() {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
@@ -744,7 +566,6 @@
         }).catch(() => {});
     }
 
-    // Envia o lead capturado para o CRM do produtor (fire-and-forget)
     function sendLeadToCRM() {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
@@ -760,67 +581,65 @@
         }).catch(() => {});
     }
 
-    const chatContainer = document.getElementById('chatContainer');
-    const completionOverlay = document.getElementById('completionOverlay');
-    const diagnosticCard = document.getElementById('diagnosticCard');
-    const whatsappBtn = document.getElementById('whatsappBtn');
-    const emailBtn = document.getElementById('emailBtn');
+    // DOM refs
+    const chatMessages = document.getElementById('chatMessages');
+    const progressBar  = document.getElementById('progressBar');
+    const resultOverlay = document.getElementById('resultOverlay');
+    const profileCard   = document.getElementById('profileCard');
+    const whatsappBtn   = document.getElementById('whatsappBtn');
+    const emailBtn      = document.getElementById('emailBtn');
     const redirectStatus = document.getElementById('redirectStatus');
-    const textInput = document.getElementById('textInput');
-    const sendBtn = document.getElementById('sendBtn');
+    const textInput     = document.getElementById('textInput');
+    const sendBtn       = document.getElementById('sendBtn');
+
+    function updateProgress() {
+        const pct = questions.length ? (currentStep / questions.length) * 100 : 0;
+        progressBar.style.width = pct + '%';
+    }
+
+    function getTime() {
+        return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
 
     function addMessage(text, isUser = false, subtext = null) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${isUser ? 'message-sent' : 'message-received'}`;
-
-        let content = text;
-        if (subtext) {
-            content += `<br><br><strong style="color: var(--text-primary)">${subtext}</strong>`;
-        }
-
-        messageDiv.innerHTML = content;
-        chatContainer.appendChild(messageDiv);
-        scrollToBottom();
+        const div = document.createElement('div');
+        div.className = `message ${isUser ? 'sent' : 'received'}`;
+        let html = text.replace(/\n/g, '<br>');
+        if (subtext) html += `<br><br><strong>${subtext}</strong>`;
+        html += `<span class="message-time">${getTime()}</span>`;
+        div.innerHTML = html;
+        chatMessages.appendChild(div);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     function showTyping() {
-        const typingDiv = document.createElement('div');
-        typingDiv.className = 'typing-indicator';
-        typingDiv.id = 'typingIndicator';
-        typingDiv.innerHTML = `
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-        `;
-        chatContainer.appendChild(typingDiv);
-        scrollToBottom();
+        const div = document.createElement('div');
+        div.className = 'typing';
+        div.id = 'typingEl';
+        div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+        chatMessages.appendChild(div);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     function hideTyping() {
-        const typing = document.getElementById('typingIndicator');
-        if (typing) typing.remove();
-    }
-
-    function scrollToBottom() {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        const el = document.getElementById('typingEl');
+        if (el) el.remove();
     }
 
     function showOptions(question) {
-        const optionsDiv = document.createElement('div');
-        optionsDiv.className = 'options-container';
-        optionsDiv.id = 'optionsContainer';
-
-        question.options.forEach((option, index) => {
+        const div = document.createElement('div');
+        div.className = 'options-container';
+        div.id = 'optionsContainer';
+        question.options.forEach((opt, i) => {
             const btn = document.createElement('button');
             btn.className = 'option-btn';
-            btn.textContent = option;
-            btn.style.animationDelay = `${index * 0.08}s`;
-            btn.onclick = () => selectAnswer(option, question.id);
-            optionsDiv.appendChild(btn);
+            btn.textContent = opt;
+            btn.style.animationDelay = `${i * 0.07}s`;
+            btn.onclick = () => selectAnswer(opt, question.id);
+            div.appendChild(btn);
         });
-
-        chatContainer.appendChild(optionsDiv);
-        scrollToBottom();
+        chatMessages.appendChild(div);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
     function showFreeTextInput(question) {
@@ -837,7 +656,6 @@
             selectAnswer(val, question.id);
         };
         const onKey = (e) => { if (e.key === 'Enter') submit(); };
-
         textInput.addEventListener('keydown', onKey);
         sendBtn.onclick = submit;
     }
@@ -851,15 +669,11 @@
     }
 
     function selectAnswer(value, id) {
-        // Remove opções (se houver) e desabilita o campo de texto livre (se estava em uso)
-        const options = document.getElementById('optionsContainer');
-        if (options) options.remove();
+        const opts = document.getElementById('optionsContainer');
+        if (opts) opts.remove();
         disableFreeTextInput();
 
-        // Adiciona resposta do usuário
         addMessage(value, true);
-
-        // Salva dados
         userData[id] = value;
 
         trackProgress({
@@ -869,149 +683,115 @@
             questionsTotal: questions.length,
         });
 
-        // Próxima pergunta
         currentStep++;
+        updateProgress();
 
         if (currentStep < questions.length) {
-            setTimeout(() => showQuestion(), 300);
+            setTimeout(() => showQuestion(), 350);
         } else {
             setTimeout(() => finishDiagnostic(), 500);
         }
     }
 
     function showQuestion() {
-        const question = questions[currentStep];
-
+        const q = questions[currentStep];
         showTyping();
-
         setTimeout(() => {
             hideTyping();
-            addMessage(question.text, false, question.subtext);
-            if (question.type === 'text') {
-                showFreeTextInput(question);
+            addMessage(q.text, false, q.subtext);
+            if (q.type === 'text') {
+                showFreeTextInput(q);
             } else {
-                showOptions(question);
+                showOptions(q);
             }
-        }, 1000);
-    }
-
-    function finishDiagnostic() {
-        showTyping();
-
-        setTimeout(() => {
-            hideTyping();
-            addMessage("Análise completa. ✓", false, "Preparando seu diagnóstico...");
-
-            setTimeout(() => {
-                showCompletionScreen();
-            }, 1200);
         }, 1200);
     }
 
-    function showCompletionScreen() {
-        // Preenche card de diagnóstico a partir das perguntas em uso (padrão ou personalizadas)
-        diagnosticCard.innerHTML = `
-            <div class="diagnostic-title">Seu Perfil</div>
-            ${questions.map(q => `
-                <div class="diagnostic-item">
-                    <span class="diagnostic-label">${q.label || q.subtext || q.text}</span>
-                    <span class="diagnostic-value">${userData[q.id] || ''}</span>
-                </div>
-            `).join('')}
-        `;
+    function finishDiagnostic() {
+        progressBar.style.width = '100%';
+        showTyping();
+        setTimeout(() => {
+            hideTyping();
+            addMessage("Análise completa. ✓", false, "Preparando seu diagnóstico...");
+            setTimeout(() => showResultOverlay(), 1200);
+        }, 1200);
+    }
 
-        // Mostra overlay
-        completionOverlay.classList.add('active');
+    function showResultOverlay() {
+        // Monta linhas do perfil dinamicamente
+        const rows = questions.map(q => {
+            const label = q.label || q.subtext || q.text || "";
+            const value = userData[q.id] || "";
+            return `<div class="profile-row">
+                <span class="profile-label">${label}</span>
+                <span class="profile-value">${value}</span>
+            </div>`;
+        }).join('');
+        profileCard.innerHTML = `<div class="profile-card-title">SEU PERFIL</div>${rows}`;
+        resultOverlay.style.display = 'flex';
     }
 
     function buildMessage() {
         if (usingDefaultFlow) {
-            return `Olá, tudo bem? Segue meu diagnóstico para avaliação:
-Nome: ${userData.nome || ''}
-Telefone: ${userData.telefone || ''}
-Data de nascimento: ${userData.nascimento || ''}
-Procedimento de interesse: ${userData.produto || ''}
-Objetivo: ${userData.objetivo || ''}
-Momento para iniciar: ${userData.quando || ''}
-Aguardo orientações 🤍`;
+            return `Olá, tudo bem? Segue meu diagnóstico para avaliação:\n\nNome: ${userData.nome||''}\nTelefone: ${userData.telefone||''}\nData de nascimento: ${userData.nascimento||''}\nProcedimento de interesse: ${userData.produto||''}\nObjetivo: ${userData.objetivo||''}\nMomento para iniciar: ${userData.quando||''}\n\nAguardo orientações 🤍`;
         }
         const linhas = questions.map(q => `• ${q.subtext || q.text}: ${userData[q.id] || ''}`).join('\n');
-        return `Olá ${GREETING_NAME},
-
-Acabei de fazer o pré diagnóstico digital.
-
-*Meu perfil:*
-${linhas}
-
-${CLOSING_MESSAGE}`;
+        return `Olá ${GREETING_NAME},\n\nAcabei de fazer o pré diagnóstico digital.\n\n*Meu perfil:*\n${linhas}\n\n${CLOSING_MESSAGE}`;
     }
 
     function sendToWhatsApp() {
-        // Estado de envio
-        whatsappBtn.classList.add('sending');
-        whatsappBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
+        whatsappBtn.textContent = 'Enviando...';
+        whatsappBtn.style.opacity = '0.8';
+        whatsappBtn.style.pointerEvents = 'none';
 
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'whatsapp' });
 
-        // Se o cliente configurou um link de redirecionamento próprio, usa ele.
-        // Senão, cai no comportamento padrão: abrir o WhatsApp com a mensagem do diagnóstico.
         const targetUrl = REDIRECT_LINK || `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
-        const abrindoTexto = REDIRECT_LINK ? 'Abrindo...' : 'Abrindo WhatsApp...';
-        const btnFinalHtml = REDIRECT_LINK ? '<span>↗</span><span>Continuar</span>' : '<span class="whatsapp-icon">📱</span><span>Abrir WhatsApp</span>';
+        const btnFinalHtml = REDIRECT_LINK ? '↗ Continuar' : '📱 Abrir WhatsApp';
 
-        // Feedback visual
         setTimeout(() => {
-            whatsappBtn.classList.remove('sending');
-            whatsappBtn.innerHTML = '<span>✓</span><span>Pronto!</span>';
-            whatsappBtn.style.background = 'var(--success-dark)';
+            whatsappBtn.innerHTML = '✓ Pronto!';
+            whatsappBtn.style.background = '#1DA851';
+            whatsappBtn.style.opacity = '1';
+            redirectStatus.textContent = REDIRECT_LINK ? 'Abrindo...' : 'Abrindo WhatsApp...';
 
-            redirectStatus.textContent = abrindoTexto;
-            redirectStatus.style.opacity = '1';
-
-            // Redireciona após breve delay para ver o check
             setTimeout(() => {
                 window.open(targetUrl, '_blank');
-
-                // Atualiza status
                 setTimeout(() => {
-                    redirectStatus.textContent = 'Se não abrir automaticamente, clique novamente no botão acima.';
+                    redirectStatus.textContent = 'Se não abrir, clique no botão novamente.';
                     whatsappBtn.innerHTML = btnFinalHtml;
+                    whatsappBtn.style.pointerEvents = 'auto';
                     whatsappBtn.onclick = () => window.open(targetUrl, '_blank');
                 }, 1000);
-
-            }, 800);
-
+            }, 700);
         }, 600);
     }
 
     function sendToEmail() {
-        emailBtn.classList.add('sending');
-        emailBtn.innerHTML = '<span style="opacity: 0">Enviando...</span>';
+        emailBtn.textContent = 'Enviando...';
+        emailBtn.style.pointerEvents = 'none';
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
         const subject = `Pré-diagnóstico digital — ${GREETING_NAME}`;
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage())}`;
         setTimeout(() => {
-            emailBtn.classList.remove('sending');
-            emailBtn.innerHTML = '<span>✓</span><span>Abrindo e-mail…</span>';
-            redirectStatus.textContent = 'Se não abrir automaticamente, clique novamente no botão acima.';
+            emailBtn.innerHTML = '✓ Abrindo e-mail…';
+            redirectStatus.textContent = 'Se não abrir, clique novamente.';
             redirectStatus.style.opacity = '1';
             window.location.href = mailtoUrl;
             setTimeout(() => {
-                emailBtn.innerHTML = '<span>✉️</span><span>Enviar por E-mail</span>';
+                emailBtn.innerHTML = '✉️ Enviar por E-mail';
+                emailBtn.style.pointerEvents = 'auto';
                 emailBtn.onclick = () => { window.location.href = mailtoUrl; };
             }, 1500);
         }, 500);
     }
 
-    // Inicialização
     window.onload = () => {
         reportMinichatOpen();
         loadMinichatConfig().finally(() => {
-            setTimeout(() => {
-                showQuestion();
-            }, 400);
+            setTimeout(() => showQuestion(), 400);
         });
     };
 </script>
