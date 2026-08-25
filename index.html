@@ -2012,10 +2012,12 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   };
   const addQuestion=()=>setQuestions(qs=>[...qs,{text:"",subtext:"",options:["","","",""]}]);
   const removeQuestion=i=>setQuestions(qs=>qs.filter((_,idx)=>idx!==i));
+  const moveQuestion=(i,dir)=>setQuestions(qs=>{const n=[...qs];const j=i+dir;if(j<0||j>=n.length)return n;[n[i],n[j]]=[n[j],n[i]];return n;});
   const updateQuestion=(i,field,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===i?{...q,[field]:val}:q));
   const updateOption=(qi,oi,val)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.map((o,oidx)=>oidx===oi?val:o)}:q));
   const addOption=qi=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:[...q.options,""]}:q));
   const removeOption=(qi,oi)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.filter((_,oidx)=>oidx!==oi)}:q));
+  const moveOption=(qi,oi,dir)=>setQuestions(qs=>qs.map((q,idx)=>{if(idx!==qi)return q;const opts=[...q.options];const j=oi+dir;if(j<0||j>=opts.length)return q;[opts[oi],opts[j]]=[opts[j],opts[oi]];return {...q,options:opts};}));
   const regenerarPergunta=async(qi)=>{
     setMsg("");
     setRegenerating(r=>({...r,[qi]:true}));
@@ -2053,7 +2055,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <span style={{color:MUTED,fontSize:11,fontWeight:700}}>Pergunta {qi+1}</span>
-              <div style={{display:"flex",alignItems:"center",gap:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <button onClick={()=>moveQuestion(qi,-1)} disabled={qi===0} title="Mover pergunta para cima" style={{background:"none",border:"none",color:qi===0?BDR:MUTED,fontSize:14,cursor:qi===0?"default":"pointer",padding:"0 2px",lineHeight:1}}>↑</button>
+                <button onClick={()=>moveQuestion(qi,1)} disabled={qi===questions.length-1} title="Mover pergunta para baixo" style={{background:"none",border:"none",color:qi===questions.length-1?BDR:MUTED,fontSize:14,cursor:qi===questions.length-1?"default":"pointer",padding:"0 2px",lineHeight:1}}>↓</button>
                 <button onClick={()=>regenerarPergunta(qi)} disabled={regenerating[qi]} title="Gerar com IA, com base nos dados deste cliente" style={{background:"none",border:"none",color:regenerating[qi]?MUTED:GOLD,fontSize:13,fontWeight:700,cursor:regenerating[qi]?"default":"pointer",fontFamily:F,padding:0,lineHeight:1}}>{regenerating[qi]?"…":"↻"}</button>
                 <button onClick={()=>removeQuestion(qi)} style={{background:"none",border:"none",color:RED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Remover</button>
               </div>
@@ -2061,9 +2065,11 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             <textarea value={q.text} onChange={e=>updateQuestion(qi,"text",e.target.value)} placeholder="Texto da mensagem (ex: Vamos fazer um diagnóstico rápido)" rows={2} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8,resize:"vertical"}}/>
             <input value={q.subtext} onChange={e=>updateQuestion(qi,"subtext",e.target.value)} placeholder="Pergunta objetiva (ex: Qual seu principal objetivo hoje?)" style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8}}/>
             {q.options.map((opt,oi)=>(
-              <div key={oi} style={{display:"flex",gap:6,marginBottom:6}}>
+              <div key={oi} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
                 <input value={opt} onChange={e=>updateOption(qi,oi,e.target.value)} placeholder={`Opção ${oi+1}`} style={{flex:1,background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F}}/>
-                {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} style={{background:"none",border:"none",color:MUTED,fontSize:14,cursor:"pointer",padding:"0 6px"}}>✕</button>}
+                <button onClick={()=>moveOption(qi,oi,-1)} disabled={oi===0} title="Mover opção para cima" style={{background:"none",border:"none",color:oi===0?BDR:MUTED,fontSize:13,cursor:oi===0?"default":"pointer",padding:"0 2px",lineHeight:1}}>↑</button>
+                <button onClick={()=>moveOption(qi,oi,1)} disabled={oi===q.options.length-1} title="Mover opção para baixo" style={{background:"none",border:"none",color:oi===q.options.length-1?BDR:MUTED,fontSize:13,cursor:oi===q.options.length-1?"default":"pointer",padding:"0 2px",lineHeight:1}}>↓</button>
+                {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} style={{background:"none",border:"none",color:MUTED,fontSize:14,cursor:"pointer",padding:"0 2px"}}>✕</button>}
               </div>
             ))}
             <button onClick={()=>addOption(qi)} style={{background:"none",border:`1px dashed ${BDR}`,borderRadius:8,padding:"5px 10px",color:MUTED,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,marginTop:2}}>+ Opção</button>
