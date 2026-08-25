@@ -2050,7 +2050,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             const area=nicho.trim()||"[descreva o nicho/área aqui]";
             const prompt=`Crie ${questions.length} perguntas de qualificação para o Mini Chat de diagnóstico digital do(a) ${nome}, que trabalha com: ${area}.\n\nCada pergunta deve ter:\n- Um texto curto de transição (ex: "Perfeito!", "Entendido.")\n- A pergunta objetiva em si\n- Exatamente 4 opções de resposta curtas (máx 5 palavras cada)\n\nRetorne SOMENTE um JSON puro, sem markdown, no formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
             navigator.clipboard.writeText(prompt).catch(()=>{});
-            alert("Prompt copiado! Cole no ChatGPT, copie a resposta JSON e clique em "Colar resposta do GPT" abaixo.");
+            alert('Prompt copiado! Cole no ChatGPT, copie a resposta JSON e clique em "Colar resposta do GPT" abaixo.');
           }} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>Copiar prompt pro GPT</button>
           <button onClick={()=>{setShowJsonImport(o=>!o);setJsonErr("");}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{showJsonImport?"▲ Fechar":"Colar resposta do GPT"}</button>
         </div>
