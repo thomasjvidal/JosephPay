@@ -2064,6 +2064,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
                 let raw=jsonInput.trim();
                 // Remove backticks/markdown code fences if GPT wrapped in ```json ... ```
                 raw=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
+                // Normalize curly/smart quotes that GPT or mobile keyboards insert
+                raw=raw.replace(/[“”]/g,'"').replace(/[‘’]/g,"'");
                 const parsed=JSON.parse(raw);
                 if(!Array.isArray(parsed)||!parsed.length){setJsonErr("JSON inválido: esperado um array de perguntas.");return;}
                 const qs=parsed.map((q,i)=>({
@@ -2368,6 +2370,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
             <KPICard compact label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
             <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="◈"/>
             <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="◉"/>
+            <KPICard compact label="Visitas ao site" value={String(c.visitas_total||0)} sub={c.visitas_hoje>0?`+${c.visitas_hoje} hoje`:"acumulado"} accent={GOLD} icon="◎"/>
+            <KPICard compact label="Interessados hoje" value={c.leads_hoje>0?`+${c.leads_hoje}`:"0"} sub="novos contatos hoje" accent={c.leads_hoje>0?GREEN:GOLD} icon="◈"/>
           </div>
           <VisitasClienteAdmin ownerId={c.id}/>
           <FunilClienteAdmin ownerId={c.id}/>
