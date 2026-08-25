@@ -3273,9 +3273,21 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
     if (currentContent.match(/<\/head>/i)) {
       newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
     } else if (/\.[jt]sx?$/.test(filePath)) {
-      // Arquivo React/JS — injeta via createElement no topo
-      const loader = `// JosephPay sensor\n(function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';document.head.appendChild(s);})();\n`;
-      newContent = loader + currentContent;
+      // ES module: inject AFTER the last import/require line so the IIFE doesn't
+      // appear before import statements (SyntaxError in strict ES modules / Vite).
+      const loader = `\n// JosephPay sensor\n(function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';document.head.appendChild(s);})();\n`;
+      const lines = currentContent.split('\n');
+      let lastImportLine = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (/^\s*(import\s|import\(|require\s*\()/.test(lines[i])) lastImportLine = i;
+      }
+      if (lastImportLine >= 0) {
+        lines.splice(lastImportLine + 1, 0, loader);
+        newContent = lines.join('\n');
+      } else {
+        // No imports found — append at end of file
+        newContent = currentContent + loader;
+      }
     } else {
       return res.status(400).json({ error: `Arquivo ${filePath} detectado mas não tem <\/head>. Copie a tag <script> manualmente antes de <\/head>.` });
     }
