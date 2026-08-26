@@ -2830,7 +2830,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       try {
         const fromStr = from.toISOString().slice(0, 10);
         const toStr = to.toISOString().slice(0, 10);
-        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM customer WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}' AND campaign.status != 'REMOVED'`);
         const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
       } catch (err) {
