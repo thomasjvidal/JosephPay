@@ -1531,7 +1531,7 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id")
+      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id,disabled_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1823,6 +1823,24 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
     res.json({ ok: true, ...updates });
   } catch (err) {
     console.error("[admin/producers profile]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ativa ou desativa um produtor (soft-delete: só seta/limpa disabled_at).
+// Requer migration_v34.sql aplicada no Supabase.
+app.post("/api/admin/producers/:id/toggle-active", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: current } = await supabase.from("profiles").select("disabled_at").eq("id", id).maybeSingle();
+    const nowDisabled = !!current?.disabled_at;
+    const update = nowDisabled
+      ? { disabled_at: null }
+      : { disabled_at: new Date().toISOString() };
+    const { error } = await supabase.from("profiles").update(update).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, active: nowDisabled });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -2247,6 +2265,43 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
   } catch (err) {
     console.error("[admin/producers minichat]", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Reinstala o arquivo redirect do Mini Chat no repositório do cliente usando
+// o caminho já salvo em github_minichat_path — útil para corrigir uid errado
+// sem precisar selecionar o caminho novamente.
+app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles")
+      .select("github_repo,github_minichat_path")
+      .eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Repositório não vinculado" });
+    const filePath = profile.github_minichat_path || "minichat.html";
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
+    let sha;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      sha = existing.data.sha;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: corrige UID do Mini Chat",
+      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }, { headers });
+    await supabase.from("profiles").update({ github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true, file_path: filePath });
+  } catch (err) {
+    console.error("[reinstall-minichat]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
   }
 });
 

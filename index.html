@@ -1373,10 +1373,21 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
   const [installing,setInstalling]=useState(false);
+  const [fixing,setFixing]=useState(false);
   const [detecting,setDetecting]=useState(false);
   const [sugestoes,setSugestoes]=useState([]);
   const [installedAt,setInstalledAt]=useState(c.github_minichat_installed_at||null);
   const [msg,setMsg]=useState("");
+  const corrigirUid=async()=>{
+    if(!c.github_repo)return;
+    setFixing(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/reinstall-minichat`,{method:'POST'});
+    setFixing(false);
+    if(d.error){setMsg("Erro: "+d.error);return;}
+    setInstalledAt(new Date().toISOString());
+    setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.`);
+    onUpdated&&onUpdated();
+  };
   const toFilePath=href=>{
     let p=(href||"").replace(/^\.\/|^\//,"");
     if(!p)return"";
@@ -1437,10 +1448,19 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminho do arquivo</div>
         <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
         {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')} — <span style={{fontFamily:"monospace"}}>{c.github_minichat_path||"minichat.html"}</span></div>}
+        {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{width:"100%",background:`${GOLD}12`,border:`1px solid ${GOLD}30`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:fixing?"default":"pointer",fontFamily:F,marginBottom:8}}>{fixing?"Corrigindo…":"🔧 Corrigir UID no repositório (Mini Chat mostra config errada?)"}</button>}
         <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>
         {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
+        <div style={{marginTop:12,background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"10px 12px"}}>
+          <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>⚡ O que precisa de deploy vs o que é instantâneo</div>
+          <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>
+            <b style={{color:TEXT}}>Precisa de deploy (Vercel ~1 min):</b> instalar/reinstalar este arquivo redirect no repositório.<br/>
+            <b style={{color:TEXT}}>Instantâneo (sem deploy):</b> nome, foto, WhatsApp, perguntas e e-mail — esses dados ficam no Supabase e o Mini Chat já carrega a versão mais recente a cada abertura.
+          </div>
+          {done&&<a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:8,color:GOLD,fontSize:11,fontWeight:700,textDecoration:"none"}}>Testar Mini Chat ao vivo ↗</a>}
+        </div>
       </div>)}
     </div>
   );
@@ -1924,7 +1944,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
-  const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
+  const [miniSaved,setMiniSaved]=useState(false);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
   const [maisOpcoes,setMaisOpcoes]=useState(false);
@@ -1955,7 +1975,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       business_context:businessContext.trim(),
       closing_message:closingMsg.trim(),
     })});
-    if(!d.error){setMiniSaved(true);}
+    if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),3000);}
   };
   const resetarSenha=async()=>{
     if(!window.confirm(`Gerar uma nova senha para ${c.name}? A senha antiga deixa de funcionar.`))return;
@@ -2049,7 +2069,10 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{height:14}}/>
       </>)}
 
-      <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={salvarMinichat} style={{flex:1,background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+        <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:100,padding:"11px 16px",color:MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,textDecoration:"none",whiteSpace:"nowrap"}}>Testar ↗</a>
+      </div>
       </div>)}
     </div>
   );
@@ -2318,6 +2341,15 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [showContatos,setShowContatos]=useState(false);
   const [avatarPreview,setAvatarPreview]=useState("");
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
+  const [isDisabled,setIsDisabled]=useState(!!c?.disabled_at);
+  const [togglingActive,setTogglingActive]=useState(false);
+  const toggleAtivo=async()=>{
+    if(!window.confirm(isDisabled?`Reativar ${c.name}?`:`Desativar ${c.name}? Ele não consegue mais fazer login.`))return;
+    setTogglingActive(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}/toggle-active`,{method:'POST'});
+    setTogglingActive(false);
+    if(!d.error){setIsDisabled(!isDisabled);onUpdated&&onUpdated();}
+  };
   useEffect(()=>{
     if(!c)return;
     apiCall(`/api/admin/sales?owner=${c.id}&limit=5`).then(d=>{if(d?.sales)setSales(d.sales);else setSales([]);});
@@ -2396,7 +2428,11 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
             )}
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,flexShrink:0}}>
-            <Tag status="ativo"/>
+            <button onClick={toggleAtivo} disabled={togglingActive} title={isDisabled?"Clique para reativar":"Clique para desativar"} style={{background:"none",border:"none",padding:0,cursor:"pointer"}}>
+              <span style={{background:isDisabled?"rgba(255,59,48,0.12)":(`${GOLD}18`),color:isDisabled?RED:GOLD,border:`1px solid ${isDisabled?"rgba(255,59,48,0.25)":(`${GOLD}30`)}`,fontSize:10,fontWeight:700,padding:"4px 11px",borderRadius:20,display:"inline-block",letterSpacing:"0.05em"}}>
+                {togglingActive?"…":isDisabled?"INATIVO":"ATIVO"}
+              </span>
+            </button>
             <div style={{display:"flex",gap:6}}>
               {c.site_url&&<a href={c.site_url.startsWith("http")?c.site_url:`https://${c.site_url}`} target="_blank" rel="noopener noreferrer" style={{background:"none",border:"1px solid rgba(255,255,255,0.12)",borderRadius:20,padding:"5px 12px",color:GOLD,fontSize:11,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>↗ Site</a>}
               {!editing&&<button onClick={()=>setEditing(true)} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"5px 12px",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>Editar</button>}
@@ -2537,7 +2573,7 @@ function ClientesAdmin(){
     </div>
   );
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
-  const isAtivo=c=>c.last_login_at&&(Date.now()-new Date(c.last_login_at).getTime())<30*86400000;
+  const isAtivo=c=>!c.disabled_at;
   const FILTROS=[{id:"todos",label:"Todos"},{id:"ativos",label:"Ativos"},{id:"inativos",label:"Inativos"}];
   const clientsFiltrados=(clients||[]).filter(c=>{
     if(filtro==="ativos")return isAtivo(c);
@@ -2578,7 +2614,7 @@ function ClientesAdmin(){
               <div style={{color:"rgba(255,255,255,0.28)",fontSize:10,marginTop:2}}>{fmtLastLogin(c.last_login_at)}</div>
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-              <Tag status={c.role==="client"?"ativo":c.status||"ativo"}/>
+              <Tag status={c.disabled_at?"inativo":"ativo"}/>
               <div style={{display:"flex",gap:6,fontSize:9.5,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 <span style={{color:MUTED}}><b style={{color:TEXT,fontWeight:700}}>{c.leads_total||0}</b> leads</span>
                 <span style={{color:"rgba(255,255,255,0.2)"}}>·</span>
