@@ -1572,21 +1572,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
       acc.total++; if (hoje) acc.hoje++;
     });
 
-    // Visitas ao site — query separada do has_gclid para não quebrar se a coluna não existir.
-    const { data: visitRows, error: visitErr } = await supabase.from("visits").select("owner_id,created_at").eq("event_type", "pageview").limit(100000);
-    if (visitErr) console.error("[admin/clients] visits query error:", visitErr.message, visitErr.details);
-    const visitasPorUsuario = {};
-    (visitRows || []).forEach(v => {
-      const acc = visitasPorUsuario[v.owner_id] || (visitasPorUsuario[v.owner_id] = { total: 0, hoje: 0 });
-      acc.total++; if (new Date(v.created_at) >= todayStart) acc.hoje++;
-    });
-    // Detecção de Google Ads via gclid — query separada, falha silenciosa se coluna não existir.
-    const googleAdsPorUsuario = {};
-    const { data: gclidRows } = await supabase.from("visits").select("owner_id").eq("event_type", "pageview").eq("has_gclid", true).limit(10000);
-    (gclidRows || []).forEach(v => { googleAdsPorUsuario[v.owner_id] = true; });
-
     const enriched = await Promise.all((data || []).map(async (p) => {
-      const [salesSum, prodCount, wapConnected] = await Promise.all([
+      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
         // whatsapp_instance só indica que a aba Disparos foi aberta uma vez (o nome da instância
@@ -1599,9 +1586,13 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
             return st.instance?.state === "open";
           } catch { return false; }
         })(),
+        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview"),
+        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").gte("created_at", todayStart.toISOString()),
+        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").eq("has_gclid", true).then(r => r.count > 0, () => false),
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
+      const vtotal = visitTotal.count || 0;
       return {
         ...p,
         vol: Math.round(vol * 100) / 100,
@@ -1615,19 +1606,14 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         leads_hoje: leadsPorUsuario[p.id]?.hoje || 0,
         clientes_total: clientesPorUsuario[p.id]?.total || 0,
         clientes_hoje: clientesPorUsuario[p.id]?.hoje || 0,
-        visitas_total: visitasPorUsuario[p.id]?.total || 0,
-        visitas_hoje: visitasPorUsuario[p.id]?.hoje || 0,
+        visitas_total: vtotal,
+        visitas_hoje: visitHoje.count || 0,
         conn: {
           whatsapp: wapConnected,
-          // "Site" conectado = o sensor foi instalado por um dos nossos botões OU já existe
-          // visita de verdade registrada pra esse cliente (prova de que está funcionando,
-          // mesmo que tenha sido configurado manualmente, fora do nosso fluxo automático).
-          // Só ter a URL cadastrada NÃO conta mais sozinho — isso dava falso positivo
-          // (cliente "conectado" só por ter digitado o site, sem o sensor existir de verdade).
-          site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || !!visitasPorUsuario[p.id]?.total,
+          site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || vtotal > 0,
           email:    !!p.email_connected,
           minichat: !!minichatAtivoPorUsuario[p.id],
-          googleAds: !!googleAdsPorUsuario[p.id],
+          googleAds: !!hasGclid,
         },
       };
     }));
