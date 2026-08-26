@@ -1850,6 +1850,49 @@ app.get("/api/admin/producers/:id/disparos", requireAuth, requireAdmin, async (r
   res.json(data?.disparos || []);
 });
 
+app.patch("/api/admin/producers/:id/disparos", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!Array.isArray(req.body)) return res.status(400).json({ error: "Array esperado" });
+  const { error } = await supabase.from("profiles").update({ disparos: req.body }).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+app.patch("/api/admin/producers/:pid/customers/:cid", requireAuth, requireAdmin, async (req, res) => {
+  const { pid, cid } = req.params;
+  const { name, phone, email, birthday, status } = req.body;
+  const updates = {};
+  if (name !== undefined) updates.name = String(name).trim();
+  if (phone !== undefined) updates.phone = String(phone || "").trim() || null;
+  if (email !== undefined) updates.email = String(email || "").trim() || null;
+  if (birthday !== undefined) updates.birthday = birthday || null;
+  if (status !== undefined) updates.status = status;
+  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
+  const { error } = await supabase.from("customers").update(updates).eq("id", cid).eq("owner_id", pid);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/producers/:pid/customers/:cid", requireAuth, requireAdmin, async (req, res) => {
+  const { pid, cid } = req.params;
+  const { error } = await supabase.from("customers")
+    .update({ deleted_at: new Date().toISOString() }).eq("id", cid).eq("owner_id", pid);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+app.patch("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { name, price } = req.body;
+  const updates = {};
+  if (name !== undefined) updates.name = String(name).trim();
+  if (price !== undefined) updates.price = Number(price);
+  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
+  const { error } = await supabase.from("products").update(updates).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // Nota privada do admin sobre esse produtor — fica numa tabela própria
 // (producer_notes), nunca em profiles, pra não vazar pro próprio produtor.
 app.get("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (req, res) => {

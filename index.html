@@ -1811,31 +1811,80 @@ function AniversariosClienteAdmin({ownerId}){
 function DisparosClienteAdmin({ownerId}){
   const [disparos,setDisparos]=useState(null);
   const [open,setOpen]=useState(false);
+  const [saving,setSaving]=useState(null);
+  const [globalSaved,setGlobalSaved]=useState(false);
   useEffect(()=>{
     if(!ownerId||!open||disparos!==null)return;
-    apiCall(`/api/admin/producers/${ownerId}/disparos`).then(d=>{setDisparos(Array.isArray(d)?d:[]);});
+    apiCall(`/api/admin/producers/${ownerId}/disparos`).then(d=>{setDisparos(Array.isArray(d)?d.map(x=>({...x,_open:false})):[]);});
   },[ownerId,open]);
+  const upd=(i,patch)=>setDisparos(p=>p.map((d,j)=>j===i?{...d,...patch}:d));
+  const salvarTodos=async()=>{
+    setSaving("all");
+    const payload=(disparos||[]).map(({_open,...rest})=>rest);
+    const d=await apiCall(`/api/admin/producers/${ownerId}/disparos`,{method:'PATCH',body:JSON.stringify(payload)});
+    setSaving(null);
+    if(!d.error){setGlobalSaved(true);setTimeout(()=>setGlobalSaved(false),2500);}
+  };
+  const addDisparo=()=>{
+    const novo={name:"Novo disparo",on:false,live:false,msg:"",dias:"",hora:"09:00",canal:"whatsapp",_open:true};
+    setDisparos(p=>[...(p||[]),novo]);
+  };
+  const remover=(i)=>{if(!window.confirm("Remover este disparo?"))return;setDisparos(p=>p.filter((_,j)=>j!==i));};
+  const inputSt={width:"100%",background:CARD,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <span style={{color:TEXT,fontWeight:700,fontSize:14}}>⚡ Disparos automáticos</span>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:"transform .2s",transform:open?"rotate(180deg)":"rotate(0deg)"}}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <div style={{display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
+          {open&&<button onClick={addDisparo} title="Novo disparo" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:GOLD,fontSize:16,cursor:"pointer",lineHeight:1}}>+</button>}
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:"transform .2s",transform:open?"rotate(180deg)":"rotate(0deg)"}} onClick={()=>setOpen(o=>!o)}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
       </div>
       {open&&(
         <>
-          {disparos===null&&<div style={{padding:"12px 18px",color:MUTED,fontSize:13}}>Carregando…</div>}
-          {disparos!==null&&disparos.length===0&&<div style={{padding:"12px 18px",color:MUTED,fontSize:13,borderTop:`1px solid ${BDR}`}}>Nenhum disparo configurado.</div>}
+          {disparos===null&&<div style={{padding:"12px 18px",color:MUTED,fontSize:13,borderTop:`1px solid ${BDR}`}}>Carregando…</div>}
+          {disparos!==null&&disparos.length===0&&<div style={{padding:"12px 18px",color:MUTED,fontSize:13,borderTop:`1px solid ${BDR}`}}>Nenhum disparo. Clique em + para criar.</div>}
           {(disparos||[]).map((d,i)=>(
-            <div key={i} style={{padding:"11px 18px",borderTop:`1px solid ${BDR}`,display:"flex",alignItems:"center",gap:12}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{d.name}</div>
-                <div style={{color:MUTED,fontSize:11,marginTop:2}}>{d.canal==='email'?'E-mail':'WhatsApp'}{d.dias?` · ${d.dias}d após compra`:''}{d.hora?` · ${d.hora}`:''}</div>
+            <div key={i} style={{borderTop:`1px solid ${BDR}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer"}} onClick={()=>upd(i,{_open:!d._open})}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{d.name||"Sem nome"}</div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:2}}>{d.canal==='email'?'E-mail':'WhatsApp'}{d.dias?` · ${d.dias}d após compra`:''}{d.hora?` · ${d.hora}`:''}</div>
+                </div>
+                <span style={{background:(d.live&&d.on)?`${GREEN}15`:CARD2,color:(d.live&&d.on)?GREEN:MUTED,border:`1px solid ${(d.live&&d.on)?GREEN+"30":BDR}`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>
+                  {(d.live&&d.on)?'Ativo':'Inativo'}
+                </span>
+                <button onClick={e=>{e.stopPropagation();upd(i,{_open:!d._open});}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:12,cursor:"pointer",flexShrink:0}}>✎</button>
               </div>
-              <span style={{background:(d.live&&d.on)?`${GREEN}15`:CARD2,color:(d.live&&d.on)?GREEN:MUTED,border:`1px solid ${(d.live&&d.on)?GREEN+"30":BDR}`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>
-                {(d.live&&d.on)?'Ativo':'Inativo'}
-              </span>
+              {d._open&&(
+                <div style={{padding:"0 18px 14px",display:"flex",flexDirection:"column",gap:10}}>
+                  <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Nome</div><input style={inputSt} value={d.name} onChange={e=>upd(i,{name:e.target.value})}/></div>
+                  <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Canal</div>
+                    <div style={{display:"flex",gap:6}}>
+                      {[["whatsapp","WhatsApp"],["email","E-mail"]].map(([v,l])=>(
+                        <button key={v} onClick={()=>upd(i,{canal:v})} style={{flex:1,padding:"7px",borderRadius:10,border:`1px solid ${d.canal===v?GOLD+"55":BDR}`,background:d.canal===v?`${GOLD}14`:"transparent",color:d.canal===v?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Hora do disparo</div><input type="time" style={{...inputSt,maxWidth:120}} value={d.hora||"09:00"} onChange={e=>upd(i,{hora:e.target.value})}/></div>
+                  <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Dias após a compra (deixe vazio para aniversário)</div><input style={{...inputSt,maxWidth:100}} value={d.dias||""} onChange={e=>upd(i,{dias:e.target.value})}/></div>
+                  <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Mensagem</div><textarea rows={3} style={{...inputSt,resize:"vertical"}} value={d.msg} onChange={e=>upd(i,{msg:e.target.value})}/></div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>upd(i,{on:!d.on})} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${d.on?GOLD+"55":BDR}`,background:d.on?`${GOLD}14`:"transparent",color:d.on?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{d.on?"✓ Ativo":"Inativo"}</button>
+                    <button onClick={()=>upd(i,{live:!d.live})} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${d.live?GREEN+"55":BDR}`,background:d.live?`${GREEN}14`:"transparent",color:d.live?GREEN:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{d.live?"● Ao vivo":"○ Pausado"}</button>
+                    <button onClick={()=>remover(i)} title="Remover" style={{padding:"8px 12px",borderRadius:10,border:`1px solid ${RED}40`,background:"transparent",color:RED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>✕</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+          {disparos!==null&&(
+            <div style={{padding:"12px 18px",borderTop:`1px solid ${BDR}`}}>
+              <button onClick={salvarTodos} disabled={saving==="all"} style={{width:"100%",background:globalSaved?`${GREEN}15`:GOLD,border:globalSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:10,color:globalSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving==="all"?"default":"pointer",fontFamily:F}}>
+                {saving==="all"?"Salvando…":globalSaved?"✓ Salvo":"Salvar disparos"}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -1847,6 +1896,10 @@ function ProdutosDoCliente({ownerId,nome}){
   const [showCriar,setShowCriar]=useState(false);
   const [refresh,setRefresh]=useState(0);
   const [copiedId,setCopiedId]=useState(null);
+  const [editId,setEditId]=useState(null);
+  const [editNome,setEditNome]=useState("");
+  const [editPrice,setEditPrice]=useState("");
+  const [editSaving,setEditSaving]=useState(false);
   useEffect(()=>{
     if(!ownerId)return;
     apiCall(`/api/admin/products?owner=${ownerId}`).then(d=>{if(d?.products)setProdutos(d.products);else setProdutos([]);});
@@ -1854,6 +1907,15 @@ function ProdutosDoCliente({ownerId,nome}){
   const copiar=(id)=>{
     navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${id}`).then(()=>{setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);});
   };
+  const abrirEditar=(p)=>{setEditId(p.id);setEditNome(p.name||"");setEditPrice(p.price?.toString()||"");};
+  const salvarProduto=async()=>{
+    if(!editId||!editNome.trim())return;
+    setEditSaving(true);
+    const d=await apiCall(`/api/admin/products/${editId}`,{method:'PATCH',body:JSON.stringify({name:editNome.trim(),price:parseFloat(editPrice)||0})});
+    setEditSaving(false);
+    if(!d.error){setProdutos(p=>(p||[]).map(x=>x.id===editId?{...x,name:editNome.trim(),price:parseFloat(editPrice)||0}:x));setEditId(null);}
+  };
+  const inputSt={width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
       {showCriar&&<CriarProdutoModal ownerId={ownerId} onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
@@ -1864,13 +1926,26 @@ function ProdutosDoCliente({ownerId,nome}){
       {produtos===null&&[1,2].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div></div>))}
       {produtos!==null&&produtos.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produto cadastrado ainda.</div>}
       {(produtos||[]).map((p,i)=>(
-        <div key={p.id||i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:i<(produtos.length-1)?`1px solid ${BDR}`:"none"}}>
-          <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(p.name||"?")[0]}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{p.name}</div>
-            <div style={{color:MUTED,fontSize:11,marginTop:2}}>{fmtBRL(p.price)} · {p.totalVendas||0} venda(s) · {fmtBRL(p.receitaMes)} este mês</div>
+        <div key={p.id||i} style={{borderBottom:i<(produtos.length-1)?`1px solid ${BDR}`:"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px"}}>
+            <div style={{width:38,height:38,borderRadius:12,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:TEXT,flexShrink:0}}>{(p.name||"?")[0]}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{p.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{fmtBRL(p.price)} · {p.totalVendas||0} venda(s) · {fmtBRL(p.receitaMes)} este mês</div>
+            </div>
+            <button onClick={()=>copiar(p.id)} style={{background:copiedId===p.id?`${GREEN}18`:CARD2,border:`1px solid ${copiedId===p.id?GREEN+"40":BDR}`,color:copiedId===p.id?GREEN:MUTED,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{copiedId===p.id?"✓ Copiado":"Copiar link"}</button>
+            <button onClick={()=>abrirEditar(p)} title="Editar produto" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
           </div>
-          <button onClick={()=>copiar(p.id)} style={{background:copiedId===p.id?`${GREEN}18`:CARD2,border:`1px solid ${copiedId===p.id?GREEN+"40":BDR}`,color:copiedId===p.id?GREEN:MUTED,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{copiedId===p.id?"✓ Copiado":"Copiar link"}</button>
+          {editId===p.id&&(
+            <div style={{padding:"0 18px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Nome do produto</div><input style={inputSt} value={editNome} onChange={e=>setEditNome(e.target.value)}/></div>
+              <div><div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Preço (R$)</div><input type="number" step="0.01" style={{...inputSt,maxWidth:140}} value={editPrice} onChange={e=>setEditPrice(e.target.value)}/></div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={salvarProduto} disabled={editSaving} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:9,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:editSaving?"default":"pointer",fontFamily:F}}>{editSaving?"Salvando…":"Salvar"}</button>
+                <button onClick={()=>setEditId(null)} style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:"9px 16px",color:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>Cancelar</button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -1881,6 +1956,13 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
   const [open,setOpen]=useState(false);
   const [lista,setLista]=useState(null);
   const [filtro,setFiltro]=useState("todos");
+  const [sel,setSel]=useState(null);
+  const [editForm,setEditForm]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [deleting,setDeleting]=useState(false);
+  const [err,setErr]=useState("");
+  const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const todayMid=(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate());})();
   useEffect(()=>{
     if(!ownerId||!open||lista!==null)return;
     apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{if(d?.customers)setLista(d.customers);else setLista([]);});
@@ -1897,7 +1979,73 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`clientes-${(nome||'cliente').toLowerCase().replace(/\s+/g,'-')}.csv`;a.click();
   };
+  const abrirEdicao=c=>{setSel(c);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',status:c.status||'lead'});setErr("");};
+  const fechar=()=>{setSel(null);setEditForm(null);setErr("");};
+  const salvar=async()=>{
+    if(!sel||!editForm.name.trim())return;
+    setSaving(true);setErr("");
+    const d=await apiCall(`/api/admin/producers/${ownerId}/customers/${sel.id}`,{method:'PATCH',body:JSON.stringify(editForm)});
+    setSaving(false);
+    if(d.error){setErr(d.error);return;}
+    setLista(p=>(p||[]).map(c=>c.id===sel.id?{...c,...editForm}:c));
+    fechar();
+  };
+  const excluir=async()=>{
+    if(!sel)return;
+    if(!window.confirm(`Excluir ${sel.name}? Esta ação não pode ser desfeita.`))return;
+    setDeleting(true);
+    const d=await apiCall(`/api/admin/producers/${ownerId}/customers/${sel.id}`,{method:'DELETE'});
+    setDeleting(false);
+    if(d.error){setErr(d.error);return;}
+    setLista(p=>(p||[]).filter(c=>c.id!==sel.id));
+    fechar();
+  };
+  const bdayLabel=birthday=>{
+    if(!birthday)return null;
+    const b=new Date(birthday+'T00:00:00');
+    const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
+    if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
+    const dias=Math.round((nx-todayMid)/864e5);
+    return dias===0?'🎂 hoje!':dias<=7?`🎂 em ${dias}d`:`${b.getDate()} ${MO[b.getMonth()]}`;
+  };
+  const inputSt={width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
+    <>
+    {sel&&(
+      <div onClick={fechar} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:300,display:"flex",alignItems:"flex-end"}}>
+        <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 22px 44px",maxHeight:"92vh",overflowY:"auto"}}>
+          <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 18px"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+            <div style={{width:48,height:48,borderRadius:14,background:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:18,color:TEXT,flexShrink:0}}>{(editForm.name||sel.name||"?")[0]}</div>
+            <div>
+              <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{editForm.name||sel.name}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{stLabel(sel.status)} · {srcLabel(sel.source)} · {sel.created_at?new Date(sel.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
+            {[{k:"name",l:"Nome"},{k:"phone",l:"Telefone",t:"tel"},{k:"email",l:"E-mail",t:"email"},{k:"birthday",l:"Aniversário",t:"date"}].map(f=>(
+              <div key={f.k}>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>{f.l}</div>
+                <input type={f.t||"text"} value={editForm[f.k]} onChange={e=>setEditForm(p=>({...p,[f.k]:e.target.value}))} style={inputSt}/>
+              </div>
+            ))}
+            <div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Status</div>
+              <div style={{display:"flex",gap:6}}>
+                {[["lead","Interessado"],["cliente","Cliente"],["assinante","Assinante"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setEditForm(p=>({...p,status:v}))} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${editForm.status===v?GOLD+"55":BDR}`,background:editForm.status===v?`${GOLD}14`:"transparent",color:editForm.status===v?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{l}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {err&&<div style={{color:RED,fontSize:11,marginBottom:10}}>{err}</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <button onClick={salvar} disabled={saving} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:13,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":"Salvar alterações"}</button>
+            <button onClick={excluir} disabled={deleting} style={{width:"100%",background:"transparent",border:`1px solid ${RED}40`,borderRadius:100,padding:11,color:RED,fontWeight:700,fontSize:13,cursor:deleting?"default":"pointer",fontFamily:F}}>{deleting?"Excluindo…":"Excluir contato"}</button>
+          </div>
+        </div>
+      </div>
+    )}
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Clientes do produtor" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
@@ -1914,24 +2062,30 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
             </div>
             {filtrada.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum contato aqui ainda.</div>}
             <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
-              {filtrada.map(c=>(
+              {filtrada.map(c=>{
+                const bl=bdayLabel(c.birthday);
+                return(
                 <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 12px"}}>
                   <div style={{width:34,height:34,borderRadius:10,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div>
                     <div style={{color:MUTED,fontSize:11,marginTop:2}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
+                    {bl&&<div style={{color:bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}>{bl}</div>}
                   </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{textAlign:"right",flexShrink:0,marginRight:4}}>
                     <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
                     <div style={{color:MUTED,fontSize:10,marginTop:2}}>{c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"}</div>
                   </div>
+                  <button onClick={()=>abrirEdicao(c)} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
       </div>)}
     </div>
+    </>
   );
 }
 
