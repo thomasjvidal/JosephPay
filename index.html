@@ -1884,7 +1884,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
-  const [miniSaved,setMiniSaved]=useState(false);
+  const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
   const [maisOpcoes,setMaisOpcoes]=useState(false);
@@ -1913,7 +1913,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       business_context:businessContext.trim(),
       closing_message:closingMsg.trim(),
     })});
-    if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),2000);}
+    if(!d.error){setMiniSaved(true);}
   };
   const resetarSenha=async()=>{
     if(!window.confirm(`Gerar uma nova senha para ${c.name}? A senha antiga deixa de funcionar.`))return;
@@ -2005,7 +2005,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
-  const [saved,setSaved]=useState(false);
+  const [saved,setSaved]=useState(!!c.minichat_config?.questions?.length);
   const [msg,setMsg]=useState("");
   const [regenerating,setRegenerating]=useState({});
   const [gerandoTudo,setGerandoTudo]=useState(false);
@@ -2042,7 +2042,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({questions})});
     setSaving(false);
     if(d.error){setMsg(d.error);return;}
-    setSaved(true);setTimeout(()=>setSaved(false),2000);
+    setSaved(true);
   };
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>

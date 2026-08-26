@@ -2967,7 +2967,7 @@ async function readGithubFile(repo, filePath, headers, token) {
 // só <a href>, porque muitos botões (principalmente os que abrem WhatsApp) são feitos
 // via onClick + window.open/window.location em vez de um <a> de verdade. Chama registra()
 // pra cada ocorrência encontrada.
-function extractLinksFromContent(content, filePath, registra) {
+function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   let m;
   const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   while ((m = reHref.exec(content))) registra(m[1], m[2], filePath);
@@ -2976,6 +2976,14 @@ function extractLinksFromContent(content, filePath, registra) {
   // href/to passado como expressão JSX com string estática: href={"..."} ou href={'...'}
   const reHrefExpr = /\b(?:href|to)\s*=\s*\{\s*["'`]([^"'`]+)["'`]\s*\}/gi;
   while ((m = reHrefExpr.exec(content))) registra(m[1], "(atributo href={...})", filePath);
+  // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível
+  const reHrefVar = /\b(?:href|to)\s*=\s*\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  while ((m = reHrefVar.exec(content))) {
+    const varName = m[1];
+    const resolved = varMap[varName];
+    if (resolved) registra(resolved, `(variável: ${varName})`, filePath);
+    else registra(`{${varName}}`, `(variável: ${varName})`, filePath);
+  }
   // botão que redireciona via JS em vez de <a href> — comum pra abrir WhatsApp num onClick
   const reWinOpen = /window\.open\(\s*["'`]([^"'`]+)["'`]/gi;
   while ((m = reWinOpen.exec(content))) registra(m[1], "(window.open no código)", filePath);
@@ -3021,6 +3029,20 @@ async function scanRepoJsxLinks(repo, headers, token) {
     if (text && groups[key].samples.length < 3 && !groups[key].samples.includes(text)) groups[key].samples.push(text);
   };
 
+  // Pré-lê arquivos de constantes (lib/site.ts, constants.ts, etc.) pra resolver
+  // variáveis como href={WHATSAPP_URL} que o scan de JSX não consegue ver diretamente.
+  const varMap = {};
+  const constFiles = arquivos.filter(f => /\b(site|constants?|config|urls?)\.(ts|js)$/i.test(f.path));
+  await Promise.all(constFiles.map(async f => {
+    try {
+      const c = await readGithubFile(repo, f.path, headers, token);
+      // export const VARNAME = "https://..." (valor pode estar na mesma linha ou na seguinte)
+      const reConst = /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`](https?:\/\/[^"'`\n]+)["'`]/g;
+      let cm;
+      while ((cm = reConst.exec(c))) varMap[cm[1]] = cm[2];
+    } catch {}
+  }));
+
   // Processa em lotes pra não estourar o rate limit da API do GitHub nem demorar demais.
   const LOTE = 10;
   for (let i = 0; i < arquivos.length; i += LOTE) {
@@ -3029,7 +3051,7 @@ async function scanRepoJsxLinks(repo, headers, token) {
       let content;
       try { content = await readGithubFile(repo, item.path, headers, token); }
       catch { return; }
-      extractLinksFromContent(content, item.path, registra);
+      extractLinksFromContent(content, item.path, registra, varMap);
     }));
   }
   return Object.values(groups).sort((a, b) => b.count - a.count);
