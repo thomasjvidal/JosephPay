@@ -1372,10 +1372,37 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
 function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
-  const [editingPath,setEditingPath]=useState(false);
   const [installing,setInstalling]=useState(false);
+  const [detecting,setDetecting]=useState(false);
+  const [sugestoes,setSugestoes]=useState([]);
   const [installedAt,setInstalledAt]=useState(c.github_minichat_installed_at||null);
   const [msg,setMsg]=useState("");
+  const toFilePath=href=>{
+    let p=(href||"").replace(/^\.\/|^\//,"");
+    if(!p)return"";
+    if(p.endsWith("/"))return p+"index.html";
+    if(!p.includes(".")&&!p.includes("#"))return p+"/index.html";
+    return p;
+  };
+  const detectar=async()=>{
+    if(!c.github_repo)return;
+    setDetecting(true);setSugestoes([]);setMsg("");
+    const d=await apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}`);
+    setDetecting(false);
+    if(d.error){setMsg("Erro ao escanear: "+d.error);return;}
+    const links=d.links||[];
+    const internal=links.filter(l=>{
+      const h=l.href||"";
+      return !h.startsWith("http")&&!h.startsWith("mailto")&&!h.startsWith("tel")&&!h.startsWith("#")&&!h.startsWith("{")&&h.length>1;
+    });
+    const keywords=["minichat","mini-chat","mini_chat","chat","contact","contato","agendar","conversa","falar","atendimento"];
+    const priority=internal.filter(l=>keywords.some(k=>l.href.toLowerCase().includes(k)));
+    const others=internal.filter(l=>!keywords.some(k=>l.href.toLowerCase().includes(k)));
+    const candidatos=[...priority,...others].slice(0,8);
+    const paths=[...new Set(candidatos.map(l=>toFilePath(l.href)))].filter(p=>p&&!p.startsWith("http")).slice(0,5);
+    if(paths.length)setSugestoes(paths);
+    else setMsg("Nenhum caminho interno detectado. Os botões do site podem apontar direto pra WhatsApp — use o card 'Botões do site' para trocá-los.");
+  };
   const instalar=async()=>{
     if(!c.github_repo||!minichatPath.trim())return;
     setInstalling(true);setMsg("");
@@ -1383,29 +1410,37 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     setInstalling(false);
     if(d.error){setMsg(d.error);return;}
     setInstalledAt(new Date().toISOString());
-    setMsg(`✓ Página criada em ${d.file_path}.`);
+    setSugestoes([]);
+    setMsg(`✓ Instalado em ${d.file_path}. O site já redireciona para o Mini Chat.`);
     onUpdated&&onUpdated();
   };
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página no repositório do cliente que abre o Mini Chat. Quando você atualizar o Mini Chat no JosephPay, todos os clientes recebem automaticamente.</div>
-        <div style={{background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
-          <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>💡 Como definir o caminho certo</div>
-          <div style={{color:MUTED,fontSize:11,lineHeight:1.6}}>O arquivo precisa ser criado <b style={{color:TEXT}}>no mesmo caminho que os botões do site já linkam</b>. Veja o código-fonte do site para descobrir qual é.<br/>Exemplos comuns:<br/>• Botão vai para <b style={{color:TEXT}}>/minichat.html</b> → caminho: <b style={{color:TEXT}}>minichat.html</b><br/>• Botão vai para <b style={{color:TEXT}}>/mini-chat/</b> → caminho: <b style={{color:TEXT}}>mini-chat/index.html</b><br/>• Botão vai para <b style={{color:TEXT}}>/Mini-Chat-Original/</b> → caminho: <b style={{color:TEXT}}>Mini-Chat-Original/index.html</b></div>
-        </div>
-        {!editingPath?(
-          <div style={{color:MUTED,fontSize:12,marginBottom:10}}>
-            Arquivo: <b style={{color:TEXT}}>{minichatPath}</b>{" "}
-            <button onClick={()=>setEditingPath(true)} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,textDecoration:"underline",padding:0}}>mudar</button>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria um arquivo no repositório do cliente que abre o Mini Chat. O arquivo precisa estar no caminho que os botões do site já linkam — use "Detectar" para descobrir automaticamente.</div>
+        <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:detecting?GOLD:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
+          {detecting?"🔍 Detectando caminhos do site…":"🔍 Detectar caminhos automaticamente"}
+        </button>
+        {sugestoes.length>0&&(
+          <div style={{marginBottom:12}}>
+            <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados — clique para selecionar:</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {sugestoes.map(s=>(
+                <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,textAlign:"left",fontFamily:"monospace"}}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
-        ):(
-          <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
         )}
-        {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
-        <button onClick={instalar} disabled={!c.github_repo||installing} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:installing?"default":"pointer",fontFamily:F}}>{installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}</button>
-        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10}}>{msg}</div>}
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminho do arquivo</div>
+        <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
+        {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')} — <span style={{fontFamily:"monospace"}}>{c.github_minichat_path||"minichat.html"}</span></div>}
+        <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
+          {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
+        </button>
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
       </div>)}
     </div>
   );
@@ -2202,7 +2237,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   const siteOk=!!((c.github_repo&&c.github_file_path)||c.gtm_container_id||c.conn?.site);
   const sensorOk=!!(c.github_sensor_installed_at||c.gtm_sensor_installed_at||c.conn?.site);
   const minichatInstOk=metodoAtual==="github"?!!(c.github_minichat_installed_at||c.conn?.minichat):null; // null = não se aplica (só existe via GitHub hoje)
-  const configOk=!!(c.minichat_config?.whatsapp_number||c.conn?.minichat);
+  const configOk=!!(c.minichat_config?.whatsapp_number||c.minichat_config?.email_destino||c.conn?.minichat);
   const emailOk=!!c.conn?.email;
   const [botoesOk,setBotoesOk]=useState(null); // null = não verificado ainda / não se aplica
   useEffect(()=>{
