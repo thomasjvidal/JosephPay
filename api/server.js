@@ -27,15 +27,20 @@ app.options("/api/track/visit", (req, res) => {
   res.sendStatus(204);
 });
 
+// Domínios Vercel conhecidos do JosephPay (deploy e previews) — whitelist explícita
+// em vez de *.vercel.app para evitar que qualquer outro app Vercel faça requests autenticados.
+const ALLOWED_VERCEL = (process.env.ALLOWED_VERCEL_ORIGINS || "")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     const ok =
       origin === process.env.FRONTEND_ORIGIN ||
-      origin.endsWith(".vercel.app") ||
       origin.startsWith("http://localhost") ||
       origin === "https://josephpay.com" ||
-      origin === "https://www.josephpay.com";
+      origin === "https://www.josephpay.com" ||
+      ALLOWED_VERCEL.includes(origin);
     cb(null, ok);
   },
   credentials: true,
@@ -689,7 +694,26 @@ app.post("/api/asaas/webhook", async (req, res) => res.json({ received: true }))
 //   URL: https://josephpay-production.up.railway.app/api/mp/webhook
 //   Eventos: payment (created, updated)
 // ══════════════════════════════════════════════════════════════════════════════
+const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
+
+function verifyMpSignature(req) {
+  if (!MP_WEBHOOK_SECRET) return true; // sem segredo configurado: aceita (modo dev)
+  const xSignature  = req.headers["x-signature"]   || "";
+  const xRequestId  = req.headers["x-request-id"]  || "";
+  const dataId      = req.query["data.id"]          || req.body?.data?.id || "";
+  const ts          = (xSignature.match(/ts=([^,]+)/) || [])[1] || "";
+  const v1          = (xSignature.match(/v1=([^,]+)/) || [])[1] || "";
+  if (!ts || !v1) return false;
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+  const expected = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifest).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+
 app.post("/api/mp/webhook", async (req, res) => {
+  if (!verifyMpSignature(req)) {
+    console.warn("[mp/webhook] assinatura inválida — rejeitado");
+    return res.status(401).json({ error: "Assinatura inválida" });
+  }
   res.json({ received: true }); // responde imediatamente para evitar retry do MP
   try {
     const { type, action, data: eventData } = req.body;
@@ -899,8 +923,8 @@ app.get("/api/asaas/balance", requireAuth, async (req, res) => {
   }
 });
 
-// ── Teste de e-mail (não toca em nada crítico — dados fictícios via Resend real) ──
-app.get("/api/test-email", async (req, res) => {
+// ── Teste de e-mail (admin-only) ──
+app.get("/api/test-email", requireAuth, requireAdmin, async (req, res) => {
   const to = req.query.to;
   if (!to) return res.status(400).json({ error: "Passe ?to=seuemail@gmail.com" });
   if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: "RESEND_API_KEY não configurada" });
@@ -3633,6 +3657,24 @@ function calcPublicPrice(basePrice, method, installments = 1) {
   };
 }
 
+// Rate limiting para checkout público: 5 tentativas por IP por minuto
+const checkoutRateMap = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of checkoutRateMap) if (now > v.reset) checkoutRateMap.delete(k);
+}, 60000);
+
+function checkoutRateLimit(req, res, next) {
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  const now = Date.now();
+  const entry = checkoutRateMap.get(ip) || { count: 0, reset: now + 60000 };
+  if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
+  entry.count++;
+  checkoutRateMap.set(ip, entry);
+  if (entry.count > 5) return res.status(429).json({ error: "Muitas tentativas. Aguarde um momento e tente de novo." });
+  next();
+}
+
 /** GET /api/public/products/:id — retorna config do produto (sem dados sensíveis) */
 app.get("/api/public/products/:id", async (req, res) => {
   try {
@@ -3659,7 +3701,7 @@ app.get("/api/public/products/:id", async (req, res) => {
 });
 
 /** POST /api/public/checkout — cria customer + payment no Mercado Pago */
-app.post("/api/public/checkout", async (req, res) => {
+app.post("/api/public/checkout", checkoutRateLimit, async (req, res) => {
   try {
     const { productId, name, email, phone, cpfCnpj, postalCode,
             addressNumber, method, installments = 1, birthday } = req.body;
