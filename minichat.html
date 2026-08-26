@@ -408,6 +408,7 @@
     let AVATAR_URL = "";
     let REDIRECT_LINK = "";
     let EMAIL_DESTINO = "";
+    let DESTINATION_TYPE = "whatsapp";
     let CLOSING_MESSAGE = "Podemos conversar?";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
 
@@ -514,9 +515,16 @@
                 if (cfg?.redirect_link) REDIRECT_LINK = cfg.redirect_link;
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
-                if (EMAIL_DESTINO && !REDIRECT_LINK) {
-                    const emailBtn = document.getElementById("emailBtn");
-                    if (emailBtn) emailBtn.style.display = "flex";
+                if (cfg?.destination_type) DESTINATION_TYPE = cfg.destination_type;
+                {
+                    const _wBtn = document.getElementById("whatsappBtn");
+                    const _eBtn = document.getElementById("emailBtn");
+                    if (DESTINATION_TYPE === "email") {
+                        if (_wBtn) _wBtn.style.display = "none";
+                        if (_eBtn) _eBtn.style.display = "flex";
+                    } else if (EMAIL_DESTINO && !REDIRECT_LINK) {
+                        if (_eBtn) _eBtn.style.display = "flex";
+                    }
                 }
                 if (cfg && Array.isArray(cfg.questions) && cfg.questions.length) {
                     const custom = cfg.questions

@@ -1390,7 +1390,11 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria uma página no repositório do cliente que abre o Mini Chat. Quando você atualizar o Mini Chat no JosephPay, todos os clientes recebem automaticamente.</div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Cria uma página no repositório do cliente que abre o Mini Chat. Quando você atualizar o Mini Chat no JosephPay, todos os clientes recebem automaticamente.</div>
+        <div style={{background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+          <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>💡 Como definir o caminho certo</div>
+          <div style={{color:MUTED,fontSize:11,lineHeight:1.6}}>O arquivo precisa ser criado <b style={{color:TEXT}}>no mesmo caminho que os botões do site já linkam</b>. Veja o código-fonte do site para descobrir qual é.<br/>Exemplos comuns:<br/>• Botão vai para <b style={{color:TEXT}}>/minichat.html</b> → caminho: <b style={{color:TEXT}}>minichat.html</b><br/>• Botão vai para <b style={{color:TEXT}}>/mini-chat/</b> → caminho: <b style={{color:TEXT}}>mini-chat/index.html</b><br/>• Botão vai para <b style={{color:TEXT}}>/Mini-Chat-Original/</b> → caminho: <b style={{color:TEXT}}>Mini-Chat-Original/index.html</b></div>
+        </div>
         {!editingPath?(
           <div style={{color:MUTED,fontSize:12,marginBottom:10}}>
             Arquivo: <b style={{color:TEXT}}>{minichatPath}</b>{" "}
@@ -1882,6 +1886,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
+  const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
   const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
@@ -1901,7 +1906,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
     reader.readAsDataURL(file);
   };
   const salvarMinichat=async()=>{
-    if(!wapNum.trim())return;
+    if(destinoTipo!=="email"&&!wapNum.trim())return;
+    if(destinoTipo!=="whatsapp"&&!emailDestino.trim())return;
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({
       whatsapp_number:wapNum.trim(),
       brand_name:brandName.trim(),
@@ -1909,6 +1915,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
       email_destino:emailDestino.trim(),
+      destination_type:destinoTipo,
       objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
       business_context:businessContext.trim(),
       closing_message:closingMsg.trim(),
@@ -1943,9 +1950,23 @@ function AtivacaoAdmin({c,initialOpen,done}){
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
+      <div style={{marginBottom:14}}>
+        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Destino dos leads</div>
+        <div style={{display:"flex",gap:6}}>
+          {[["whatsapp","📱 WhatsApp"],["email","✉️ E-mail"],["ambos","Ambos"]].map(([t,label])=>(
+            <button key={t} onClick={()=>setDestinoTipo(t)} style={{flex:1,background:destinoTipo===t?GOLD:"none",border:`1px solid ${destinoTipo===t?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:destinoTipo===t?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {destinoTipo!=="email"&&(<>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       {c.phone&&wapNum.replace(/\D/g,"")!==c.phone.replace(/\D/g,"")&&<button onClick={()=>setWapNum(c.phone)} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:8,display:"block"}}>↑ Usar número do cadastro ({c.phone})</button>}
-      {!c.phone&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Coloque o WhatsApp do produtor — para onde os leads serão redirecionados.</div>}
+      {!c.phone&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Para onde os leads serão redirecionados no WhatsApp.</div>}
+      </>)}
+      {destinoTipo!=="whatsapp"&&(<>
+      <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>O diagnóstico do lead chega por e-mail neste endereço.</div>
+      </>)}
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
@@ -1972,9 +1993,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Aparece no final da mensagem que vai para o WhatsApp do produtor. Deixe em branco para usar "Podemos conversar?".</div>
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
-      <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento (opcional — sobrepõe WhatsApp e E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
-      <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail da empresa (opcional)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
-      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preencher o link de redirecionamento, ele sobrepõe tudo (o botão final abre só esse link). Senão, com o e-mail preenchido, o visitante escolhe no final entre abrir o WhatsApp ou o e-mail (já preenchidos) pra mandar o diagnóstico.</div>
+      <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento final (opcional — sobrepõe WhatsApp/E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preenchido, o botão final abre apenas esse link — útil para Calendly, página de vendas, etc.</div>
 
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${wapNum.trim().replace(/\D/g,"")}`}/></div>}
@@ -2049,7 +2069,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:6,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
+        <div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:8,padding:"7px 12px",marginBottom:12,color:GREEN,fontSize:11}}>✓ Ao salvar, o Mini Chat atualiza imediatamente — sem redeploy necessário.</div>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nicho / setor deste negócio</div>
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>

@@ -1550,12 +1550,6 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
       if (l.type === "ativacao")    acc.ativacao    += Number(l.amount || 0);
     });
 
-    // Mini Chat "ativo" não pode significar "o admin preencheu o formulário de config" —
-    // só é ativo de verdade se alguém abriu o widget pelo menos uma vez (visits.page ilike %minichat%).
-    const { data: minichatVisits } = await supabase.from("visits")
-      .select("owner_id").ilike("page", "%minichat%").limit(100000);
-    const minichatAtivoPorUsuario = {};
-    (minichatVisits || []).forEach(v => { minichatAtivoPorUsuario[v.owner_id] = true; });
 
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
@@ -1573,7 +1567,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     });
 
     const enriched = await Promise.all((data || []).map(async (p) => {
-      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid] = await Promise.all([
+      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid, hasMiniChat] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
         // whatsapp_instance só indica que a aba Disparos foi aberta uma vez (o nome da instância
@@ -1589,6 +1583,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview"),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").gte("created_at", todayStart.toISOString()),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").eq("has_gclid", true).then(r => r.count > 0, () => false),
+        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).ilike("page", "%minichat%").then(r => (r.count || 0) > 0, () => false),
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
@@ -1612,7 +1607,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
           whatsapp: wapConnected,
           site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || vtotal > 0,
           email:    !!p.email_connected,
-          minichat: !!minichatAtivoPorUsuario[p.id],
+          minichat: hasMiniChat,
           googleAds: !!hasGclid,
         },
       };
@@ -2202,7 +2197,7 @@ async function autoFixMinichatLink(id) {
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, questions, objetivo_options, business_context, closing_message } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -2240,9 +2235,10 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       // contexto real pra IA quando o admin pede pra gerar/sugerir perguntas.
       business_context: business_context !== undefined ? (business_context?.trim() || null) : (existing.business_context ?? null),
       closing_message: closing_message !== undefined ? (closing_message?.trim() || null) : (existing.closing_message ?? null),
+      destination_type: destination_type !== undefined ? (destination_type || "whatsapp") : (existing.destination_type ?? "whatsapp"),
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
-    if (!minichat_config.whatsapp_number) return res.status(400).json({ error: "Número de WhatsApp é obrigatório — configure isso primeiro no card Ativação" });
+    if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
     // Corrige o link do minichat no repositório do produtor de forma assíncrona (não bloqueia)
