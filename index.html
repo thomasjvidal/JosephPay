@@ -2006,6 +2006,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(!!c.minichat_config?.questions?.length);
+  const [closingMsg,setClosingMsg]=useState(c.minichat_config?.closing_message||"");
   const [msg,setMsg]=useState("");
   const [regenerating,setRegenerating]=useState({});
   const [gerandoTudo,setGerandoTudo]=useState(false);
@@ -2039,7 +2040,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   };
   const salvar=async()=>{
     setSaving(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({questions})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({questions,closing_message:closingMsg.trim()})});
     setSaving(false);
     if(d.error){setMsg(d.error);return;}
     setSaved(true);
@@ -2134,7 +2135,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Preview da mensagem no WhatsApp do produtor</div>
           <div style={{background:"#E5DDD5",borderRadius:12,padding:"14px 12px",fontFamily:"sans-serif"}}>
             <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
-              <div style={{background:"white",borderRadius:"12px 12px 12px 3px",padding:"9px 12px",maxWidth:"85%",boxShadow:"0 1px 1px rgba(0,0,0,0.08)"}}>
+              <div style={{background:"white",borderRadius:"12px 12px 12px 3px",padding:"9px 12px",maxWidth:"95%",boxShadow:"0 1px 1px rgba(0,0,0,0.08)"}}>
                 <div style={{color:"#128C7E",fontSize:11,fontWeight:700,marginBottom:3}}>Lead</div>
                 <div style={{color:"#111",fontSize:12,whiteSpace:"pre-wrap",lineHeight:1.5}}>
 {`Olá ${c.minichat_config?.brand_name||c.name||"[nome do produtor]"},
@@ -2147,13 +2148,19 @@ ${questions.map((q,i)=>`• ${q.subtext||q.text||`Pergunta ${i+1}`}: [resposta d
 • Qual seu telefone com WhatsApp?: 11999999999
 • Qual sua data de nascimento?: 01/01/1990
 
-${c.minichat_config?.closing_message||"Podemos conversar?"}`}
+`}
                 </div>
+                <input
+                  value={closingMsg}
+                  onChange={e=>{setClosingMsg(e.target.value);setSaved(false);}}
+                  placeholder="Podemos conversar?"
+                  style={{width:"100%",background:"transparent",border:"none",borderTop:`1px dashed #ccc`,outline:"none",fontFamily:"sans-serif",fontSize:12,color:"#111",padding:"6px 0 2px",lineHeight:1.5}}
+                />
                 <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
               </div>
             </div>
           </div>
-          <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Esta mensagem vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b> quando o lead clica no botão verde do Mini Chat.</div>
+          <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Edite a frase acima (última linha da mensagem). Vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b> quando o lead clica no botão verde. Clique em "Salvar perguntas" pra confirmar.</div>
         </div>
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
