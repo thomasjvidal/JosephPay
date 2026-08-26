@@ -2245,9 +2245,13 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
-// Após salvar o minichat, corrige silenciosamente qualquer link josephpay.com/minichat
-// nos arquivos do repositório do produtor que estejam sem o ?uid= correto.
-// Fire-and-forget: não bloqueia a resposta, erros só aparecem no log.
+// Após instalar/salvar o minichat, corrige silenciosamente qualquer link
+// josephpay.com/minichat com uid errado em TODOS os arquivos do repositório.
+// Funciona com qualquer tipo de repo: HTML puro, React/Lovable/Vite, Next.js,
+// Vue, SvelteKit — varre a árvore inteira e pula o que não tem o texto.
+// Fire-and-forget: não bloqueia a resposta; erros só aparecem no log.
+const TEXT_FILE_RE = /\.(html|js|jsx|ts|tsx|vue|svelte|css|md|json)$/i;
+
 async function autoFixMinichatLink(id) {
   try {
     const { data: profile } = await supabase.from("profiles")
@@ -2259,27 +2263,63 @@ async function autoFixMinichatLink(id) {
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
     const correctLink = `https://josephpay.com/minichat.html?uid=${id}`;
-    // Regex: qualquer link josephpay.com/minichat (com ou sem .html, com ou sem ?uid=qualquer-coisa)
+    // Regex: qualquer josephpay.com/minichat (com ou sem .html, com ou sem ?uid=qualquer-coisa)
     const re = /https:\/\/josephpay\.com\/minichat(?:\.html)?(?:\?[^"'`\s<>]*)*/g;
-    const files = [...new Set([profile.github_file_path, profile.github_minichat_path].filter(Boolean))];
-    for (const filePath of files) {
-      try {
-        const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-        const sha = resp.data.sha;
-        const original = Buffer.from(resp.data.content, "base64").toString("utf8");
-        const updated = original.replace(re, correctLink);
-        if (updated === original) continue;
-        await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-          message: "JosephPay: corrige link do Mini Chat com uid do produtor",
-          content: Buffer.from(updated, "utf8").toString("base64"),
-          sha,
-        }, { headers });
-        console.log(`[minichat/auto-link] ${repo}/${filePath} atualizado com uid=${id}`);
-      } catch(e) {
-        console.warn(`[minichat/auto-link] ${repo}/${filePath}:`, e.response?.data?.message || e.message);
-      }
+
+    // Pega a árvore completa do repositório — um único request, sem recursão manual
+    let allPaths = [];
+    try {
+      const treeResp = await axios.get(
+        `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
+        { headers }
+      );
+      allPaths = (treeResp.data.tree || [])
+        .filter(f => f.type === "blob" && TEXT_FILE_RE.test(f.path) && (f.size || 0) < 400000)
+        .map(f => f.path);
+    } catch (e) {
+      // Fallback: usa só os arquivos cadastrados se a árvore falhar
+      console.warn("[minichat/auto-link] tree fetch falhou, usando fallback:", e.message);
+      allPaths = [profile.github_file_path, profile.github_minichat_path].filter(Boolean);
     }
-  } catch(e) {
+
+    // Garante que os arquivos cadastrados entram mesmo que fora do filtro de extensão
+    const knownFiles = [profile.github_file_path, profile.github_minichat_path].filter(Boolean);
+    const filesToScan = [...new Set([...knownFiles, ...allPaths])];
+
+    let fixedCount = 0;
+    const BATCH = 6; // 6 requests paralelos — confortável abaixo do rate limit do GitHub
+    for (let i = 0; i < filesToScan.length; i += BATCH) {
+      await Promise.all(filesToScan.slice(i, i + BATCH).map(async (filePath) => {
+        try {
+          const resp = await axios.get(
+            `https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`,
+            { headers }
+          );
+          const original = Buffer.from(resp.data.content, "base64").toString("utf8");
+          // Pulo rápido: 99% dos arquivos não têm o texto — evita regex desnecessária
+          if (!original.includes("josephpay.com/minichat")) return;
+          const updated = original.replace(re, correctLink);
+          if (updated === original) return; // já está certo
+          await axios.put(
+            `https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`,
+            {
+              message: "JosephPay: corrige link do Mini Chat com uid do produtor",
+              content: Buffer.from(updated, "utf8").toString("base64"),
+              sha: resp.data.sha,
+            },
+            { headers }
+          );
+          fixedCount++;
+          console.log(`[minichat/auto-link] corrigido: ${repo}/${filePath} → uid=${id}`);
+        } catch (e) {
+          if (e.response?.status !== 404) {
+            console.warn(`[minichat/auto-link] ${repo}/${filePath}:`, e.response?.data?.message || e.message);
+          }
+        }
+      }));
+    }
+    console.log(`[minichat/auto-link] scan concluído: ${fixedCount}/${filesToScan.length} arquivo(s) corrigido(s) em ${repo}`);
+  } catch (e) {
     console.warn("[minichat/auto-link]", e.message);
   }
 }
@@ -2370,6 +2410,7 @@ app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requ
       ...(sha ? { sha } : {}),
     }, { headers });
     await supabase.from("profiles").update({ github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    autoFixMinichatLink(id).catch(() => {});
     res.json({ ok: true, file_path: filePath });
   } catch (err) {
     console.error("[reinstall-minichat]", err.response?.data || err.message);
@@ -3374,6 +3415,10 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
       ...(sha ? { sha } : {}),
     }, { headers });
     await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    // Corrige qualquer link com uid errado nos demais arquivos do repo (ex: botões do site
+    // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
+    // autoFix já enxergue o caminho correto.
+    autoFixMinichatLink(id).catch(() => {});
     res.json({ ok: true, file_path: filePath });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
