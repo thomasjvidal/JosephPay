@@ -1845,6 +1845,11 @@ app.post("/api/admin/producers/:id/toggle-active", requireAuth, requireAdmin, as
   }
 });
 
+app.get("/api/admin/producers/:id/disparos", requireAuth, requireAdmin, async (req, res) => {
+  const { data } = await supabase.from("profiles").select("disparos").eq("id", req.params.id).single();
+  res.json(data?.disparos || []);
+});
+
 // Nota privada do admin sobre esse produtor — fica numa tabela própria
 // (producer_notes), nunca em profiles, pra não vazar pro próprio produtor.
 app.get("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (req, res) => {

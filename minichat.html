@@ -761,14 +761,15 @@
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'whatsapp' });
 
-        const targetUrl = REDIRECT_LINK || `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
-        const btnFinalHtml = REDIRECT_LINK ? '↗ Continuar' : '📱 Abrir WhatsApp';
+        const useRedirect = REDIRECT_LINK && DESTINATION_TYPE !== "whatsapp";
+        const targetUrl = useRedirect ? REDIRECT_LINK : `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
+        const btnFinalHtml = useRedirect ? '↗ Continuar' : '📱 Abrir WhatsApp';
 
         setTimeout(() => {
             whatsappBtn.innerHTML = '✓ Pronto!';
             whatsappBtn.style.background = '#1DA851';
             whatsappBtn.style.opacity = '1';
-            redirectStatus.textContent = REDIRECT_LINK ? 'Abrindo...' : 'Abrindo WhatsApp...';
+            redirectStatus.textContent = useRedirect ? 'Abrindo...' : 'Abrindo WhatsApp...';
 
             setTimeout(() => {
                 window.open(targetUrl, '_blank');
