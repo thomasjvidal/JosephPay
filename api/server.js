@@ -2319,6 +2319,11 @@ async function autoFixMinichatLink(id) {
       }));
     }
     console.log(`[minichat/auto-link] scan concluído: ${fixedCount}/${filesToScan.length} arquivo(s) corrigido(s) em ${repo}`);
+    // Se corrigiu links errados, invalida o status "instalado" para forçar reinstalação manual e confirmação visual
+    if (fixedCount > 0) {
+      await supabase.from("profiles").update({ github_minichat_installed_at: null }).eq("id", id);
+      console.log(`[minichat/auto-link] status invalidado — produtor ${id} verá vermelho e precisará reinstalar para confirmar`);
+    }
   } catch (e) {
     console.warn("[minichat/auto-link]", e.message);
   }
@@ -2376,6 +2381,20 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
     res.json({ ok: true, minichat_config });
   } catch (err) {
     console.error("[admin/producers minichat]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Invalida o status de instalação do Mini Chat — faz o card ficar vermelho
+// para sinalizar que precisa ser reinstalado (útil quando o admin detecta
+// que o link estava errado ou quer forçar re-verificação).
+app.post("/api/admin/producers/:id/github/invalidate-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("profiles").update({ github_minichat_installed_at: null }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -2728,9 +2747,13 @@ async function googleAdsSearch(customerId, query) {
 // pra diagnosticar sem precisar olhar log de servidor.
 function describeGoogleAdsError(err) {
   const status = err.response?.status;
-  const gErr = err.response?.data?.error;
+  const body = err.response?.data;
+  // Google Ads API retorna erros em { error: { message, details: [{ errors: [{ message }] }] } }
+  const gErr = body?.error;
   const detail = gErr?.details?.find(d => Array.isArray(d.errors))?.errors?.[0];
-  const reason = detail?.message || gErr?.message || err.message;
+  const reason = detail?.message || gErr?.message || body?.message || err.message;
+  // Loga o corpo completo para diagnóstico no Railway
+  if (status) console.error("[google-ads] erro completo:", JSON.stringify(body || err.message).slice(0, 800));
   return status ? `HTTP ${status} — ${reason}` : reason;
 }
 
@@ -2744,6 +2767,41 @@ app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, r
       developerTokenConfigured: !!(data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN),
       managerCustomerId: data?.manager_customer_id || null,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Diagnóstico: testa a conexão com a Google Ads API usando a conta do produtor
+// e retorna o erro completo da Google para facilitar diagnóstico
+app.get("/api/admin/producers/:id/google-ads/diagnose", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: profile } = await supabase.from("profiles").select("name,google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+    const developerToken = await getGoogleAdsDeveloperToken();
+    const managerId = await getGoogleAdsManagerId();
+    const accessToken = await getGoogleAccessToken();
+    const customerId = (profile?.google_ads_customer_id || "").replace(/\D/g, "");
+    if (!accessToken) return res.json({ ok: false, step: "access_token", error: "Token Google não disponível — reconecte o Google" });
+    if (!developerToken) return res.json({ ok: false, step: "developer_token", error: "Developer Token não configurado" });
+    if (!customerId) return res.json({ ok: false, step: "customer_id", error: "ID da conta do produtor não configurado" });
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": developerToken,
+      "Content-Type": "application/json",
+    };
+    if (managerId) headers["login-customer-id"] = managerId;
+    try {
+      // Query minimalista só para validar acesso à conta
+      const resp = await axios.post(
+        `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:search`,
+        { query: "SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1" },
+        { headers }
+      );
+      res.json({ ok: true, customerId, managerId: managerId || null, customerName: resp.data.results?.[0]?.customer?.descriptiveName || null });
+    } catch (err) {
+      const body = err.response?.data;
+      res.json({ ok: false, step: "api_call", httpStatus: err.response?.status, customerId, managerId: managerId || null, googleError: body || err.message });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

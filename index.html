@@ -1374,6 +1374,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
   const [installing,setInstalling]=useState(false);
   const [fixing,setFixing]=useState(false);
+  const [invalidating,setInvalidating]=useState(false);
   const [detecting,setDetecting]=useState(false);
   const [sugestoes,setSugestoes]=useState([]);
   const [installedAt,setInstalledAt]=useState(c.github_minichat_installed_at||null);
@@ -1386,6 +1387,15 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(d.error){setMsg("Erro: "+d.error);return;}
     setInstalledAt(new Date().toISOString());
     setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.`);
+    onUpdated&&onUpdated();
+  };
+  const invalidarMinichat=async()=>{
+    setInvalidating(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/invalidate-minichat`,{method:'POST'});
+    setInvalidating(false);
+    if(d.error){setMsg("Erro: "+d.error);return;}
+    setInstalledAt(null);
+    setMsg("⚠️ Status invalidado — o card agora mostra vermelho. Clique em 'Instalar Mini Chat no site' para reinstalar e confirmar.");
     onUpdated&&onUpdated();
   };
   const toFilePath=href=>{
@@ -1449,6 +1459,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
         {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')} — <span style={{fontFamily:"monospace"}}>{c.github_minichat_path||"minichat.html"}</span></div>}
         {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{width:"100%",background:`${GOLD}12`,border:`1px solid ${GOLD}30`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:fixing?"default":"pointer",fontFamily:F,marginBottom:8}}>{fixing?"Corrigindo…":"🔧 Corrigir UID no repositório (Mini Chat mostra config errada?)"}</button>}
+        {done&&<button onClick={invalidarMinichat} disabled={invalidating} style={{width:"100%",background:`${RED}12`,border:`1px solid ${RED}40`,borderRadius:12,padding:"10px",color:RED,fontWeight:700,fontSize:12,cursor:invalidating?"default":"pointer",fontFamily:F,marginBottom:8}}>{invalidating?"Invalidando…":"⚠️ Marcar para reinstalar (força vermelho para reconfirmar)"}</button>}
         <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>
