@@ -3710,7 +3710,10 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
                 <b style={{color:TEXT}}>2.</b> O Developer Token ainda está em modo de teste — acesse Google Ads → Ferramentas → Central de API e veja o nível de acesso (precisa ser Basic ou Standard, não Test).
               </>
             ):(
-              `Não consegui buscar o investimento no Google Ads: ${overview.adsError}`
+              <>
+                {`Não consegui buscar o investimento no Google Ads: ${overview.adsError}`}
+                {overview.adsRawError&&<><br/><span style={{fontFamily:"monospace",fontSize:10,opacity:0.7,wordBreak:"break-all"}}>{overview.adsRawError}</span></>}
+              </>
             )}
           </div>
         )}

@@ -2883,17 +2883,20 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     // Investimento real, buscado na hora na Google Ads API — se a busca falhar (token
     // ainda em modo teste, conta não vinculada etc.), fica null e o motivo vai em adsError,
     // nunca inventamos o número.
-    let investimento = null, adsError = null;
+    let investimento = null, adsError = null, adsRawError = null;
     if (adsConnected) {
       try {
         const fromStr = from.toISOString().slice(0, 10);
         const toStr = to.toISOString().slice(0, 10);
-        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}' AND campaign.status != 'REMOVED'`);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`);
         const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
       } catch (err) {
-        console.error("[google-ads/overview] busca real falhou:", err.response?.data || err.message);
+        const body = err.response?.data;
+        console.error("[google-ads/overview] busca real falhou:", JSON.stringify(body || err.message).slice(0, 1000));
         adsError = describeGoogleAdsError(err);
+        // Inclui o corpo bruto para diagnóstico no frontend (admin-only, não vaza para produtores)
+        if (body) adsRawError = typeof body === "string" ? body.slice(0, 400) : JSON.stringify(body).slice(0, 400);
       }
     }
 
@@ -2901,6 +2904,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
       adsConnected,
       adsError,
+      adsRawError: adsRawError || null,
       googleAdsCustomerId: profile.google_ads_customer_id || null,
       periodo: { from: from.toISOString(), to: to.toISOString() },
       investimento,
