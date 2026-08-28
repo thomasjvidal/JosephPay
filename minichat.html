@@ -460,16 +460,19 @@
     let usingDefaultFlow = true;
 
     const QUANDO_OPTIONS = ["Quanto antes", "Este mês", "Próximos meses", "Só estou pesquisando"];
-    const PRODUTO_FALLBACK_OPTIONS = ["Procedimento estético", "Consulta inicial", "Tratamento facial", "Outro"];
-    const OBJETIVO_FALLBACK_OPTIONS = ["Melhorar minha aparência", "Tratar um problema específico", "Conhecer as opções", "Tirar dúvidas"];
+    // Só aparece se o cliente não tiver nenhum produto cadastrado E a busca de produtos
+    // reais falhar — neutro de propósito (não é só clínica estética) pra nunca soar
+    // gritantemente errado pra outros tipos de negócio (loja, restaurante etc.).
+    const PRODUTO_FALLBACK_OPTIONS = ["Já sei o que quero", "Quero conhecer as opções", "Tenho uma dúvida", "Outro"];
+    const OBJETIVO_FALLBACK_OPTIONS = ["Fechar o quanto antes", "Conhecer melhor antes", "Comparar opções", "Tirar dúvidas"];
 
     function buildDefaultQuestions(products, objetivoOptions) {
         const steps = [];
         steps.push({
             id: 'produto',
             text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
-            subtext: "Qual procedimento ou serviço desperta seu interesse?",
-            label: "Procedimento de interesse",
+            subtext: "O que você está buscando hoje?",
+            label: "Interesse principal",
             type: 'options',
             options: (products && products.length) ? products : PRODUTO_FALLBACK_OPTIONS,
         });
@@ -556,12 +559,19 @@
                 document.title = `${BRAND_NAME} — Atendimento Online`;
             }
             if (usingDefaultFlow) {
-                let products = [];
-                try {
-                    const rp = await fetch(`${JOSEPHPAY_API}/api/minichat/products?uid=${encodeURIComponent(uid)}`);
-                    const dp = await rp.json();
-                    products = Array.isArray(dp?.products) ? dp.products : [];
-                } catch(e) {}
+                // Os produtos já vêm junto na resposta de /api/minichat/config (evita um segundo
+                // fetch que podia falhar sozinho). Só refaz a busca em separado — com retry — se
+                // por algum motivo não vieram ali (ex: resposta de uma versão antiga em cache).
+                let products = Array.isArray(data?.products) ? data.products : [];
+                for (let tentativa = 0; tentativa < 2 && !products.length; tentativa++) {
+                    try {
+                        const rp = await fetch(`${JOSEPHPAY_API}/api/minichat/products?uid=${encodeURIComponent(uid)}`);
+                        const dp = await rp.json();
+                        products = Array.isArray(dp?.products) ? dp.products : [];
+                    } catch(e) {
+                        if (tentativa === 0) await new Promise(r => setTimeout(r, 800));
+                    }
+                }
                 questions = buildDefaultQuestions(products, cfg?.objetivo_options);
             }
         } catch(e) {

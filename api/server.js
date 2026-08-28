@@ -2503,11 +2503,18 @@ app.get("/api/minichat/config", async (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   const { uid } = req.query;
   if (!uid) return res.status(400).json({ error: "uid ausente" });
-  const { data } = await supabase.from("profiles").select("minichat_config, name").eq("id", uid).single();
+  const [{ data }, { data: productsData }] = await Promise.all([
+    supabase.from("profiles").select("minichat_config, name").eq("id", uid).single(),
+    supabase.from("products").select("name").eq("owner_id", uid).order("created_at", { ascending: false }),
+  ]);
   const cfg = data?.minichat_config || {};
   // Use producer name from profiles as fallback when brand_name not explicitly set
   if (!cfg.brand_name && data?.name) cfg.brand_name = data.name;
-  res.json({ config: Object.keys(cfg).length ? cfg : null, producer_name: data?.name || null });
+  // Manda os produtos JUNTO nessa mesma resposta — antes o Mini Chat precisava de um
+  // segundo fetch pra /api/minichat/products, e se esse segundo fetch falhasse (rede
+  // instável, cold start), caía sozinho na pergunta genérica errada. Uma resposta só
+  // elimina esse ponto de falha extra.
+  res.json({ config: Object.keys(cfg).length ? cfg : null, producer_name: data?.name || null, products: (productsData || []).map(p => p.name).filter(Boolean) });
 });
 
 // Lista pública (só nome) dos produtos de um produtor — usada pelo Mini Chat como opções
