@@ -2524,9 +2524,14 @@ async function getGoogleAccessTokenForProducer(producerId) {
 }
 
 // Escolhe o token certo para um produtor: o próprio (novo) ou o da plataforma (legado MCC).
+// Nunca joga exceção — retorna null se nenhum token estiver disponível.
 async function getAdsAccessToken(profile) {
-  if (profile?.google_refresh_token) return await getGoogleAccessTokenForProducer(profile.id);
-  return await getGoogleAccessToken();
+  if (profile?.google_refresh_token) {
+    try { return await getGoogleAccessTokenForProducer(profile.id); } catch {}
+    return null;
+  }
+  try { return await getGoogleAccessToken(); } catch {}
+  return null;
 }
 
 async function getGoogleAccessToken() {
@@ -2962,8 +2967,8 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     };
 
     const [atual, anterior, developerToken] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo), getGoogleAdsDeveloperToken()]);
-    const hasToken = !!(profile.google_refresh_token || await getGoogleAccessToken());
-    const adsConnected = !!(profile.google_ads_customer_id && developerToken && hasToken);
+    const adsToken = await getAdsAccessToken(profile); // nunca joga exceção
+    const adsConnected = !!(profile.google_ads_customer_id && developerToken && adsToken);
 
     // Investimento real, buscado na hora na Google Ads API — se a busca falhar (token
     // ainda em modo teste, conta não vinculada etc.), fica null e o motivo vai em adsError,
@@ -2973,7 +2978,6 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       try {
         const fromStr = from.toISOString().slice(0, 10);
         const toStr = to.toISOString().slice(0, 10);
-        const adsToken = await getAdsAccessToken(profile);
         const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`, adsToken);
         const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
@@ -3043,8 +3047,7 @@ async function requireAdsConnection(profile) {
   if (!profile?.google_ads_customer_id) return false;
   const developerToken = await getGoogleAdsDeveloperToken();
   if (!developerToken) return false;
-  if (profile.google_refresh_token) return true; // token próprio do produtor
-  return !!(await getGoogleAccessToken()); // fallback legado MCC
+  return !!(await getAdsAccessToken(profile)); // nunca joga exceção
 }
 function adsDateRange(req) {
   const to = req.query.to ? new Date(req.query.to) : new Date();

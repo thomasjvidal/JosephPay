@@ -4131,14 +4131,6 @@ function GoogleAdsAdmin(){
       {screen!=="visaogeral"&&(
         <button onClick={()=>setScreen("visaogeral")} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar pra Visão geral</button>
       )}
-      {adsStatus&&!adsStatus.managerCustomerId&&(
-        <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}40`,borderRadius:14,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.4,flex:1}}>
-            <b style={{color:GOLD}}>Conta de gerente não configurada.</b> O investimento do Google Ads não aparece sem ela.
-          </div>
-          <button onClick={()=>setScreen("integracao")} style={{background:"transparent",border:`1px solid ${GOLD}60`,borderRadius:100,padding:"6px 14px",color:GOLD,fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:F,flexShrink:0}}>Configurar →</button>
-        </div>
-      )}
       {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={selecionarCliente} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
       {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
       {screen==="campanha"&&<GACampanhaDetalhe campanha={campanhaSel} onNav={onNav}/>}
