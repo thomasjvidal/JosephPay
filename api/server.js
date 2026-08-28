@@ -3861,6 +3861,61 @@ app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireA
   }
 });
 
+// Diagnóstico em lote — varre TODOS os produtores com repositório GitHub vinculado
+// procurando exatamente as 3 classes de problema descobertas com o Temakeria Box e o
+// Dr. Ramon (arquivo fora de public/, vercel.json desatualizado, botão de WhatsApp
+// ainda não corrigido). Só leitura — nada é alterado aqui; o admin corrige cada um
+// pelos cards que já existem no perfil do cliente (Mini Chat no site / Botões do site).
+// Existe porque o Thomas pediu que esses erros nunca mais aconteçam com nenhum
+// produtor — não só o que motivou a reclamação — e sem isso não tem como saber quais
+// dos outros clientes têm o mesmo problema sem abrir um por um.
+app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const { data: profiles } = await supabase.from("profiles")
+      .select("id,name,company_name,github_repo,github_minichat_path")
+      .not("github_repo", "is", null);
+
+    const resultados = [];
+    for (const p of (profiles || [])) {
+      const issues = [];
+      try {
+        const repoInfo = await axios.get(`https://api.github.com/repos/${p.github_repo}`, { headers });
+        const branch = repoInfo.data.default_branch;
+        const treeResp = await axios.get(`https://api.github.com/repos/${p.github_repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+        const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+        const detected = detectRepoFramework(allPaths);
+
+        if (detected.isBuildProject && p.github_minichat_path && !/^public\//.test(p.github_minichat_path)) {
+          issues.push({ tipo: "minichat_fora_de_public", detalhe: `Mini Chat instalado em "${p.github_minichat_path}", fora de public/ — não aparece no site publicado.` });
+        }
+        if (detected.isBuildProject) {
+          const desired = JSON.stringify(buildVercelConfig(detected), null, 2) + "\n";
+          let atual = null;
+          try {
+            const existing = await axios.get(`https://api.github.com/repos/${p.github_repo}/contents/vercel.json`, { headers });
+            atual = Buffer.from(existing.data.content, "base64").toString("utf8");
+          } catch (e) { if (e.response?.status !== 404) throw e; }
+          if (atual !== desired) issues.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json ausente ou diferente do esperado pra esse tipo de projeto." });
+        }
+        const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
+        const links = await scanRepoJsxLinks(p.github_repo, headers, token);
+        const pendentes = links.filter(l => l.href !== minichatLink && /wa\.me|api\.whatsapp\.com/i.test(l.href));
+        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} link(s) de WhatsApp ainda apontam direto pra fora.`, count: pendentes.length });
+      } catch (e) {
+        issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
+      }
+      resultados.push({ id: p.id, name: p.name, company_name: p.company_name, github_repo: p.github_repo, issues });
+    }
+    res.json({ producers: resultados, checkedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error("[producers/site-audit]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Prepara o repositório do cliente pra ser importado direto na Vercel — sem
 // precisar pedir pra outra IA arrumar isso toda vez. Detecta se é um projeto
 // Vite (Lovable sempre gera Vite+React) e cria/atualiza o vercel.json com o
