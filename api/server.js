@@ -3341,6 +3341,15 @@ async function readGithubFile(repo, filePath, headers, token) {
 // só <a href>, porque muitos botões (principalmente os que abrem WhatsApp) são feitos
 // via onClick + window.open/window.location em vez de um <a> de verdade. Chama registra()
 // pra cada ocorrência encontrada.
+// Conteúdo de uma string JS que pode ter blocos ${...} com aspas dentro (ex:
+// `https://wa.me/${phone}?text=${encodeURIComponent('Olá, tudo bem?')}`). Sem
+// isso, um regex ingênuo pra de capturar na primeira aspa que aparece DENTRO do
+// ${...} — gerando um href quebrado que nunca casa com o texto real do arquivo
+// na hora de aplicar a troca (o bug que fez o botão da Temakeria não ser corrigido
+// mesmo o "Aplicar" reportando sucesso). Trata ${...} como bloco atômico (não para
+// nas aspas de dentro) e só encerra a string na aspa/crase de verdade, fora de ${}.
+const STR_CONTENT = "(?:\\$\\{[^}]*\\}|[^\"'`\\n])*";
+
 function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   let m;
   const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -3348,8 +3357,8 @@ function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   const reLink = /<Link\b[^>]*\bto\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi;
   while ((m = reLink.exec(content))) registra(m[1], m[2], filePath);
   // href/to passado como expressão JSX com string estática: href={"..."} ou href={'...'}
-  const reHrefExpr = /\b(?:href|to)\s*=\s*\{\s*["'`]([^"'`]+)["'`]\s*\}/gi;
-  while ((m = reHrefExpr.exec(content))) registra(m[1], "(atributo href={...})", filePath);
+  const reHrefExpr = new RegExp(`\\b(?:href|to)\\s*=\\s*\\{\\s*(["'\`])(${STR_CONTENT})\\1\\s*\\}`, "gi");
+  while ((m = reHrefExpr.exec(content))) registra(m[2], "(atributo href={...})", filePath);
   // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível
   const reHrefVar = /\b(?:href|to)\s*=\s*\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
   while ((m = reHrefVar.exec(content))) {
@@ -3359,24 +3368,27 @@ function extractLinksFromContent(content, filePath, registra, varMap = {}) {
     else registra(`{${varName}}`, `(variável: ${varName})`, filePath);
   }
   // botão que redireciona via JS em vez de <a href> — comum pra abrir WhatsApp num onClick
-  const reWinOpen = /window\.open\(\s*["'`]([^"'`]+)["'`]/gi;
-  while ((m = reWinOpen.exec(content))) registra(m[1], "(window.open no código)", filePath);
-  const reWinLoc = /window\.location(?:\.href)?\s*=\s*["'`]([^"'`]+)["'`]/gi;
-  while ((m = reWinLoc.exec(content))) registra(m[1], "(window.location no código)", filePath);
-  const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
-  while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", filePath);
-  // Template literals com URL — ex: `https://wa.me/${phone}` ou `https://site.com/pagina`
+  const reWinOpen = new RegExp(`window\\.open\\(\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
+  while ((m = reWinOpen.exec(content))) registra(m[2], "(window.open no código)", filePath);
+  const reWinLoc = new RegExp(`window\\.location(?:\\.href)?\\s*=\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
+  while ((m = reWinLoc.exec(content))) registra(m[2], "(window.location no código)", filePath);
+  const reWa = new RegExp(`(["'\`])(https?:\\/\\/(?:wa\\.me|api\\.whatsapp\\.com)\\/${STR_CONTENT})\\1`, "gi");
+  while ((m = reWa.exec(content))) registra(m[2], "(link de WhatsApp no código)", filePath);
+  // Template literals com URL — ex: `https://wa.me/${phone}` ou `https://site.com/pagina`.
+  // Registra o texto CRU (com ${...} de verdade) — é o que precisa bater exatamente com
+  // o arquivo na hora de aplicar; a versão com "{...}" é só pra ficar legível na tela.
   const reTemplateUrl = /`(https?:\/\/[^`\n]{5,})`/gi;
   while ((m = reTemplateUrl.exec(content))) {
-    const url = m[1].replace(/\$\{[^}]+\}/g, '{...}');
-    registra(url, "(URL em template literal)", filePath);
+    const raw = m[1];
+    const display = raw.replace(/\$\{[^}]+\}/g, "{...}");
+    registra(raw, `(URL em template literal: ${display})`, filePath);
   }
   // tel: e mailto: como string
-  const reTelMail = /["'`]((?:tel|mailto):[^"'`\s<>]{3,})["'`]/gi;
-  while ((m = reTelMail.exec(content))) registra(m[1], "(link de contato)", filePath);
+  const reTelMail = new RegExp(`(["'\`])((?:tel|mailto):${STR_CONTENT})\\1`, "gi");
+  while ((m = reTelMail.exec(content))) registra(m[2], "(link de contato)", filePath);
   // router.push / navigate com rota estática
-  const reRouterPush = /(?:router|navigate)\s*(?:\.push)?\s*\(\s*["'`]([^"'`\n]+)["'`]/gi;
-  while ((m = reRouterPush.exec(content))) registra(m[1], "(router.push)", filePath);
+  const reRouterPush = new RegExp(`(?:router|navigate)\\s*(?:\\.push)?\\s*\\(\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
+  while ((m = reRouterPush.exec(content))) registra(m[2], "(router.push)", filePath);
 }
 
 // Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
