@@ -2438,55 +2438,61 @@ app.post("/api/admin/producers/:id/github/invalidate-minichat", requireAuth, req
 // Reinstala o arquivo redirect do Mini Chat no repositório do cliente usando
 // o caminho já salvo em github_minichat_path — útil para corrigir uid errado
 // sem precisar selecionar o caminho novamente.
+// Corrige o arquivo do Mini Chat de um produtor: move pra public/ se precisar, garante
+// o vercel.json certo, e recommita o arquivo redirect. Extraído da rota abaixo pra
+// poder ser chamado tanto por um clique do admin quanto pelo diagnóstico automático
+// em segundo plano (autofixSiteIssues).
+async function reinstalarMinichatFile(id) {
+  const { data: profile } = await supabase.from("profiles")
+    .select("github_repo,github_minichat_path")
+    .eq("id", id).maybeSingle();
+  if (!profile?.github_repo) throw new Error("Repositório não vinculado");
+  let filePath = profile.github_minichat_path || "minichat.html";
+  const token = await getGithubToken();
+  if (!token) throw new Error("GitHub não conectado");
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+  const repo = profile.github_repo;
+  const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+
+  try {
+    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
+    const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+    const detected = detectRepoFramework(allPaths);
+    if (detected.isBuildProject && !/^public\//.test(filePath)) {
+      filePath = `public/${filePath}`;
+    }
+    if (detected.isBuildProject) {
+      await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
+        if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
+      });
+    }
+  } catch (e) {
+    console.warn("[reinstalarMinichatFile] detecção de framework falhou, seguindo com o caminho salvo:", e.message);
+  }
+
+  const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
+  let sha;
+  try {
+    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    sha = existing.data.sha;
+  } catch (e) {
+    if (e.response?.status !== 404) throw e;
+  }
+  await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+    message: "JosephPay: corrige UID do Mini Chat",
+    content: Buffer.from(loaderHtml, "utf8").toString("base64"),
+    ...(sha ? { sha } : {}),
+  }, { headers });
+  await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+  autoFixMinichatLink(id).catch(() => {});
+  return { file_path: filePath };
+}
+
 app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles")
-      .select("github_repo,github_minichat_path")
-      .eq("id", id).maybeSingle();
-    if (!profile?.github_repo) return res.status(400).json({ error: "Repositório não vinculado" });
-    let filePath = profile.github_minichat_path || "minichat.html";
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const repo = profile.github_repo;
-    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
-
-    // Mesma checagem do install-minichat: se o caminho salvo é de antes dessa correção
-    // (fora de public/ num projeto com build), corrige aqui também — senão o "corrigir"
-    // fica recommitando pra sempre um arquivo que nunca é publicado.
-    try {
-      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
-      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-      const detected = detectRepoFramework(allPaths);
-      if (detected.isBuildProject && !/^public\//.test(filePath)) {
-        filePath = `public/${filePath}`;
-      }
-      if (detected.isBuildProject) {
-        await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
-          if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
-        });
-      }
-    } catch (e) {
-      console.warn("[reinstall-minichat] detecção de framework falhou, seguindo com o caminho salvo:", e.message);
-    }
-
-    const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
-    let sha;
-    try {
-      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-      sha = existing.data.sha;
-    } catch (e) {
-      if (e.response?.status !== 404) throw e;
-    }
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-      message: "JosephPay: corrige UID do Mini Chat",
-      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
-      ...(sha ? { sha } : {}),
-    }, { headers });
-    await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
-    autoFixMinichatLink(id).catch(() => {});
-    res.json({ ok: true, file_path: filePath });
+    const { file_path } = await reinstalarMinichatFile(id);
+    res.json({ ok: true, file_path });
   } catch (err) {
     console.error("[reinstall-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -3600,6 +3606,51 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
 
 // Aplica só os links escolhidos pelo admin, trocando o href exato de cada um pro link do
 // Mini Chat desse cliente — substituição direta de texto, sem adivinhar nada.
+// Troca os links escolhidos pelo href exato do Mini Chat desse cliente, direto nos
+// arquivos do repositório. Extraído da rota abaixo pra ser reaproveitado pelo
+// diagnóstico automático em segundo plano (autofixSiteIssues), que aplica sozinho
+// os links de WhatsApp ainda pendentes sem precisar do admin marcar um por um.
+async function applyLinksToRepo(id, repo, itens, headers) {
+  const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+  const porArquivo = {};
+  itens.forEach(({ href, file }) => {
+    if (!href || !file) return;
+    (porArquivo[file] = porArquivo[file] || []).push(href);
+  });
+  if (!Object.keys(porArquivo).length) return { changed: 0 };
+
+  let changed = 0;
+  for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
+    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    const sha = fileResp.data.sha;
+    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    let mudouAqui = false;
+    hrefsDoArquivo.forEach(href => {
+      const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const before = content;
+      // Se o link antigo for montado em duas partes coladas com "+" (ex:
+      // `"https://wa.me/5511..." + "?text=Olá, tudo bem?"`), trocar só a primeira parte
+      // deixa a segunda pendurada, colando um texto sem sentido no link novo — foi
+      // exatamente o que quebrou o botão da Temakeria. Esse grupo opcional captura
+      // (e descarta) esse pedaço solto junto com a troca.
+      const concatDepois = `(?:\\s*\\+\\s*["'\`][^"'\`]*["'\`])?`;
+      // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
+      content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3${concatDepois}`, "g"), `$1$2$3${minichatLink}$3`);
+      // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
+      //    num onClick, sem estar num atributo href/to)
+      content = content.replace(new RegExp(`(["'\`])${escaped}\\1${concatDepois}`, "g"), `$1${minichatLink}$1`);
+      if (content !== before) { changed++; mudouAqui = true; }
+    });
+    if (!mudouAqui) continue;
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: aponta botões do site pro Mini Chat",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      sha,
+    }, { headers });
+  }
+  return { changed };
+}
+
 app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -3615,44 +3666,8 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
-    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
 
-    const porArquivo = {};
-    itens.forEach(({ href, file }) => {
-      if (!href || !file) return;
-      (porArquivo[file] = porArquivo[file] || []).push(href);
-    });
-    if (!Object.keys(porArquivo).length) return res.status(400).json({ error: "Nenhum link selecionado" });
-
-    let changed = 0;
-    for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
-      const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-      const sha = fileResp.data.sha;
-      let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
-      let mudouAqui = false;
-      hrefsDoArquivo.forEach(href => {
-        const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const before = content;
-        // Se o link antigo for montado em duas partes coladas com "+" (ex:
-        // `"https://wa.me/5511..." + "?text=Olá, tudo bem?"`), trocar só a primeira parte
-        // deixa a segunda pendurada, colando um texto sem sentido no link novo — foi
-        // exatamente o que quebrou o botão da Temakeria. Esse grupo opcional captura
-        // (e descarta) esse pedaço solto junto com a troca.
-        const concatDepois = `(?:\\s*\\+\\s*["'\`][^"'\`]*["'\`])?`;
-        // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
-        content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3${concatDepois}`, "g"), `$1$2$3${minichatLink}$3`);
-        // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
-        //    num onClick, sem estar num atributo href/to)
-        content = content.replace(new RegExp(`(["'\`])${escaped}\\1${concatDepois}`, "g"), `$1${minichatLink}$1`);
-        if (content !== before) { changed++; mudouAqui = true; }
-      });
-      if (!mudouAqui) continue;
-      await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-        message: "JosephPay: aponta botões do site pro Mini Chat",
-        content: Buffer.from(content, "utf8").toString("base64"),
-        sha,
-      }, { headers });
-    }
+    const { changed } = await applyLinksToRepo(id, repo, itens, headers);
     if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
 
     res.json({ ok: true, changed });
@@ -3921,6 +3936,112 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
     res.status(500).json({ error: err.message });
   }
 });
+
+// Estado do diagnóstico automático em memória — um job por vez, roda em segundo
+// plano (não bloqueia o admin esperando) e o painel consulta o andamento via polling.
+let siteAuditJob = { running: false, startedAt: null, finishedAt: null, results: null, error: null };
+
+// Igual ao site-audit acima, só que em vez de só reportar, CORRIGE sozinho: move o
+// Mini Chat pra public/ e garante o vercel.json quando estiver errado (exatamente o
+// que "Reinstalar Mini Chat" já faz manualmente), e aplica os links de WhatsApp
+// pendentes pro Mini Chat certo (o que "Marcar todos" + "Aplicar" já faz manualmente
+// em Botões do site). Roda pra todo produtor com GitHub vinculado — a pedido do
+// Thomas, pra nunca mais precisar abrir cliente por cliente pra achar e corrigir isso.
+async function autofixSiteIssues() {
+  const token = await getGithubToken();
+  if (!token) throw new Error("GitHub ainda não conectado");
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+  const { data: profiles } = await supabase.from("profiles")
+    .select("id,name,company_name,github_repo,github_minichat_path")
+    .not("github_repo", "is", null);
+
+  const resultados = [];
+  for (const p of (profiles || [])) {
+    const fixed = [];
+    const issues = [];
+    try {
+      const repoInfo = await axios.get(`https://api.github.com/repos/${p.github_repo}`, { headers });
+      const branch = repoInfo.data.default_branch;
+      const treeResp = await axios.get(`https://api.github.com/repos/${p.github_repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+      const detected = detectRepoFramework(allPaths);
+
+      const minichatForaDePublic = detected.isBuildProject && p.github_minichat_path && !/^public\//.test(p.github_minichat_path);
+      if (minichatForaDePublic) {
+        try {
+          await reinstalarMinichatFile(p.id);
+          fixed.push({ tipo: "minichat_fora_de_public", detalhe: "Movido pra public/ e vercel.json atualizado." });
+        } catch (e) {
+          issues.push({ tipo: "minichat_fora_de_public", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
+        }
+      } else if (detected.isBuildProject) {
+        const { changed } = await ensureVercelConfig(p.github_repo, headers, detected);
+        if (changed) {
+          await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", p.id);
+          fixed.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json corrigido." });
+        }
+      }
+
+      const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
+      const links = await scanRepoJsxLinks(p.github_repo, headers, token);
+      const pendentes = links.filter(l => l.href !== minichatLink && /wa\.me|api\.whatsapp\.com/i.test(l.href));
+      if (pendentes.length) {
+        try {
+          const { changed } = await applyLinksToRepo(p.id, p.github_repo, pendentes.map(l => ({ href: l.href, file: l.file })), headers);
+          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} link(s) de WhatsApp trocados pelo Mini Chat.` });
+          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} link(s) de WhatsApp detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
+        } catch (e) {
+          issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
+        }
+      }
+    } catch (e) {
+      issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
+    }
+    resultados.push({ id: p.id, name: p.name, company_name: p.company_name, github_repo: p.github_repo, fixed, issues });
+  }
+  return resultados;
+}
+
+async function runSiteAuditJob() {
+  if (siteAuditJob.running) return;
+  siteAuditJob = { running: true, startedAt: new Date().toISOString(), finishedAt: null, results: null, error: null };
+  try {
+    const results = await autofixSiteIssues();
+    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), results, error: null };
+    // Avisa o(s) admin(s) no celular com o resultado — sem isso, rodar sozinho em
+    // segundo plano de nada adianta se ninguém sabe o que ele encontrou/corrigiu.
+    const comAlgumaCoisa = results.filter(p => p.fixed?.length || p.issues?.length);
+    if (comAlgumaCoisa.length) {
+      const corrigidos = comAlgumaCoisa.reduce((a, p) => a + (p.fixed?.length || 0), 0);
+      const pendentes = comAlgumaCoisa.filter(p => p.issues?.length).length;
+      const { data: admins } = await supabase.from("profiles").select("id").eq("role", "admin");
+      const body = `${corrigidos} correção(ões) automática(s)${pendentes ? `, ${pendentes} produtor(es) precisam de revisão manual` : ""}.`;
+      for (const a of (admins || [])) {
+        sendPushToOwner(a.id, { title: "Diagnóstico técnico rodou", body, url: "/" });
+      }
+    }
+  } catch (e) {
+    console.error("[siteAuditJob]", e.message);
+    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), results: null, error: e.message };
+  }
+}
+
+// Dispara o diagnóstico + correção automática em segundo plano — responde na hora,
+// sem o admin precisar esperar com a tela aberta. O andamento é consultado em
+// /api/admin/producers/site-audit/status.
+app.post("/api/admin/producers/site-audit/run", requireAuth, requireAdmin, async (req, res) => {
+  if (siteAuditJob.running) return res.json({ started: false, already_running: true });
+  runSiteAuditJob().catch(() => {});
+  res.json({ started: true });
+});
+
+app.get("/api/admin/producers/site-audit/status", requireAuth, requireAdmin, async (req, res) => {
+  res.json(siteAuditJob);
+});
+
+// Roda sozinho uma vez por dia, sem precisar de ninguém clicar em nada — é o "rodar em
+// segundo plano" que o Thomas pediu. Só dispara se não tiver um já em andamento.
+setInterval(() => { runSiteAuditJob().catch(() => {}); }, 24 * 60 * 60 * 1000);
 
 // Prepara o repositório do cliente pra ser importado direto na Vercel — sem
 // precisar pedir pra outra IA arrumar isso toda vez. Detecta se é um projeto

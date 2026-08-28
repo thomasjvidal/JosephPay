@@ -2928,57 +2928,71 @@ function QuickStats({c}){
   );
 }
 
-// Varre todos os produtores com GitHub vinculado procurando as 3 classes de problema
-// descobertas com o Temakeria Box e o Dr. Ramon — pra nunca precisar esperar um cliente
-// reclamar pra saber que o site dele está com o mesmo bug. Só leitura: cada item tem um
-// atalho pra abrir o perfil do cliente na Ativação e corrigir pelos cards que já existem.
+// Varre TODOS os produtores com GitHub vinculado procurando as 3 classes de problema
+// descobertas com o Temakeria Box e o Dr. Ramon, e já CORRIGE sozinho o que for seguro
+// corrigir sozinho (mover Mini Chat pra public/, vercel.json, trocar botões de WhatsApp
+// pendentes) — roda no servidor em segundo plano, então dá pra fechar essa tela que ele
+// continua rodando; reabrindo depois mostra o resultado. Roda uma vez por dia sozinho
+// também, sem precisar clicar em nada.
 const AUDIT_LABELS={
-  minichat_fora_de_public:"Mini Chat instalado fora de public/ — nunca aparece no site publicado",
-  vercel_json_desatualizado:"vercel.json ausente ou desatualizado",
-  botoes_whatsapp_pendentes:"Botões de WhatsApp ainda não apontam pro Mini Chat",
+  minichat_fora_de_public:"Mini Chat instalado fora de public/",
+  vercel_json_desatualizado:"vercel.json desatualizado",
+  botoes_whatsapp_pendentes:"Botões de WhatsApp ainda não apontavam pro Mini Chat",
   erro_ao_verificar:"Não consegui verificar esse repositório",
 };
 function SiteAuditModal({onClose,onAbrirCliente}){
-  const [loading,setLoading]=useState(true);
-  const [producers,setProducers]=useState(null);
+  const [status,setStatus]=useState(null);
   const [error,setError]=useState("");
+  const carregarStatus=()=>apiCall('/api/admin/producers/site-audit/status').then(d=>{if(!d?.error)setStatus(d);});
   useEffect(()=>{
-    apiCall('/api/admin/producers/site-audit').then(d=>{
-      setLoading(false);
-      if(d?.error){setError(d.error);return;}
-      setProducers(d.producers||[]);
-    });
+    carregarStatus();
+    const iv=setInterval(carregarStatus,4000);
+    return()=>clearInterval(iv);
   },[]);
-  const comProblema=(producers||[]).filter(p=>p.issues?.length);
-  const semProblema=(producers||[]).filter(p=>!p.issues?.length);
+  const rodar=async()=>{
+    setError("");
+    const d=await apiCall('/api/admin/producers/site-audit/run',{method:'POST'});
+    if(d?.error){setError(d.error);return;}
+    carregarStatus();
+  };
+  const producers=status?.results||null;
+  const comAlgumaAlteracao=(producers||[]).filter(p=>p.fixed?.length||p.issues?.length);
+  const semNada=(producers||[]).filter(p=>!p.fixed?.length&&!p.issues?.length);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"20px 24px 40px",maxHeight:"88vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:4}}>Diagnóstico técnico de todos os produtores</div>
-        <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Verifica em todos os clientes com GitHub vinculado se o Mini Chat foi instalado no lugar certo, se o vercel.json está correto e se sobrou algum botão de WhatsApp sem trocar. Pode demorar um pouco — lê o repositório de cada um.</div>
-        {loading&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"20px 0"}}>Verificando repositórios…</div>}
+        <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Verifica todos os clientes com GitHub vinculado e já corrige sozinho o que for seguro corrigir (Mini Chat fora do lugar, vercel.json, botões de WhatsApp pendentes). Roda no servidor — pode fechar essa tela que ele continua. Também roda sozinho 1x por dia.</div>
         {error&&<div style={{color:RED,fontSize:13,marginBottom:12}}>{error}</div>}
-        {!loading&&producers&&(
+        {status?.running&&<div style={{color:GOLD,fontSize:13,textAlign:"center",padding:"14px 0",background:`${GOLD}0D`,borderRadius:12,marginBottom:16}}>⏳ Rodando em segundo plano{status.startedAt?` desde ${new Date(status.startedAt).toLocaleTimeString('pt-BR')}`:""}… pode fechar e conferir depois.</div>}
+        {!status?.running&&!producers&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"10px 0"}}>Ainda não rodou nesta sessão.</div>}
+        {!status?.running&&status?.error&&<div style={{color:RED,fontSize:12,marginBottom:12}}>Última execução falhou: {status.error}</div>}
+        {!status?.running&&producers&&(
           <>
-            {comProblema.length===0&&<div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"14px",color:GREEN,fontSize:13,marginBottom:16}}>✓ Nenhum problema encontrado em {producers.length} produtor(es) verificado(s).</div>}
-            {comProblema.map(p=>(
-              <div key={p.id} onClick={()=>onAbrirCliente(p.id)} style={{background:CARD2,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",marginBottom:10,cursor:"pointer"}}>
+            <div style={{color:MUTED,fontSize:11,marginBottom:12}}>Última verificação: {status.finishedAt?new Date(status.finishedAt).toLocaleString('pt-BR'):"—"}</div>
+            {comAlgumaAlteracao.length===0&&<div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"14px",color:GREEN,fontSize:13,marginBottom:16}}>✓ Tudo certo em {producers.length} produtor(es) verificado(s).</div>}
+            {comAlgumaAlteracao.map(p=>(
+              <div key={p.id} onClick={()=>onAbrirCliente(p.id)} style={{background:CARD2,border:`1px solid ${p.issues?.length?RED+"30":GREEN+"30"}`,borderRadius:14,padding:"12px 14px",marginBottom:10,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{p.company_name||p.name}</div>
                   <span style={{color:GOLD,fontSize:11,fontWeight:700}}>Abrir →</span>
                 </div>
-                {p.issues.map((iss,i)=>(
-                  <div key={i} style={{color:RED,fontSize:11,lineHeight:1.5}}>⚠️ {AUDIT_LABELS[iss.tipo]||iss.tipo}{iss.detalhe?` — ${iss.detalhe}`:""}</div>
+                {(p.fixed||[]).map((f,i)=>(
+                  <div key={"f"+i} style={{color:GREEN,fontSize:11,lineHeight:1.5}}>✓ Corrigido — {AUDIT_LABELS[f.tipo]||f.tipo}{f.detalhe?`: ${f.detalhe}`:""}</div>
+                ))}
+                {(p.issues||[]).map((iss,i)=>(
+                  <div key={"i"+i} style={{color:RED,fontSize:11,lineHeight:1.5}}>⚠️ {AUDIT_LABELS[iss.tipo]||iss.tipo}{iss.detalhe?` — ${iss.detalhe}`:""}</div>
                 ))}
               </div>
             ))}
-            {semProblema.length>0&&(
-              <div style={{color:MUTED,fontSize:11,marginTop:8}}>✓ Sem problemas: {semProblema.map(p=>p.company_name||p.name).join(", ")}</div>
+            {semNada.length>0&&(
+              <div style={{color:MUTED,fontSize:11,marginTop:8}}>✓ Sem nada pra mexer: {semNada.map(p=>p.company_name||p.name).join(", ")}</div>
             )}
           </>
         )}
-        <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F,marginTop:16}}>Fechar</button>
+        <button onClick={rodar} disabled={status?.running} style={{width:"100%",background:status?.running?"rgba(212,175,55,0.2)":GOLD,border:"none",borderRadius:100,padding:14,color:status?.running?MUTED:"#0C0C0C",fontWeight:700,fontSize:14,cursor:status?.running?"default":"pointer",fontFamily:F,marginTop:8}}>{status?.running?"Rodando…":producers?"Rodar de novo":"Rodar agora"}</button>
+        <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F,marginTop:8}}>Fechar</button>
       </div>
     </div>
   );
