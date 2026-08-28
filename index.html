@@ -1432,7 +1432,10 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(d.error){setMsg(d.error);return;}
     setInstalledAt(new Date().toISOString());
     setSugestoes([]);
-    setMsg(`✓ Instalado em ${d.file_path}. O site já redireciona para o Mini Chat.`);
+    const movedToPublic=d.file_path!==minichatPath.trim();
+    setMsg(movedToPublic
+      ? `✓ Instalado em ${d.file_path} (movi pra dentro de public/ automaticamente — esse repositório tem build, e arquivo fora de public/ nunca aparece no site publicado). Depois do deploy da Vercel, o site vai responder em /${d.served_path}.`
+      : `✓ Instalado em ${d.file_path}. Aguarde o deploy da Vercel (~1 min) e o site já redireciona para o Mini Chat.`);
     onUpdated&&onUpdated();
   };
   return(

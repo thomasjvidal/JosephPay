@@ -2409,12 +2409,32 @@ app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requ
       .select("github_repo,github_minichat_path")
       .eq("id", id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Repositório não vinculado" });
-    const filePath = profile.github_minichat_path || "minichat.html";
+    let filePath = profile.github_minichat_path || "minichat.html";
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
     const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+
+    // Mesma checagem do install-minichat: se o caminho salvo é de antes dessa correção
+    // (fora de public/ num projeto com build), corrige aqui também — senão o "corrigir"
+    // fica recommitando pra sempre um arquivo que nunca é publicado.
+    try {
+      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
+      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+      const detected = detectRepoFramework(allPaths);
+      if (detected.isBuildProject && !/^public\//.test(filePath)) {
+        filePath = `public/${filePath}`;
+      }
+      if (detected.isBuildProject) {
+        await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
+          if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
+        });
+      }
+    } catch (e) {
+      console.warn("[reinstall-minichat] detecção de framework falhou, seguindo com o caminho salvo:", e.message);
+    }
+
     const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
     let sha;
     try {
@@ -2428,7 +2448,7 @@ app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requ
       content: Buffer.from(loaderHtml, "utf8").toString("base64"),
       ...(sha ? { sha } : {}),
     }, { headers });
-    await supabase.from("profiles").update({ github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
     autoFixMinichatLink(id).catch(() => {});
     res.json({ ok: true, file_path: filePath });
   } catch (err) {
@@ -3490,6 +3510,70 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
   }
 });
 
+// Analisa a árvore de arquivos do repo e descobre que tipo de projeto é —
+// usado tanto pra montar o vercel.json certo quanto pra saber se um arquivo
+// novo (ex: a página do Mini Chat) precisa entrar em public/ pra ser
+// realmente publicado no build (Vite/Next só copiam pro deploy final o que
+// está dentro de public/ — qualquer outro arquivo novo na raiz é ignorado
+// pelo build e nunca chega ao site no ar).
+function detectRepoFramework(allPaths) {
+  const hasPackageJson = allPaths.includes("package.json");
+  const hasViteConfig  = allPaths.some(p => /^vite\.config\.[jt]s$/.test(p));
+  const hasNextConfig  = allPaths.some(p => /^next\.config\.[jt]sx?$/.test(p));
+  const hasTanStack    = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
+  const hasPublicDir   = allPaths.some(p => /^public\//.test(p));
+  // Qualquer projeto com package.json passa por um passo de build (Vite/Next/CRA/etc)
+  // que só publica o que está dentro de public/ — arquivos soltos na raiz do repo
+  // não vão pro ar, mesmo que o commit no GitHub funcione normalmente.
+  const isBuildProject = hasPackageJson;
+  return { hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack, hasPublicDir, isBuildProject };
+}
+
+function buildVercelConfig({ hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack }) {
+  if (hasNextConfig) return { framework: "nextjs" };
+  if (hasViteConfig || hasTanStack) {
+    return {
+      buildCommand: "npm run build",
+      outputDirectory: "dist",
+      framework: "vite",
+      rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+    };
+  }
+  if (hasPackageJson) {
+    return {
+      buildCommand: "npm run build",
+      outputDirectory: "dist",
+      rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+    };
+  }
+  return { cleanUrls: true, trailingSlash: false };
+}
+
+// Garante que o vercel.json do repositório existe e está com a configuração certa
+// pro tipo de projeto detectado — chamada tanto pelo botão manual "Preparar pra
+// Vercel" quanto automaticamente sempre que instalamos algo novo no repo, pra
+// nunca depender de alguém lembrar de clicar nesse botão.
+async function ensureVercelConfig(repo, headers, detected) {
+  const vercelConfig = buildVercelConfig(detected);
+  const desired = JSON.stringify(vercelConfig, null, 2) + "\n";
+  let existingSha = null;
+  try {
+    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    existingSha = existing.data.sha;
+    const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
+    if (existingContent === desired) return { changed: false, config: vercelConfig };
+  } catch (e) {
+    if (e.response?.status !== 404) throw e;
+  }
+  const body = {
+    message: "JosephPay: prepara repositório pra deploy na Vercel",
+    content: Buffer.from(desired, "utf8").toString("base64"),
+  };
+  if (existingSha) body.sha = existingSha;
+  await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
+  return { changed: true, config: vercelConfig };
+}
+
 // Prepara o repositório para deploy na Vercel — commita um vercel.json adequado ao tipo de
 // projeto (HTML estático, Vite, Next.js). Assim o produtor só precisa importar no painel da Vercel.
 app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireAdmin, async (req, res) => {
@@ -3505,58 +3589,11 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
     // Detecta o tipo de projeto analisando os arquivos do repo
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
     const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-
-    let vercelConfig;
-    const hasPackageJson = allPaths.includes("package.json");
-    const hasViteConfig  = allPaths.some(p => /^vite\.config\.[jt]s$/.test(p));
-    const hasNextConfig  = allPaths.some(p => /^next\.config\.[jt]sx?$/.test(p));
-    const hasTanStack    = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
-
-    if (hasNextConfig) {
-      vercelConfig = { framework: "nextjs" };
-    } else if (hasViteConfig || hasTanStack) {
-      vercelConfig = {
-        buildCommand: "npm run build",
-        outputDirectory: "dist",
-        framework: "vite",
-        rewrites: [{ source: "/(.*)", destination: "/index.html" }]
-      };
-    } else if (hasPackageJson) {
-      vercelConfig = {
-        buildCommand: "npm run build",
-        outputDirectory: "dist",
-        rewrites: [{ source: "/(.*)", destination: "/index.html" }]
-      };
-    } else {
-      // HTML estático puro
-      vercelConfig = {
-        cleanUrls: true,
-        trailingSlash: false
-      };
-    }
-
-    // Verifica se já existe vercel.json
-    let existingSha = null;
-    try {
-      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-      existingSha = existing.data.sha;
-      // Já existe — verifica se é diferente antes de atualizar
-      const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
-      if (existingContent === JSON.stringify(vercelConfig, null, 2) + "\n") {
-        return res.json({ ok: true, already: true, config: vercelConfig });
-      }
-    } catch (e) {
-      if (e.response?.status !== 404) throw e;
-    }
-
-    const body = {
-      message: "JosephPay: prepara repositório pra deploy na Vercel",
-      content: Buffer.from(JSON.stringify(vercelConfig, null, 2) + "\n", "utf8").toString("base64"),
-    };
-    if (existingSha) body.sha = existingSha;
-    await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
+    const detected = detectRepoFramework(allPaths);
+    const { changed, config } = await ensureVercelConfig(repo, headers, detected);
+    if (!changed) return res.json({ ok: true, already: true, config });
     await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
-    res.json({ ok: true, config: vercelConfig });
+    res.json({ ok: true, config });
   } catch (err) {
     console.error("[github/prepare-vercel]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao preparar o repositório para a Vercel" });
@@ -3578,6 +3615,30 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
     const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+
+    // Detecta o tipo de projeto e garante o vercel.json certo ANTES de instalar —
+    // sem isso, num projeto Vite/Next/CRA o build simplesmente ignora qualquer
+    // arquivo novo fora de public/, e o commit "funciona" mas nunca aparece no
+    // site publicado (o bug que já pegou o Dr. Ramon e o Temakeria Box).
+    let servedPath = filePath;
+    try {
+      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
+      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+      const detected = detectRepoFramework(allPaths);
+      if (detected.isBuildProject && !/^public\//.test(filePath)) {
+        filePath = `public/${filePath}`;
+      }
+      if (detected.isBuildProject) {
+        // servedPath é o caminho real na URL do site — Vite/Next servem o conteúdo
+        // de public/ a partir da raiz, então "public/minichat.html" vira "/minichat.html".
+        servedPath = filePath.replace(/^public\//, "");
+        await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
+          if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
+        });
+      }
+    } catch (e) {
+      console.warn("[install-minichat] detecção de framework falhou, seguindo com o caminho original:", e.message);
+    }
     const loaderHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -3609,7 +3670,7 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
     // autoFix já enxergue o caminho correto.
     autoFixMinichatLink(id).catch(() => {});
-    res.json({ ok: true, file_path: filePath });
+    res.json({ ok: true, file_path: filePath, served_path: servedPath });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
