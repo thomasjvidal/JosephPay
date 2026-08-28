@@ -3677,6 +3677,44 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
   }
 });
 
+// Confere DE VERDADE se a página do Mini Chat está no ar no domínio do cliente — não
+// basta o commit no GitHub ter dado certo, porque isso não garante que o deploy da
+// Vercel terminou nem que o arquivo caiu no lugar certo (foi exatamente o que enganou
+// o Thomas com o Temakeria Box: commit ok, site nunca atualizou). Busca a URL real e
+// confirma que é de fato a página-redirect do Mini Chat, não a home do site (SPA
+// engolindo a rota) nem um 404.
+app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path").eq("id", id).maybeSingle();
+    if (!profile?.site_url) return res.json({ status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." });
+    const filePath = profile.github_minichat_path || "minichat.html";
+    const servedPath = filePath.replace(/^public\//, "");
+    const base = profile.site_url.replace(/\/+$/, "");
+    const url = `${base}/${servedPath}`;
+    const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
+    try {
+      const resp = await axios.get(url, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
+      const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
+      if (resp.status >= 200 && resp.status < 300 && body.includes(minichatMarker)) {
+        return res.json({ status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` });
+      }
+      if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
+        return res.json({ status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` });
+      }
+      if (resp.status === 404) {
+        return res.json({ status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.` });
+      }
+      return res.json({ status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente caiu na home do site (rota engolida pelo próprio site). Pode ser cache: espere ~1 min e tente de novo.` });
+    } catch (e) {
+      return res.json({ status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` });
+    }
+  } catch (err) {
+    console.error("[github/verify-minichat]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Prepara o repositório do cliente pra ser importado direto na Vercel — sem
 // precisar pedir pra outra IA arrumar isso toda vez. Detecta se é um projeto
 // Vite (Lovable sempre gera Vite+React) e cria/atualiza o vercel.json com o
