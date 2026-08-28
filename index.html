@@ -1506,6 +1506,77 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   );
 }
 
+// ── CARD 5: Fotos do site (GitHub only) — troca uma foto direto no repositório do cliente,
+// sem precisar pedir pra outra IA (Lovable) editar o site. Mantém o mesmo nome de arquivo,
+// então nenhum código muda — só o conteúdo da imagem.
+function FotosDoSiteAdmin({c,initialOpen,done}){
+  const [open,setOpen]=useState(false);
+  const [images,setImages]=useState(null);
+  const [previews,setPreviews]=useState({}); // path -> data URL
+  const [loadingPreview,setLoadingPreview]=useState({});
+  const [uploading,setUploading]=useState({});
+  const [msg,setMsg]=useState("");
+  const carregar=async()=>{
+    if(!c.github_repo)return;
+    setImages(null);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/images`);
+    if(d.error){setMsg(d.error);setImages([]);return;}
+    setImages(d.images||[]);
+  };
+  useEffect(()=>{if(open&&images===null)carregar();},[open]);
+  const carregarPreview=async(path)=>{
+    if(previews[path]||loadingPreview[path])return;
+    setLoadingPreview(p=>({...p,[path]:true}));
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/image-content?path=${encodeURIComponent(path)}`);
+    setLoadingPreview(p=>({...p,[path]:false}));
+    if(d?.content_base64)setPreviews(p=>({...p,[path]:`data:${d.mime};base64,${d.content_base64}`}));
+  };
+  const trocarFoto=(path)=>(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    e.target.value="";
+    setUploading(u=>({...u,[path]:true}));setMsg("");
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      const d=await apiCall(`/api/admin/producers/${c.id}/github/replace-image`,{method:'POST',body:JSON.stringify({path,base64:ev.target.result})});
+      setUploading(u=>({...u,[path]:false}));
+      if(d.error){setMsg(d.error);return;}
+      setPreviews(p=>({...p,[path]:ev.target.result}));
+      setMsg(`✓ ${path} atualizada. Aguarde o deploy da Vercel (~1 min) pra ver no site.`);
+    };
+    reader.readAsDataURL(file);
+  };
+  return(
+    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <CardHeader title="Fotos do site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Lista as imagens de verdade que existem no repositório do cliente — escolha uma e suba a substituta. Mantém o mesmo lugar no site, então não precisa mexer em código nem pedir pra outra IA.</div>
+        {images===null&&<div style={{color:MUTED,fontSize:12}}>Carregando imagens…</div>}
+        {images&&images.length===0&&!msg&&<div style={{color:MUTED,fontSize:12}}>Não achei imagens no repositório.</div>}
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginBottom:10,lineHeight:1.4}}>{msg}</div>}
+        {images&&images.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {images.map(img=>(
+              <div key={img.path} onMouseEnter={()=>carregarPreview(img.path)} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px"}}>
+                <div style={{width:44,height:44,borderRadius:8,background:"#0d0d0c",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                  {previews[img.path]?<img src={previews[img.path]} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:MUTED,fontSize:16}}>🖼</span>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-all"}}>{img.path}</div>
+                  <div style={{color:MUTED,fontSize:10,marginTop:2}}>{(img.size/1024).toFixed(0)} KB</div>
+                </div>
+                <label style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,flexShrink:0,whiteSpace:"nowrap"}}>
+                  {uploading[img.path]?"Enviando…":"Trocar"}
+                  <input type="file" accept="image/*" onChange={trocarFoto(img.path)} disabled={uploading[img.path]} style={{display:"none"}}/>
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>)}
+    </div>
+  );
+}
+
 const EMAIL_PROVIDERS=[
   {label:"Gmail",host:"smtp.gmail.com",port:"465",hint:"Use uma senha de app do Google (não a senha normal)"},
   {label:"Outlook",host:"smtp-mail.outlook.com",port:"587",hint:"Use a senha normal da conta Microsoft"},
@@ -2273,20 +2344,12 @@ function AtivacaoAdmin({c,initialOpen,done}){
     if(!d.error)setResetResult(d.password);
   };
   const [promptText,setPromptText]=useState(null);
-  const gerarPrompt=()=>{
-    const mc=c.minichat_config||{};
-    const linhas=[`Você está ajudando a configurar o Mini Chat de ${c.company_name||c.name||"um cliente"} dentro do JosephPay.`];
-    if(mc.brand_name)linhas.push(`Nome usado na saudação: ${mc.brand_name}`);
-    if(mc.whatsapp_number)linhas.push(`WhatsApp de destino: ${mc.whatsapp_number}`);
-    if(mc.email_destino)linhas.push(`E-mail de destino: ${mc.email_destino}`);
-    if(mc.redirect_link)linhas.push(`Link de redirecionamento final: ${mc.redirect_link}`);
-    if(mc.objetivo_options?.length)linhas.push(`Opções da pergunta "objetivo": ${mc.objetivo_options.join(", ")}`);
-    if(mc.questions?.length){
-      linhas.push("Perguntas atuais do fluxo:");
-      mc.questions.forEach((q,i)=>{linhas.push(`${i+1}. ${q.subtext||q.text||""}${q.options?.filter(Boolean).length?` (opções: ${q.options.filter(Boolean).join(", ")})`:""}`);});
-    }
-    linhas.push("Com base nisso, sugira melhorias no texto das perguntas e opções pra deixar o diagnóstico mais natural e no tom de voz dessa empresa.");
-    setPromptText(linhas.join("\n"));
+  const [gerandoSugestoes,setGerandoSugestoes]=useState(false);
+  const gerarPrompt=async()=>{
+    setGerandoSugestoes(true);setPromptText(null);
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/suggest-improvements`,{method:'POST'});
+    setGerandoSugestoes(false);
+    setPromptText(d?.suggestions||d?.error||"Não consegui gerar sugestões agora.");
   };
   const [open,setOpen]=useState(false);
   return(
@@ -2342,14 +2405,14 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${wapNum.trim().replace(/\D/g,"")}`}/></div>}
       {c.minichat_config&&(<div style={{marginBottom:14}}>
-        <Btn sm outline color={GOLD} onClick={gerarPrompt}>Gerar prompt</Btn>
+        <Btn sm outline color={GOLD} onClick={gerarPrompt}>{gerandoSugestoes?"Pensando…":"✨ Sugerir melhorias com IA"}</Btn>
         {promptText&&(
           <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginTop:8}}>
             <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,paddingRight:60}}>{promptText}</pre>
             <button onClick={()=>navigator.clipboard?.writeText(promptText)} style={{position:"absolute",top:8,right:8,background:GOLD,color:"#000",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Copiar</button>
           </div>
         )}
-        <div style={{color:MUTED,fontSize:11,marginTop:6,lineHeight:1.4}}>Monta um texto com os dados reais desse cliente pra você colar no ChatGPT/Claude e pedir sugestões de melhoria no fluxo.</div>
+        <div style={{color:MUTED,fontSize:11,marginTop:6,lineHeight:1.4}}>A própria IA do JosephPay lê os dados reais desse cliente e sugere melhorias direto aqui — não precisa mais sair pro ChatGPT.</div>
       </div>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
@@ -2378,6 +2441,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [gerandoTudo,setGerandoTudo]=useState(false);
   const [nicho,setNicho]=useState(c.minichat_config?.business_context||"");
   const [showJsonImport,setShowJsonImport]=useState(false);
+  const [showAvancadoPerguntas,setShowAvancadoPerguntas]=useState(false);
   const [jsonInput,setJsonInput]=useState("");
   const [jsonErr,setJsonErr]=useState("");
   const gerarTodas=async()=>{
@@ -2421,6 +2485,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
+        </div>
+        <button onClick={()=>setShowAvancadoPerguntas(a=>!a)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10,display:"flex",alignItems:"center",gap:4}}>Avançado (colar perguntas prontas de outra IA) {showAvancadoPerguntas?"▲":"▼"}</button>
+        {showAvancadoPerguntas&&(<>
+        <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <button onClick={()=>{
             const nome=c.name||"este produtor";
             const area=nicho.trim()||"[descreva o nicho/área aqui]";
@@ -2458,6 +2526,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             }} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:"9px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>Importar perguntas</button>
           </div>
         )}
+        </>)}
         <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o nicho acima (salva sozinho ao gerar) pra montar as {questions.length} perguntas de uma vez, com coerência sobre serviços e público. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         {questions.map((q,qi)=>(
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
@@ -2606,6 +2675,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       <SensorAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("sensor")} done={cardDone("sensor")}/>
       {metodoAtual==="github"&&<VercelAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("vercel")} done={cardDone("vercel")}/>}
       {metodoAtual==="github"&&<MinichatRepoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("minichat_repo")} done={cardDone("minichat_repo")}/>}
+      {metodoAtual==="github"&&<FotosDoSiteAdmin c={c} initialOpen={openCard("fotos")} done={false}/>}
       <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       {metodoAtual==="github"&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}

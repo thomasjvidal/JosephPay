@@ -2245,6 +2245,42 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
+// Sugestões de melhoria no fluxo do Mini Chat direto pela IA já embutida no JosephPay —
+// substitui o fluxo antigo de copiar um prompt e colar manualmente no ChatGPT/Claude por
+// fora do sistema. Só sugere (texto), não altera nada sozinho — o admin decide o que aplicar.
+app.post("/api/admin/producers/:id/minichat/suggest-improvements", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("name,company_name,minichat_config").eq("id", id).maybeSingle();
+    const mc = profile?.minichat_config || {};
+    const linhas = [`Negócio: ${profile?.company_name || profile?.name || "cliente"}`];
+    if (mc.business_context) linhas.push(`Sobre o negócio: ${mc.business_context}`);
+    if (mc.brand_name) linhas.push(`Nome usado na saudação: ${mc.brand_name}`);
+    if (mc.objetivo_options?.length) linhas.push(`Opções da pergunta "objetivo": ${mc.objetivo_options.join(", ")}`);
+    if (mc.questions?.length) {
+      linhas.push("Perguntas atuais do fluxo:");
+      mc.questions.forEach((q, i) => linhas.push(`${i + 1}. ${q.subtext || q.text || ""}${q.options?.filter(Boolean).length ? ` (opções: ${q.options.filter(Boolean).join(", ")})` : ""}`));
+    }
+    const systemPrompt = `Você avalia o fluxo de perguntas de um Mini Chat de qualificação de leads (estilo WhatsApp, botões de resposta rápida).
+${linhas.join("\n")}
+Dê no máximo 4 sugestões objetivas e curtas (1-2 frases cada) de como melhorar o texto das perguntas/opções pra soar mais natural e no tom desse negócio específico. Responda só a lista, em português direto, sem introdução nem markdown.`;
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: "Sugira melhorias." }]); break; }
+      catch (e) { lastErr = e; }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: "Sugira melhorias." }]); }
+      catch (e) { lastErr = e; }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+    res.json({ suggestions: reply.trim() });
+  } catch (err) {
+    console.error("[minichat suggest-improvements]", err.message);
+    res.status(500).json({ error: "Não consegui gerar sugestões agora. Tenta de novo em instantes." });
+  }
+});
+
 // Após instalar/salvar o minichat, corrige silenciosamente qualquer link
 // josephpay.com/minichat com uid errado em TODOS os arquivos do repositório.
 // Funciona com qualquer tipo de repo: HTML puro, React/Lovable/Vite, Next.js,
@@ -3234,6 +3270,97 @@ app.get("/api/admin/github/callback", async (req, res) => {
 app.post("/api/admin/github/disconnect", requireAuth, requireAdmin, async (req, res) => {
   await supabase.from("platform_github_auth").delete().eq("id", 1);
   res.json({ ok: true });
+});
+
+const IMAGE_EXT_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml" };
+const imageMimeFromPath = (p) => IMAGE_EXT_MIME[(p.split(".").pop() || "").toLowerCase()] || "application/octet-stream";
+
+// Lista as imagens de verdade do repositório do cliente — pra trocar foto do site direto
+// pelo Admin, sem precisar pedir pra outra IA (Lovable) editar o site. Prioriza public/ e
+// src/assets, onde ficam as imagens reais do site (favicon/ícones minúsculos ficam por
+// último, raramente é isso que o admin quer trocar).
+app.get("/api/admin/producers/:id/github/images", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const repo = profile.github_repo;
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+    const branch = repoInfo.data.default_branch;
+    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+    const images = (treeResp.data.tree || [])
+      .filter(i => i.type === "blob" && /\.(png|jpe?g|webp|gif|svg)$/i.test(i.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(i.path) && (i.size || 0) < 8 * 1024 * 1024)
+      .map(i => ({ path: i.path, size: i.size || 0 }))
+      .sort((a, b) => {
+        const pa = /^(public|src\/assets)\//i.test(a.path) ? 0 : 1, pb = /^(public|src\/assets)\//i.test(b.path) ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const fa = /favicon|icon-/i.test(a.path) ? 1 : 0, fb = /favicon|icon-/i.test(b.path) ? 1 : 0;
+        if (fa !== fb) return fa - fb;
+        return a.path.localeCompare(b.path);
+      })
+      .slice(0, 60);
+    res.json({ images });
+  } catch (err) {
+    console.error("[github/images]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao listar as imagens do repositório" });
+  }
+});
+
+// Devolve o conteúdo de uma imagem do repo em base64 pra pré-visualização (o <img> do
+// admin monta um data: URL com isso — evita expor uma rota sem autenticação só pra imagem).
+app.get("/api/admin/producers/:id/github/image-content", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { path } = req.query;
+    if (!path) return res.status(400).json({ error: "path ausente" });
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const resp = await axios.get(`https://api.github.com/repos/${profile.github_repo}/contents/${encodeURI(path)}`, { headers });
+    if (!resp.data.content) return res.status(500).json({ error: "Arquivo grande demais pra pré-visualizar" });
+    res.json({ content_base64: resp.data.content.replace(/\n/g, ""), mime: imageMimeFromPath(path) });
+  } catch (err) {
+    console.error("[github/image-content]", err.response?.data || err.message);
+    res.status(500).json({ error: "Falha ao carregar a imagem" });
+  }
+});
+
+// Troca uma imagem do site pelo caminho EXATO onde ela já está — mantém o mesmo nome de
+// arquivo, então nenhum código do site precisa mudar (Vite/Next só empacotam de novo o
+// que já está em public/ ou src/assets no próximo deploy). Sem isso, o produtor precisaria
+// pedir pra outra IA (Lovable) editar o site toda vez que quiser trocar uma foto.
+app.post("/api/admin/producers/:id/github/replace-image", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { path, base64 } = req.body || {};
+    if (!path || !base64) return res.status(400).json({ error: "path e base64 são obrigatórios" });
+    const { data: profile } = await supabase.from("profiles").select("github_repo,site_url").eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const raw = base64.includes(",") ? base64.split(",")[1] : base64;
+    let sha;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(path)}`, { headers });
+      sha = existing.data.sha;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(path)}`, {
+      message: `JosephPay: troca a imagem ${path}`,
+      content: raw,
+      ...(sha ? { sha } : {}),
+    }, { headers });
+    res.json({ ok: true, path });
+  } catch (err) {
+    console.error("[github/replace-image]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || "Falha ao trocar a imagem" });
+  }
 });
 
 app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) => {
