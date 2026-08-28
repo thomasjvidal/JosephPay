@@ -1088,6 +1088,9 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
             <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Todos os botões e links do site — marque quais devem abrir o Mini Chat. Nada muda até clicar em Aplicar.</div>
             {links===null&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Lendo o repositório…</div>}
             {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Nenhum link encontrado nesse arquivo nem no restante do código.</div>}
+            {links&&links.filter(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href)).length>0&&(
+              <div style={{background:`${RED}12`,border:`1px solid ${RED}30`,borderRadius:10,padding:"9px 12px",marginBottom:10,color:RED,fontSize:11,lineHeight:1.4}}>⚠️ Tem {links.filter(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href)).length} link(s) de WhatsApp ainda apontando direto pra fora — marque também esses abaixo e clique em Aplicar, senão esse(s) botão(ões) continuam indo pro WhatsApp em vez do Mini Chat.</div>
+            )}
             {links&&links.length>0&&(
               <button onClick={()=>setSelected(Object.fromEntries(links.filter(l=>l.href!==minichatLink).map(l=>[linkKey(l),true])))} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10}}>Marcar todos</button>
             )}
@@ -2621,13 +2624,19 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   const emailOk=!!c.conn?.email;
   const [botoesOk,setBotoesOk]=useState(null); // null = não verificado ainda / não se aplica
   useEffect(()=>{
-    if(metodoAtual!=="github"||!c.github_repo||!c.github_file_path){setBotoesOk(null);return;}
+    if(metodoAtual!=="github"||!c.github_repo){setBotoesOk(null);return;}
     const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
-    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}&file=${encodeURIComponent(c.github_file_path)}`).then(d=>{
+    apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}`).then(d=>{
       if(d?.error||!d?.links){setBotoesOk(null);return;}
-      setBotoesOk(d.links.some(l=>l.href===minichatLink));
+      const algumCorrigido=d.links.some(l=>l.href===minichatLink);
+      // Não basta UM botão estar certo — se ainda sobrar algum link de WhatsApp (wa.me)
+      // apontando direto pra fora, o card não pode aparecer verde: foi exatamente esse
+      // "só um corrigido, os outros não" que fez o Thomas achar que a Temakeria estava
+      // pronta quando o botão "PEDIR DELIVERY" continuava indo pro número errado.
+      const whatsappNaoCorrigido=d.links.some(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href));
+      setBotoesOk(algumCorrigido&&!whatsappNaoCorrigido);
     });
-  },[metodoAtual,c.github_repo,c.github_file_path,c.id]);
+  },[metodoAtual,c.github_repo,c.id]);
 
   const steps=[
     {id:"site",label:"Site conectado",done:siteOk,cardKeys:["site"]},
