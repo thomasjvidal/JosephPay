@@ -2092,9 +2092,9 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{if(d?.customers)setLista(d.customers);else setLista([]);});
   },[ownerId,open]);
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
-  const srcLabel=s=>s==='minichat'?'Site':s==='manual'?'Manual':'Compra';
-  const cnts={todos:(lista||[]).length,lead:(lista||[]).filter(c=>c.status==='lead').length,cliente:(lista||[]).filter(c=>(c.status||'cliente')==='cliente').length,assinante:(lista||[]).filter(c=>c.status==='assinante').length};
-  const filtrada=(lista||[]).filter(c=>filtro==='todos'||(c.status||'cliente')===filtro);
+  const srcLabel=s=>s==='minichat'?'Site':s==='google_ads'?'Google Ads':s==='manual'?'Manual':'Compra';
+  const cnts={todos:(lista||[]).length,lead:(lista||[]).filter(c=>c.status==='lead').length,cliente:(lista||[]).filter(c=>(c.status||'cliente')==='cliente').length,assinante:(lista||[]).filter(c=>c.status==='assinante').length,google_ads:(lista||[]).filter(c=>c.source==='google_ads').length};
+  const filtrada=(lista||[]).filter(c=>filtro==='todos'||(filtro==='google_ads'?c.source==='google_ads':(c.status||'cliente')===filtro));
   const exportar=()=>{
     if(!lista||!lista.length)return;
     const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
@@ -2178,7 +2178,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {[["todos","Todos"],["lead","Interessados"],["cliente","Clientes"],["assinante","Assinantes"]].map(([id,label])=>(
+                {[["todos","Todos"],["lead","Interessados"],["cliente","Clientes"],["assinante","Assinantes"],["google_ads","Google Ads"]].map(([id,label])=>(
                   <button key={id} onClick={()=>setFiltro(id)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${filtro===id?GOLD+"55":BDR}`,background:filtro===id?`${GOLD}14`:"transparent",color:filtro===id?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>{label} <span style={{opacity:0.7}}>{cnts[id]}</span></button>
                 ))}
               </div>
@@ -2216,6 +2216,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
 function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   const [text,setText]=useState("");
   const [statuses,setStatuses]=useState({});
+  const [origemGoogleAds,setOrigemGoogleAds]=useState(false);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
   const [savedCount,setSavedCount]=useState(null);
@@ -2236,7 +2237,7 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   const salvar=async()=>{
     if(!parsed.length)return;
     setSaving(true);setError("");
-    const contacts=parsed.map((c,i)=>({...c,status:statuses[i]||"lead"}));
+    const contacts=parsed.map((c,i)=>({...c,status:statuses[i]||"lead",source:origemGoogleAds?"google_ads":"manual"}));
     const d=await apiCall(`/api/admin/producers/${ownerId}/customers/bulk`,{method:'POST',body:JSON.stringify({contacts})});
     setSaving(false);
     if(d.error){setError(d.error);return;}
@@ -2259,6 +2260,13 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
             <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:6}}>Adicionar contatos</div>
             <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Cole a lista — um contato por linha. O sistema separa nome, telefone e e-mail sozinho. Depois só marca quem é interessado ou já é cliente.</div>
             <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"João Silva, 21999998888, joao@email.com\nMaria Souza, 21988887777"} rows={5} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:14,resize:"vertical"}}/>
+            <label style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${origemGoogleAds?GOLD+"55":BDR}`,borderRadius:12,padding:"11px 14px",marginBottom:14,cursor:"pointer"}}>
+              <input type="checkbox" checked={origemGoogleAds} onChange={e=>setOrigemGoogleAds(e.target.checked)} style={{width:16,height:16,flexShrink:0}}/>
+              <div>
+                <div style={{color:origemGoogleAds?GOLD:TEXT,fontSize:13,fontWeight:600}}>Esses contatos vieram do Google Ads</div>
+                <div style={{color:MUTED,fontSize:11,marginTop:1}}>Marca a origem como "Google Ads" pra filtrar depois. Não muda nada pra quem entra do jeito normal.</div>
+              </div>
+            </label>
             {parsed.length>0&&(
               <div style={{marginBottom:14}}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>{parsed.length} contato(s) encontrado(s)</div>

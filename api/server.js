@@ -1951,7 +1951,10 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
         phone: c?.phone ? String(c.phone).trim() : null,
         email: c?.email ? String(c.email).trim() : null,
         status: c?.status === "cliente" ? "cliente" : "lead",
-        source: "manual",
+        // Origem é sempre "manual" por padrão (não muda pra ninguém) — só vira
+        // "google_ads" quando o admin marca isso explicitamente ao subir a lista
+        // (ex: leads exportados do Google Ads), pra dar pra filtrar depois.
+        source: c?.source === "google_ads" ? "google_ads" : "manual",
       }))
       .filter(c => c.name);
     if (!rows.length) return res.status(400).json({ error: "Nenhum contato válido (precisa de nome)" });
