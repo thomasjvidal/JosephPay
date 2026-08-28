@@ -2085,6 +2085,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
   const [saving,setSaving]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [err,setErr]=useState("");
+  const [sales,setSales]=useState(null);
   const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const todayMid=(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate());})();
   useEffect(()=>{
@@ -2103,8 +2104,12 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     const blob=new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`clientes-${(nome||'cliente').toLowerCase().replace(/\s+/g,'-')}.csv`;a.click();
   };
-  const abrirEdicao=c=>{setSel(c);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',status:c.status||'lead'});setErr("");};
-  const fechar=()=>{setSel(null);setEditForm(null);setErr("");};
+  const abrirEdicao=c=>{
+    setSel(c);setEditForm({name:c.name||'',phone:c.phone||'',email:c.email||'',birthday:c.birthday||'',status:c.status||'lead'});setErr("");
+    setSales(null);
+    apiCall(`/api/admin/producers/${ownerId}/customers/${c.id}/sales`).then(d=>setSales(d?.sales||[]));
+  };
+  const fechar=()=>{setSel(null);setEditForm(null);setErr("");setSales(null);};
   const salvar=async()=>{
     if(!sel||!editForm.name.trim())return;
     setSaving(true);setErr("");
@@ -2130,7 +2135,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     const nx=new Date(todayMid.getFullYear(),b.getMonth(),b.getDate());
     if(nx<todayMid)nx.setFullYear(todayMid.getFullYear()+1);
     const dias=Math.round((nx-todayMid)/864e5);
-    return dias===0?'🎂 hoje!':dias<=7?`🎂 em ${dias}d`:`${b.getDate()} ${MO[b.getMonth()]}`;
+    return dias===0?'hoje!':dias<=7?`em ${dias}d`:`${b.getDate()} ${MO[b.getMonth()]}`;
   };
   const inputSt={width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
@@ -2143,9 +2148,27 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
             <div style={{width:48,height:48,borderRadius:14,background:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:18,color:TEXT,flexShrink:0}}>{(editForm.name||sel.name||"?")[0]}</div>
             <div>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{editForm.name||sel.name}</div>
-              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{stLabel(sel.status)} · {srcLabel(sel.source)} · {sel.created_at?new Date(sel.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{stLabel(sel.status)} · {srcLabel(sel.source)} · desde {sel.created_at?new Date(sel.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+              <div style={{color:editForm.birthday?GOLD:MUTED,fontSize:11,marginTop:2}}>🎂 {editForm.birthday?new Date(editForm.birthday+'T00:00:00').toLocaleDateString('pt-BR'):"aniversário não informado"}</div>
             </div>
           </div>
+          {sales!==null&&sales.length>0&&(
+            <div style={{marginBottom:18}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Histórico de compras ({sales.length})</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {sales.map((s,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 12px"}}>
+                    <div>
+                      <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{fmtBRL(s.producer_amount||s.amount)}</div>
+                      <div style={{color:MUTED,fontSize:10,marginTop:1}}>{s.payment_date?new Date(s.payment_date).toLocaleDateString('pt-BR'):s.created_at?new Date(s.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+                    </div>
+                    <span style={{color:(s.status==='pago'||s.status==='paid')?GREEN:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{s.status==='pago'||s.status==='paid'?'Pago':s.status||'—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {sales!==null&&sales.length===0&&<div style={{color:MUTED,fontSize:11,marginBottom:18}}>Nenhuma compra registrada ainda.</div>}
           <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
             {[{k:"name",l:"Nome"},{k:"phone",l:"Telefone",t:"tel"},{k:"email",l:"E-mail",t:"email"},{k:"birthday",l:"Aniversário",t:"date"}].map(f=>(
               <div key={f.k}>
@@ -2189,18 +2212,18 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
               {filtrada.map(c=>{
                 const bl=bdayLabel(c.birthday);
                 return(
-                <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 12px"}}>
+                <div key={c.id} onClick={()=>abrirEdicao(c)} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 12px",cursor:"pointer"}}>
                   <div style={{width:34,height:34,borderRadius:10,background:CARD3,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:TEXT,flexShrink:0}}>{(c.name||"?")[0]}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div>
                     <div style={{color:MUTED,fontSize:11,marginTop:2}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
-                    {bl&&<div style={{color:bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}>{bl}</div>}
+                    <div style={{color:bl&&bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}>{bl?`🎂 ${bl}`:"🎂 não informado"}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginRight:4}}>
                     <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
                     <div style={{color:MUTED,fontSize:10,marginTop:2}}>{c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"}</div>
                   </div>
-                  <button onClick={()=>abrirEdicao(c)} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
+                  <button onClick={e=>{e.stopPropagation();abrirEdicao(c);}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
                 </div>
                 );
               })}

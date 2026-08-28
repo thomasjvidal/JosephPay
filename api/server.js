@@ -1992,6 +1992,26 @@ app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (
   }
 });
 
+// Histórico de compras de um contato específico — mesma informação que o produtor já
+// vê no próprio CRM ao clicar num cliente, só que lida pelo Admin (service role, já
+// que o Admin não tem a sessão do produtor). Só leitura, nenhum valor é alterado aqui.
+app.get("/api/admin/producers/:id/customers/:customerId/sales", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id, customerId } = req.params;
+    const { data, error } = await supabase
+      .from("sales")
+      .select("amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date")
+      .eq("owner_id", id)
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ sales: data || [] });
+  } catch (err) {
+    console.error("[admin/producers customer sales]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Visão geral do Mini Chat de todos os produtores — quantas sessões, quantas
 // terminaram, taxa de conclusão. Agrega em memória (volume baixo o suficiente
 // pra não precisar de RPC/SQL agregado por enquanto).
