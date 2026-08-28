@@ -1371,6 +1371,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
 // ── CARD 4: Mini Chat no site (GitHub only) ───────────────────────────────────
 function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
+  const [showTecnico,setShowTecnico]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
   const [installing,setInstalling]=useState(false);
   const [fixing,setFixing]=useState(false);
@@ -1422,7 +1423,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     const candidatos=[...priority,...others].slice(0,8);
     const paths=[...new Set(candidatos.map(l=>toFilePath(l.href)))].filter(p=>p&&!p.startsWith("http")).slice(0,5);
     if(paths.length)setSugestoes(paths);
-    else setMsg("Nenhum caminho interno detectado. Os botões do site podem apontar direto pra WhatsApp — use o card 'Botões do site' para trocá-los.");
+    else setMsg("Não achei nenhum link interno nos botões do site (ex: '/contato', '/minichat') — os botões parecem apontar direto pra fora (WhatsApp, Instagram etc). Nesse caso pode deixar o caminho padrão abaixo (minichat.html) e seguir — não precisa ser exatamente igual a um link que já existe no site.");
   };
   const instalar=async()=>{
     if(!c.github_repo||!minichatPath.trim())return;
@@ -1461,20 +1462,25 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminho do arquivo</div>
         <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
         {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')} — <span style={{fontFamily:"monospace"}}>{c.github_minichat_path||"minichat.html"}</span></div>}
-        {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{width:"100%",background:`${GOLD}12`,border:`1px solid ${GOLD}30`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:fixing?"default":"pointer",fontFamily:F,marginBottom:8}}>{fixing?"Corrigindo…":"🔧 Corrigir UID no repositório (Mini Chat mostra config errada?)"}</button>}
-        {done&&<button onClick={invalidarMinichat} disabled={invalidating} style={{width:"100%",background:`${RED}12`,border:`1px solid ${RED}40`,borderRadius:12,padding:"10px",color:RED,fontWeight:700,fontSize:12,cursor:invalidating?"default":"pointer",fontFamily:F,marginBottom:8}}>{invalidating?"Invalidando…":"⚠️ Marcar para reinstalar (força vermelho para reconfirmar)"}</button>}
         <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>
         {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
-        <div style={{marginTop:12,background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"10px 12px"}}>
-          <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>⚡ O que precisa de deploy vs o que é instantâneo</div>
-          <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>
-            <b style={{color:TEXT}}>Precisa de deploy (Vercel ~1 min):</b> instalar/reinstalar este arquivo redirect no repositório.<br/>
-            <b style={{color:TEXT}}>Instantâneo (sem deploy):</b> nome, foto, WhatsApp, perguntas e e-mail — esses dados ficam no Supabase e o Mini Chat já carrega a versão mais recente a cada abertura.
+        {done&&<a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,color:GOLD,fontSize:12,fontWeight:700,textDecoration:"none"}}>Testar Mini Chat ao vivo ↗</a>}
+
+        <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginTop:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
+        {showTecnico&&(<div style={{marginTop:10}}>
+          <div style={{background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+            <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>⚡ O que precisa de deploy vs o que é instantâneo</div>
+            <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>
+              <b style={{color:TEXT}}>Precisa de deploy (Vercel ~1 min):</b> instalar/reinstalar este arquivo redirect no repositório.<br/>
+              <b style={{color:TEXT}}>Instantâneo (sem deploy):</b> nome, foto, WhatsApp, perguntas e e-mail — esses dados ficam no Supabase e o Mini Chat já carrega a versão mais recente a cada abertura.
+            </div>
           </div>
-          {done&&<a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:8,color:GOLD,fontSize:11,fontWeight:700,textDecoration:"none"}}>Testar Mini Chat ao vivo ↗</a>}
-        </div>
+          {done&&<div style={{color:MUTED,fontSize:11,marginBottom:8,lineHeight:1.4}}>Os dois botões abaixo só servem pra corrigir problema — não precisa usar se está tudo funcionando.</div>}
+          {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{width:"100%",background:`${GOLD}12`,border:`1px solid ${GOLD}30`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:fixing?"default":"pointer",fontFamily:F,marginBottom:8}}>{fixing?"Corrigindo…":"🔧 Corrigir UID no repositório (Mini Chat mostra config errada?)"}</button>}
+          {done&&<button onClick={invalidarMinichat} disabled={invalidating} style={{width:"100%",background:`${RED}12`,border:`1px solid ${RED}40`,borderRadius:12,padding:"10px",color:RED,fontWeight:700,fontSize:12,cursor:invalidating?"default":"pointer",fontFamily:F}}>{invalidating?"Invalidando…":"⚠️ Marcar para reinstalar (força vermelho para reconfirmar)"}</button>}
+        </div>)}
       </div>)}
     </div>
   );
@@ -2198,10 +2204,18 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
-  const [miniSaved,setMiniSaved]=useState(false);
+  const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
   const [maisOpcoes,setMaisOpcoes]=useState(false);
+  // Assim que qualquer campo muda, o botão volta a ficar "Salvar" (dourado) — só fica
+  // "✓ Salvo" (verde) quando reflete de verdade o que está gravado no banco, pra nunca
+  // dar a entender que tem alteração pendente quando não tem (ou o contrário).
+  const minichatMounted=useRef(false);
+  useEffect(()=>{
+    if(!minichatMounted.current){minichatMounted.current=true;return;}
+    setMiniSaved(false);
+  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,emailDestino,destinoTipo,objetivoOptions,businessContext]);
   const enviarFoto=async(e)=>{
     const file=e.target.files[0];if(!file)return;
     e.target.value="";
@@ -2229,7 +2243,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       business_context:businessContext.trim(),
       closing_message:closingMsg.trim(),
     })});
-    if(!d.error){setMiniSaved(true);setTimeout(()=>setMiniSaved(false),3000);}
+    if(!d.error)setMiniSaved(true);
   };
   const resetarSenha=async()=>{
     if(!window.confirm(`Gerar uma nova senha para ${c.name}? A senha antiga deixa de funcionar.`))return;
