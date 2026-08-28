@@ -3633,11 +3633,17 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
       hrefsDoArquivo.forEach(href => {
         const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const before = content;
+        // Se o link antigo for montado em duas partes coladas com "+" (ex:
+        // `"https://wa.me/5511..." + "?text=Olá, tudo bem?"`), trocar só a primeira parte
+        // deixa a segunda pendurada, colando um texto sem sentido no link novo — foi
+        // exatamente o que quebrou o botão da Temakeria. Esse grupo opcional captura
+        // (e descarta) esse pedaço solto junto com a troca.
+        const concatDepois = `(?:\\s*\\+\\s*["'\`][^"'\`]*["'\`])?`;
         // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
-        content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3`, "g"), `$1$2$3${minichatLink}$3`);
+        content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3${concatDepois}`, "g"), `$1$2$3${minichatLink}$3`);
         // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
         //    num onClick, sem estar num atributo href/to)
-        content = content.replace(new RegExp(`(["'\`])${escaped}\\1`, "g"), `$1${minichatLink}$1`);
+        content = content.replace(new RegExp(`(["'\`])${escaped}\\1${concatDepois}`, "g"), `$1${minichatLink}$1`);
         if (content !== before) { changed++; mudouAqui = true; }
       });
       if (!mudouAqui) continue;
