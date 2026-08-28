@@ -2491,11 +2491,43 @@ const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "";
 
 // state do OAuth só precisa viver alguns minutos (tempo de o admin logar no Google) —
 // mapa em memória é suficiente, não precisa de tabela pra isso.
-const googleOAuthStates = new Map();
+const googleOAuthStates = new Map(); // state → { ts, producerId }
 setInterval(() => {
   const now = Date.now();
-  for (const [state, ts] of googleOAuthStates) if (now - ts > 10 * 60 * 1000) googleOAuthStates.delete(state);
+  for (const [state, data] of googleOAuthStates) if (now - data.ts > 10 * 60 * 1000) googleOAuthStates.delete(state);
 }, 5 * 60 * 1000);
+
+// Retorna o token de acesso do produtor específico — refresca se necessário.
+async function getGoogleAccessTokenForProducer(producerId) {
+  const { data: row } = await supabase.from("profiles")
+    .select("google_refresh_token,google_access_token,google_token_expires_at")
+    .eq("id", producerId).maybeSingle();
+  if (!row?.google_refresh_token) return null;
+  if (row.google_access_token && row.google_token_expires_at &&
+      new Date(row.google_token_expires_at) > new Date(Date.now() + 60000)) {
+    return row.google_access_token;
+  }
+  const resp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    refresh_token: row.google_refresh_token,
+    grant_type: "refresh_token",
+  }));
+  const { access_token, expires_in } = resp.data;
+  const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+  await supabase.from("profiles").update({
+    google_access_token: access_token,
+    google_token_expires_at: expires_at,
+    google_token_updated_at: new Date().toISOString(),
+  }).eq("id", producerId);
+  return access_token;
+}
+
+// Escolhe o token certo para um produtor: o próprio (novo) ou o da plataforma (legado MCC).
+async function getAdsAccessToken(profile) {
+  if (profile?.google_refresh_token) return await getGoogleAccessTokenForProducer(profile.id);
+  return await getGoogleAccessToken();
+}
 
 async function getGoogleAccessToken() {
   const { data: row } = await supabase.from("platform_google_auth").select("*").eq("id", 1).maybeSingle();
@@ -2529,14 +2561,32 @@ app.get("/api/admin/google/status", requireAuth, requireAdmin, async (req, res) 
 app.get("/api/admin/google/connect", requireAuth, requireAdmin, (req, res) => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(500).json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não configurados no servidor" });
   const state = crypto.randomBytes(16).toString("hex");
-  googleOAuthStates.set(state, Date.now());
+  googleOAuthStates.set(state, { ts: Date.now(), producerId: null });
   const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: "code",
     scope: GOOGLE_SCOPE,
     access_type: "offline",
-    prompt: "consent",
+    prompt: "consent select_account",
+    state,
+  });
+  res.json({ url });
+});
+
+// Inicia OAuth do Google Ads para um produtor específico — Thomas faz isso durante
+// o onboarding, logando com a conta Google Ads do produtor. Sem MCC necessário.
+app.get("/api/admin/producers/:id/google/connect", requireAuth, requireAdmin, (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(500).json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não configurados no servidor" });
+  const state = crypto.randomBytes(16).toString("hex");
+  googleOAuthStates.set(state, { ts: Date.now(), producerId: req.params.id });
+  const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: `${GOOGLE_ADS_SCOPE} https://www.googleapis.com/auth/userinfo.email`,
+    access_type: "offline",
+    prompt: "consent select_account",
     state,
   });
   res.json({ url });
@@ -2546,7 +2596,8 @@ app.get("/api/admin/google/callback", async (req, res) => {
   const { code, state, error } = req.query;
   res.header("Content-Type", "text/html; charset=utf-8");
   if (error) return res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">Conexão cancelada (${error}). Pode fechar esta aba.</body></html>`);
-  if (!state || !googleOAuthStates.has(state)) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
+  const stateData = googleOAuthStates.get(state);
+  if (!state || !stateData) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
   googleOAuthStates.delete(state);
   try {
     const tokenResp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
@@ -2563,17 +2614,48 @@ app.get("/api/admin/google/callback", async (req, res) => {
       const info = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${access_token}` } });
       email = info.data?.email || null;
     } catch {}
-    // Google só manda refresh_token na primeira autorização — se reconectar depois, preserva o antigo.
-    const { data: existing } = await supabase.from("platform_google_auth").select("refresh_token").eq("id", 1).maybeSingle();
-    await supabase.from("platform_google_auth").upsert({
-      id: 1,
-      access_token,
-      refresh_token: refresh_token || existing?.refresh_token || null,
-      expires_at,
-      connected_email: email,
-      updated_at: new Date().toISOString(),
-    });
-    res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
+
+    if (stateData.producerId) {
+      // Fluxo por-produtor: salva o token diretamente no perfil do produtor
+      const producerId = stateData.producerId;
+      const { data: existing } = await supabase.from("profiles").select("google_refresh_token").eq("id", producerId).maybeSingle();
+      await supabase.from("profiles").update({
+        google_access_token: access_token,
+        google_refresh_token: refresh_token || existing?.google_refresh_token || null,
+        google_token_expires_at: expires_at,
+        google_connected_email: email,
+        google_token_updated_at: new Date().toISOString(),
+      }).eq("id", producerId);
+      // Tenta auto-descobrir o customer_id via listAccessibleCustomers
+      const developerToken = await getGoogleAdsDeveloperToken();
+      if (developerToken) {
+        try {
+          const custsResp = await axios.get(
+            `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers:listAccessibleCustomers`,
+            { headers: { Authorization: `Bearer ${access_token}`, "developer-token": developerToken } }
+          );
+          const ids = (custsResp.data.resourceNames || []).map(rn => rn.replace("customers/", ""));
+          if (ids.length === 1) {
+            await supabase.from("profiles").update({ google_ads_customer_id: ids[0] }).eq("id", producerId);
+          }
+        } catch (e) {
+          console.error("[google/callback] auto-discover customer_id falhou:", e.message);
+        }
+      }
+      res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google Ads conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
+    } else {
+      // Fluxo plataforma (GTM + Ads via MCC)
+      const { data: existing } = await supabase.from("platform_google_auth").select("refresh_token").eq("id", 1).maybeSingle();
+      await supabase.from("platform_google_auth").upsert({
+        id: 1,
+        access_token,
+        refresh_token: refresh_token || existing?.refresh_token || null,
+        expires_at,
+        connected_email: email,
+        updated_at: new Date().toISOString(),
+      });
+      res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
+    }
   } catch (err) {
     console.error("[google/callback]", err.response?.data || err.message);
     res.status(500).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Erro ao conectar com o Google. Volte ao JosephPay e tente de novo.</body></html>");
@@ -2719,12 +2801,12 @@ const GOOGLE_ADS_API_VERSION = "v25";
 // Roda uma consulta GAQL (linguagem de consulta do Google Ads) contra a conta de um
 // cliente específico, passando pela conta de gerente quando configurada. Erros da API
 // (token em modo teste, conta não vinculada, etc.) sobem pra quem chamou tratar.
-async function googleAdsSearch(customerId, query) {
-  const accessToken = await getGoogleAccessToken();
+// overrideToken: token do produtor (nova rota sem MCC) — se null, usa o token da plataforma com manager.
+async function googleAdsSearch(customerId, query, overrideToken) {
+  const accessToken = overrideToken !== undefined ? overrideToken : await getGoogleAccessToken();
   if (!accessToken) throw new Error("Google não conectado");
   const developerToken = await getGoogleAdsDeveloperToken();
   if (!developerToken) throw new Error("Developer Token não configurado");
-  const managerId = await getGoogleAdsManagerId();
   const cleanCustomerId = String(customerId || "").replace(/\D/g, "");
   if (!cleanCustomerId) throw new Error("ID da conta de Ads inválido");
   const headers = {
@@ -2732,7 +2814,11 @@ async function googleAdsSearch(customerId, query) {
     "developer-token": developerToken,
     "Content-Type": "application/json",
   };
-  if (managerId) headers["login-customer-id"] = managerId;
+  // Manager ID só para o fluxo legado MCC (quando token da plataforma é usado)
+  if (overrideToken === undefined) {
+    const managerId = await getGoogleAdsManagerId();
+    if (managerId) headers["login-customer-id"] = managerId;
+  }
   const resp = await axios.post(
     `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`,
     { query },
@@ -2776,12 +2862,11 @@ app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, r
 // e retorna o erro completo da Google para facilitar diagnóstico
 app.get("/api/admin/producers/:id/google-ads/diagnose", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data: profile } = await supabase.from("profiles").select("name,google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("id,name,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
     const developerToken = await getGoogleAdsDeveloperToken();
-    const managerId = await getGoogleAdsManagerId();
-    const accessToken = await getGoogleAccessToken();
+    const accessToken = await getAdsAccessToken(profile);
     const customerId = (profile?.google_ads_customer_id || "").replace(/\D/g, "");
-    if (!accessToken) return res.json({ ok: false, step: "access_token", error: "Token Google não disponível — reconecte o Google" });
+    if (!accessToken) return res.json({ ok: false, step: "access_token", error: "Google Ads não conectado para este produtor — clique em 'Conectar Google Ads'" });
     if (!developerToken) return res.json({ ok: false, step: "developer_token", error: "Developer Token não configurado" });
     if (!customerId) return res.json({ ok: false, step: "customer_id", error: "ID da conta do produtor não configurado" });
     const headers = {
@@ -2789,7 +2874,6 @@ app.get("/api/admin/producers/:id/google-ads/diagnose", requireAuth, requireAdmi
       "developer-token": developerToken,
       "Content-Type": "application/json",
     };
-    if (managerId) headers["login-customer-id"] = managerId;
     try {
       // Query minimalista só para validar acesso à conta
       const resp = await axios.post(
@@ -2855,7 +2939,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     const prevTo = new Date(from.getTime());
     const prevFrom = new Date(from.getTime() - rangeMs);
 
-    const { data: profile } = await supabase.from("profiles").select("name,company_name,avatar_url,google_ads_customer_id").eq("id", id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,avatar_url,google_ads_customer_id,google_refresh_token").eq("id", id).maybeSingle();
     if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
 
     const periodStats = async (start, end) => {
@@ -2878,7 +2962,8 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     };
 
     const [atual, anterior, developerToken] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo), getGoogleAdsDeveloperToken()]);
-    const adsConnected = !!(profile.google_ads_customer_id && developerToken);
+    const hasToken = !!(profile.google_refresh_token || await getGoogleAccessToken());
+    const adsConnected = !!(profile.google_ads_customer_id && developerToken && hasToken);
 
     // Investimento real, buscado na hora na Google Ads API — se a busca falhar (token
     // ainda em modo teste, conta não vinculada etc.), fica null e o motivo vai em adsError,
@@ -2888,7 +2973,8 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       try {
         const fromStr = from.toISOString().slice(0, 10);
         const toStr = to.toISOString().slice(0, 10);
-        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`);
+        const adsToken = await getAdsAccessToken(profile);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`, adsToken);
         const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
       } catch (err) {
@@ -2917,12 +3003,48 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
   }
 });
 
+// Status do Google Ads por produtor
+app.get("/api/admin/producers/:id/google/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data } = await supabase.from("profiles")
+      .select("google_refresh_token,google_connected_email,google_token_updated_at,google_ads_customer_id")
+      .eq("id", req.params.id).maybeSingle();
+    res.json({
+      connected: !!data?.google_refresh_token,
+      email: data?.google_connected_email || null,
+      updatedAt: data?.google_token_updated_at || null,
+      customerId: data?.google_ads_customer_id || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/google/disconnect", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from("profiles").update({
+      google_refresh_token: null,
+      google_access_token: null,
+      google_token_expires_at: null,
+      google_connected_email: null,
+      google_token_updated_at: null,
+    }).eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Campanhas/Anúncios/Palavras-chave: dependem da Google Ads API de verdade (developer
 // token + customer_id). Estrutura pronta pra plugar isso — até lá, resposta honesta
 // de "não conectado", sem simular dado nenhum.
 async function requireAdsConnection(profile) {
+  if (!profile?.google_ads_customer_id) return false;
   const developerToken = await getGoogleAdsDeveloperToken();
-  return !!(profile?.google_ads_customer_id && developerToken);
+  if (!developerToken) return false;
+  if (profile.google_refresh_token) return true; // token próprio do produtor
+  return !!(await getGoogleAccessToken()); // fallback legado MCC
 }
 function adsDateRange(req) {
   const to = req.query.to ? new Date(req.query.to) : new Date();
@@ -2931,16 +3053,17 @@ function adsDateRange(req) {
 }
 
 app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, campaigns: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
+    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.clicks, metrics.impressions
       FROM campaign
       WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
       ORDER BY metrics.cost_micros DESC
-    `);
+    `, adsToken);
     const campaigns = rows.map(r => ({
       id: r.campaign?.id, name: r.campaign?.name, status: r.campaign?.status,
       cost: Number(r.metrics?.costMicros || 0) / 1e6,
@@ -2954,17 +3077,18 @@ app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdm
   }
 });
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, ads: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
+    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status,
              ad_group_ad.ad.responsive_search_ad.headlines, metrics.clicks, metrics.impressions, metrics.cost_micros
       FROM ad_group_ad
       WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
       ORDER BY metrics.cost_micros DESC
-    `);
+    `, adsToken);
     const ads = rows.map(r => {
       const headline = r.adGroupAd?.ad?.responsiveSearchAd?.headlines?.[0]?.text || r.adGroupAd?.ad?.name || r.adGroupAd?.ad?.type || "Anúncio";
       return {
@@ -2981,10 +3105,11 @@ app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, as
   }
 });
 app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, keywords: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
+    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
              metrics.clicks, metrics.impressions, metrics.cost_micros, metrics.ctr
