@@ -1459,6 +1459,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria um arquivo no repositório do cliente que abre o Mini Chat. O arquivo precisa estar no caminho que os botões do site já linkam — use "Detectar" para descobrir automaticamente.</div>
+        <div style={{background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"9px 12px",marginBottom:12,color:GOLD,fontSize:11,lineHeight:1.5}}>ℹ️ Isso é diferente dos botões de verdade do site (ex: "PEDIR DELIVERY", "COMPRAR"). Pra fazer ESSES botões abrirem o Mini Chat, use o card <b>"Botões do site"</b> mais abaixo — é ele que decide o que acontece quando um cliente de verdade clica.</div>
         <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:detecting?GOLD:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
           {detecting?"🔍 Detectando caminhos do site…":"🔍 Detectar caminhos automaticamente"}
         </button>
