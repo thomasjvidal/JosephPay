@@ -1480,7 +1480,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>
-        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:msg.startsWith("Erro")||msg.startsWith("⚠️")?RED:MUTED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
         {done&&<a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,color:GOLD,fontSize:12,fontWeight:700,textDecoration:"none"}}>Testar Mini Chat ao vivo ↗</a>}
         {done&&c.site_url&&(<div style={{marginTop:10}}>
           <button onClick={verificarNoAr} disabled={verifying} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"8px 16px",color:MUTED,fontWeight:700,fontSize:12,cursor:verifying?"default":"pointer",fontFamily:F}}>{verifying?"Checando o site ao vivo…":"🔎 Verificar se está no ar no site do cliente"}</button>
