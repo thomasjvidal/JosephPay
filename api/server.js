@@ -1552,6 +1552,20 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// Exclui uma venda — a pedido do Thomas, pra limpar vendas de teste do painel do
+// produtor. Some do banco de vez (não é estorno, é remover um registro de teste),
+// os totais/KPIs recalculam sozinhos porque são somados direto da tabela sales.
+app.delete("/api/admin/sales/:saleId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from("sales").delete().eq("id", req.params.saleId);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin/sales delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
@@ -1913,6 +1927,15 @@ app.patch("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res)
   if (price !== undefined) updates.price = Number(price);
   if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
   const { error } = await supabase.from("products").update(updates).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Exclui um produto de um produtor — a pedido do Thomas, mesma lógica de
+// /api/products/:id (o produtor exclui o próprio), só que sem exigir owner_id
+// porque quem chama é o admin, não o dono do produto.
+app.delete("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { error } = await supabase.from("products").delete().eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });

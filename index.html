@@ -2024,6 +2024,7 @@ function ProdutosDoCliente({ownerId,nome}){
   const [editNome,setEditNome]=useState("");
   const [editPrice,setEditPrice]=useState("");
   const [editSaving,setEditSaving]=useState(false);
+  const [deletingId,setDeletingId]=useState(null);
   useEffect(()=>{
     if(!ownerId)return;
     apiCall(`/api/admin/products?owner=${ownerId}`).then(d=>{if(d?.products)setProdutos(d.products);else setProdutos([]);});
@@ -2032,6 +2033,15 @@ function ProdutosDoCliente({ownerId,nome}){
     navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${id}`).then(()=>{setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);});
   };
   const abrirEditar=(p)=>{setEditId(p.id);setEditNome(p.name||"");setEditPrice(p.price?.toString()||"");};
+  const excluirProduto=async(p)=>{
+    if(!window.confirm(`Excluir o produto "${p.name}"? Isso não pode ser desfeito.`))return;
+    setDeletingId(p.id);
+    const d=await apiCall(`/api/admin/products/${p.id}`,{method:'DELETE'});
+    setDeletingId(null);
+    if(d?.error){alert(d.error);return;}
+    setProdutos(prev=>(prev||[]).filter(x=>x.id!==p.id));
+    if(editId===p.id)setEditId(null);
+  };
   const salvarProduto=async()=>{
     if(!editId||!editNome.trim())return;
     setEditSaving(true);
@@ -2068,6 +2078,7 @@ function ProdutosDoCliente({ownerId,nome}){
                 <button onClick={salvarProduto} disabled={editSaving} style={{flex:1,background:GOLD,border:"none",borderRadius:100,padding:9,color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:editSaving?"default":"pointer",fontFamily:F}}>{editSaving?"Salvando…":"Salvar"}</button>
                 <button onClick={()=>setEditId(null)} style={{background:"transparent",border:`1px solid ${BDR}`,borderRadius:100,padding:"9px 16px",color:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>Cancelar</button>
               </div>
+              <button onClick={()=>excluirProduto(p)} disabled={deletingId===p.id} style={{width:"100%",background:"transparent",border:`1px solid ${RED}40`,borderRadius:100,padding:9,color:RED,fontSize:13,fontWeight:700,cursor:deletingId===p.id?"default":"pointer",fontFamily:F,marginTop:8}}>{deletingId===p.id?"Excluindo…":"Excluir produto"}</button>
             </div>
           )}
         </div>
@@ -2461,6 +2472,12 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
       {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
+      {resetResult&&(
+        <button onClick={()=>{
+          const msg=`*_Segue acesso completo_*:\n\n*Aplicativo*: https://josephpay.com\n*Entrar como*: 'Sou Produtor'\n\n*Credenciais de acesso*:\n*E-mail*: ${c.email||""}\n*Senha*: ${resetResult}`;
+          navigator.clipboard?.writeText(msg);
+        }} style={{width:"100%",background:"transparent",border:`1px solid ${GOLD}40`,borderRadius:100,padding:11,color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,marginTop:8}}>📋 Copiar mensagem de acesso pra mandar pro produtor</button>
+      )}
       <div style={{height:14}}/>
       </>)}
 
@@ -2751,6 +2768,17 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
   const [isDisabled,setIsDisabled]=useState(!!c?.disabled_at);
   const [togglingActive,setTogglingActive]=useState(false);
+  const [deletingSale,setDeletingSale]=useState(null);
+  const excluirVenda=async(s)=>{
+    const nomeVenda=s.customers?.name||"essa venda";
+    if(!window.confirm(`Excluir a venda de ${nomeVenda} (${fmtBRL(s.amount)})? Só use pra limpar teste — isso não pode ser desfeito.`))return;
+    setDeletingSale(s.id);
+    const d=await apiCall(`/api/admin/sales/${s.id}`,{method:'DELETE'});
+    setDeletingSale(null);
+    if(d?.error){alert(d.error);return;}
+    setSales(p=>(p||[]).filter(x=>x.id!==s.id));
+    onUpdated&&onUpdated();
+  };
   const toggleAtivo=async()=>{
     if(!window.confirm(isDisabled?`Reativar ${c.name}?`:`Desativar ${c.name}? Ele não consegue mais fazer login.`))return;
     setTogglingActive(true);
@@ -2909,6 +2937,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
                 <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome2[0]}</div>
                 <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome2}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora}</div></div>
                 <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
+                <button onClick={()=>excluirVenda(s)} disabled={deletingSale===s.id} title="Excluir venda (só teste)" style={{background:"none",border:`1px solid ${RED}30`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:RED,fontSize:13,cursor:deletingSale===s.id?"default":"pointer",flexShrink:0,marginLeft:4}}>{deletingSale===s.id?"…":"🗑"}</button>
               </div>
               );
             })}
