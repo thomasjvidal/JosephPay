@@ -4272,7 +4272,9 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       console.warn("[sync/history] MP fetch error:", e.message);
     }
 
-    const { data: existingSales } = await supabase.from("sales").select("asaas_id").eq("owner_id", uid);
+    // Checa por asaas_id em TODAS as contas (não só a de quem clicou) — evita
+    // duplicar uma venda que já foi corretamente atribuída a outro produtor.
+    const { data: existingSales } = await supabase.from("sales").select("asaas_id");
     const existingIds = new Set((existingSales || []).map(s => s.asaas_id));
 
     let inserted = 0, skipped = 0, errors = 0;
@@ -4281,6 +4283,24 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       const mpId = String(payment.id);
       if (existingIds.has(mpId)) { skipped++; continue; }
 
+      // Identifica o dono real via external_reference (mesmo formato usado pelo
+      // webhook, api/server.js:761-799) — nunca assume que é quem clicou no botão.
+      let ownerId = null;
+      try {
+        const ref = JSON.parse(payment.external_reference || "");
+        if (ref?.kind === "PLATFORM_SUB") { skipped++; continue; } // mensalidade, não é venda de produto
+        if (ref?.ownerId) {
+          ownerId = ref.ownerId;
+        } else if (ref?.saleId) {
+          const { data: refSale } = await supabase.from("sales").select("owner_id").eq("id", ref.saleId).maybeSingle();
+          ownerId = refSale?.owner_id || null;
+        }
+      } catch { /* external_reference ausente ou inválido */ }
+
+      // Só sincroniza pagamentos que realmente pertencem a quem clicou —
+      // nunca atribui a si mesmo um pagamento de outro produtor.
+      if (!ownerId || ownerId !== uid) { skipped++; continue; }
+
       const grossAmount = Number(payment.transaction_amount || 0);
       const mpFee       = (payment.fee_details || []).reduce((a, f) => a + Number(f.amount || 0), 0);
       const netAmount   = Math.max(0, grossAmount - mpFee);
@@ -4288,11 +4308,6 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       const paymentDate = payment.date_approved
         ? new Date(payment.date_approved).toISOString()
         : new Date().toISOString();
-
-      // Identifica owner via external_reference
-      let ownerId = uid;
-      const extRef = payment.external_reference || "";
-      if (extRef.startsWith("owner_")) ownerId = extRef.replace("owner_", "");
 
       // Cria/atualiza customer pelo email
       let customerId = null;
