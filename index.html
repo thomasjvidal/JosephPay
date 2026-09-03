@@ -1411,7 +1411,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(!alvos.length){setCorrigindoBotao(false);setMsg("Não achei nenhum botão pendente pra corrigir sozinho — pode precisar revisar manualmente em \"Botões do site\".");return;}
     const apply=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file,varName:l.varName,varFile:l.varFile}))})});
     setCorrigindoBotao(false);
-    if(apply.error){setMsg("Erro ao corrigir: "+apply.error);return;}
+    if(apply.error){setMsg("Erro ao corrigir: "+(apply.detail||apply.error));return;}
     setMsg(`✓ ${apply.changed} botão(ões) corrigido(s) — aponta(m) pro Mini Chat agora. Aguarde ~1 min pro site atualizar.`);
     onUpdated&&onUpdated();
   };
@@ -3082,7 +3082,7 @@ function SiteAuditModal({onClose,onAbrirCliente}){
     if(!alvos.length){setCorrigindo(s=>({...s,[p.id]:false}));setCorrigidoMsg(m=>({...m,[p.id]:"Não achei nada pra corrigir sozinho."}));return;}
     const apply=await apiCall(`/api/admin/producers/${p.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file,varName:l.varName,varFile:l.varFile}))})});
     setCorrigindo(s=>({...s,[p.id]:false}));
-    if(apply.error){setCorrigidoMsg(m=>({...m,[p.id]:"Erro: "+apply.error}));return;}
+    if(apply.error){setCorrigidoMsg(m=>({...m,[p.id]:"Erro: "+(apply.detail||apply.error)}));return;}
     setCorrigidoMsg(m=>({...m,[p.id]:`✓ ${apply.changed} botão(ões) corrigido(s). Aguarde ~1 min pro site atualizar.`}));
   };
   const producers=status?.results||null;

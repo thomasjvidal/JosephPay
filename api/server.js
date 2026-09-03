@@ -3721,15 +3721,32 @@ async function applyLinksToRepo(id, repo, itens, headers) {
     if (varName && varFile) (porVarFile[varFile] = porVarFile[varFile] || []).push(varName);
     else if (file) (porArquivo[file] = porArquivo[file] || []).push(href);
   });
-  if (!Object.keys(porArquivo).length && !Object.keys(porVarFile).length) return { changed: 0 };
+  if (!Object.keys(porArquivo).length && !Object.keys(porVarFile).length) return { changed: 0, tentativas: [] };
 
   let changed = 0;
+  // Diagnóstico de cada tentativa (href/varName + arquivo) — pra quando `changed` fica
+  // em 0 dar pra saber EXATAMENTE o que foi tentado trocar e por que não bateu (texto
+  // sumiu do arquivo vs. o texto tá lá mas o padrão de troca não reconheceu), em vez de
+  // só um erro genérico que obriga a ficar adivinhando a causa real.
+  const tentativas = [];
   for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
-    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    let fileResp;
+    try {
+      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    } catch (e) {
+      hrefsDoArquivo.forEach(href => tentativas.push({ href, file: filePath, achou: false, textoAindaNoArquivo: false, erro: e.response?.status === 404 ? "arquivo não existe mais" : "erro ao ler arquivo" }));
+      continue;
+    }
     const sha = fileResp.data.sha;
-    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    // Arquivo >1MB: a API do GitHub não manda o conteúdo em base64 (só o download_url) —
+    // sem essa checagem, `content` virava string vazia e TODA troca falhava silenciosamente
+    // como se o texto não existisse, mesmo ele estando lá.
+    let content = fileResp.data.content
+      ? Buffer.from(fileResp.data.content, "base64").toString("utf8")
+      : await readGithubFile(repo, filePath, headers, await getGithubToken());
     let mudouAqui = false;
     hrefsDoArquivo.forEach(href => {
+      const textoAindaNoArquivo = content.includes(href);
       const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const before = content;
       // Se o link antigo for montado em duas partes coladas com "+" (ex:
@@ -3743,7 +3760,9 @@ async function applyLinksToRepo(id, repo, itens, headers) {
       // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
       //    num onClick, sem estar num atributo href/to)
       content = content.replace(new RegExp(`(["'\`])${escaped}\\1${concatDepois}`, "g"), `$1${minichatLink}$1`);
-      if (content !== before) { changed++; mudouAqui = true; }
+      const mudou = content !== before;
+      if (mudou) { changed++; mudouAqui = true; }
+      tentativas.push({ href, file: filePath, achou: mudou, textoAindaNoArquivo });
     });
     if (!mudouAqui) continue;
     await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
@@ -3753,11 +3772,20 @@ async function applyLinksToRepo(id, repo, itens, headers) {
     }, { headers });
   }
   for (const [filePath, varNames] of Object.entries(porVarFile)) {
-    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    let fileResp;
+    try {
+      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    } catch (e) {
+      [...new Set(varNames)].forEach(varName => tentativas.push({ href: `(variável) ${varName}`, file: filePath, achou: false, textoAindaNoArquivo: false, erro: e.response?.status === 404 ? "arquivo não existe mais" : "erro ao ler arquivo" }));
+      continue;
+    }
     const sha = fileResp.data.sha;
-    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    let content = fileResp.data.content
+      ? Buffer.from(fileResp.data.content, "base64").toString("utf8")
+      : await readGithubFile(repo, filePath, headers, await getGithubToken());
     let mudouAqui = false;
     [...new Set(varNames)].forEach(varName => {
+      const textoAindaNoArquivo = new RegExp(`export\\s+const\\s+${varName}\\s*=`).test(content);
       const before = content;
       // Troca só o VALOR da declaração dessa constante (pelo nome, não pela URL antiga
       // — a URL pode já estar diferente do que o scan viu, o nome da constante não muda).
@@ -3765,7 +3793,9 @@ async function applyLinksToRepo(id, repo, itens, headers) {
         new RegExp(`(export\\s+const\\s+${varName}\\s*=\\s*(?:[\\r\\n]\\s*)?["'\`])[^"'\`]*(["'\`])`),
         `$1${minichatLink}$2`
       );
-      if (content !== before) { changed++; mudouAqui = true; }
+      const mudou = content !== before;
+      if (mudou) { changed++; mudouAqui = true; }
+      tentativas.push({ href: `(variável) ${varName}`, file: filePath, achou: mudou, textoAindaNoArquivo });
     });
     if (!mudouAqui) continue;
     await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
@@ -3774,7 +3804,7 @@ async function applyLinksToRepo(id, repo, itens, headers) {
       sha,
     }, { headers });
   }
-  return { changed };
+  return { changed, tentativas };
 }
 
 app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmin, async (req, res) => {
@@ -3793,8 +3823,20 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
 
-    const { changed } = await applyLinksToRepo(id, repo, itens, headers);
-    if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
+    const { changed, tentativas } = await applyLinksToRepo(id, repo, itens, headers);
+    if (!changed) {
+      // Em vez de um erro genérico, mostra exatamente o que foi tentado trocar e por que
+      // não bateu — sem isso ficamos só adivinhando a causa a cada vez que isso acontece.
+      const primeira = (tentativas || [])[0];
+      let detail = "Nenhum link válido foi enviado pra corrigir.";
+      if (primeira) {
+        const trecho = String(primeira.href).slice(0, 90);
+        if (primeira.erro) detail = `Não consegui ler ${primeira.file} no GitHub (${primeira.erro}).`;
+        else if (!primeira.textoAindaNoArquivo) detail = `O texto "${trecho}" não está mais em ${primeira.file} — provavelmente alguém editou o arquivo depois do último escaneamento. Recarregue a lista e tente de novo.`;
+        else detail = `Achei "${trecho}" em ${primeira.file}, mas o formato do link não bateu com o padrão de troca — me avise que eu ajusto o padrão.`;
+      }
+      return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado.", detail, tentativas });
+    }
 
     res.json({ ok: true, changed });
   } catch (err) {
