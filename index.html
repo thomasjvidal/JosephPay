@@ -1372,7 +1372,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
 }
 
 // ── CARD 4: Mini Chat no site (GitHub only) ───────────────────────────────────
-function MinichatRepoAdmin({c,onUpdated,initialOpen,done,botoesOk}){
+function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
   const [showTecnico,setShowTecnico]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
@@ -1392,6 +1392,9 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done,botoesOk}){
     if(d.error){setVerifyResult({status:"erro",message:d.error});return;}
     setVerifyResult(d);
   };
+  // Checa sozinho assim que o card abre — não depende do admin lembrar de clicar em
+  // "Verificar" pra saber se o status verde é real.
+  useEffect(()=>{if(open&&c.site_url&&c.github_minichat_path&&!verifyResult&&!verifying)verificarNoAr();},[open]);
   const corrigirUid=async()=>{
     if(!c.github_repo)return;
     setFixing(true);setMsg("");
@@ -1437,18 +1440,24 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done,botoesOk}){
     if(paths.length)setSugestoes(paths);
     else setMsg("Não achei nenhum link interno nos botões do site (ex: '/contato', '/minichat') — os botões parecem apontar direto pra fora (WhatsApp, Instagram etc). Nesse caso pode deixar o caminho padrão abaixo (minichat.html) e seguir — não precisa ser exatamente igual a um link que já existe no site.");
   };
-  const instalar=async()=>{
+  const instalar=async(force)=>{
     if(!c.github_repo||!minichatPath.trim())return;
     setInstalling(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim(),...(force?{force:true}:{})})});
     setInstalling(false);
     if(d.error){setMsg(d.error);return;}
+    if(d.needsConfirm){
+      // Já existe outro conteúdo nesse caminho (não é o nosso Mini Chat) — o caso da
+      // Lervet foi exatamente esse: substituir sem avisar teria apagado sem o admin
+      // saber que já tinha algo ali; perguntar sem avisar deixaria o duplicado parado.
+      if(window.confirm(`${d.message} Continuar?`))instalar(true);
+      return;
+    }
     setInstalledAt(new Date().toISOString());
     setSugestoes([]);
-    const movedToPublic=d.file_path!==minichatPath.trim();
-    setMsg(movedToPublic
-      ? `✓ Instalado em ${d.file_path} (movi pra dentro de public/ automaticamente — esse repositório tem build, e arquivo fora de public/ nunca aparece no site publicado). Depois do deploy da Vercel, o site vai responder em /${d.served_path}.`
-      : `✓ Instalado em ${d.file_path}. Aguarde o deploy da Vercel (~1 min) e o site já redireciona para o Mini Chat.`);
+    setMsg(d.file_path!==minichatPath.trim()
+      ? `✓ Instalado em ${d.file_path} (movido pra public/ automaticamente). Aguarde ~1 min pro site atualizar.`
+      : `✓ Instalado em ${d.file_path}. Aguarde ~1 min pro site atualizar.`);
     onUpdated&&onUpdated();
     // Confere sozinho se pegou no site do cliente ~75s depois (tempo do deploy da
     // Vercel) — assim não depende de o admin lembrar de clicar em "Verificar".
@@ -1458,48 +1467,36 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done,botoesOk}){
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria um arquivo no repositório do cliente que abre o Mini Chat. O arquivo precisa estar no caminho que os botões do site já linkam — use "Detectar" para descobrir automaticamente.</div>
-        <div style={{background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"9px 12px",marginBottom:12,color:GOLD,fontSize:11,lineHeight:1.5}}>ℹ️ Isso é diferente dos botões de verdade do site (ex: "PEDIR DELIVERY", "COMPRAR"). Pra fazer ESSES botões abrirem o Mini Chat, use o card <b>"Botões do site"</b> mais abaixo — é ele que decide o que acontece quando um cliente de verdade clica.</div>
-        <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:detecting?GOLD:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
-          {detecting?"🔍 Detectando caminhos do site…":"🔍 Detectar caminhos automaticamente"}
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Cria a página que abre o Mini Chat no repositório do cliente. Pros botões de verdade do site (ex: "COMPRAR") abrirem o Mini Chat, use <b style={{color:TEXT}}>"Botões do site"</b> abaixo.</div>
+        <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
+          {detecting?"🔍 Detectando…":"🔍 Detectar caminho automaticamente"}
         </button>
         {sugestoes.length>0&&(
           <div style={{marginBottom:12}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados — clique para selecionar:</div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados:</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {sugestoes.map(s=>(
-                <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,textAlign:"left",fontFamily:"monospace"}}>
+                <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"monospace",textAlign:"left"}}>
                   {s}
                 </button>
               ))}
             </div>
           </div>
         )}
-        <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminho do arquivo</div>
         <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
-        {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')} — <span style={{fontFamily:"monospace"}}>{c.github_minichat_path||"minichat.html"}</span></div>}
-        <button onClick={instalar} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
+        <button onClick={()=>instalar()} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>
         {msg&&<div style={{color:msg.startsWith("✓")?GREEN:msg.startsWith("Erro")||msg.startsWith("⚠️")?RED:MUTED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
-        {done&&<a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,color:GOLD,fontSize:12,fontWeight:700,textDecoration:"none"}}>Testar Mini Chat ao vivo ↗</a>}
-        {done&&c.site_url&&(<div style={{marginTop:10}}>
-          <button onClick={verificarNoAr} disabled={verifying} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"8px 16px",color:MUTED,fontWeight:700,fontSize:12,cursor:verifying?"default":"pointer",fontFamily:F}}>{verifying?"Checando o site ao vivo…":"🔎 Verificar se está no ar no site do cliente"}</button>
-          {verifyResult&&(<>
-            {/* Se "Botões do site" já está confirmado, os botões de verdade do site já
-                funcionam — essa URL alternativa é só um extra opcional, então um "não
-                encontrei" aqui não é urgente nem quer dizer que algo está quebrado pro
-                cliente final. */}
-            {verifyResult.status!=="ok"&&botoesOk===true&&(
-              <div style={{marginTop:8,color:MUTED,fontSize:12,lineHeight:1.5}}>ℹ️ Essa URL alternativa (`{verifyResult.url}`) não está respondendo, mas isso é opcional — os botões de verdade do site já foram confirmados funcionando no card "Botões do site" abaixo. Só importa aqui se você divulga esse link específico em algum lugar.</div>
-            )}
-            {!(verifyResult.status!=="ok"&&botoesOk===true)&&(
-              <div style={{marginTop:8,color:verifyResult.status==="ok"?GREEN:verifyResult.status==="sem_site"?MUTED:RED,fontSize:12,lineHeight:1.5}}>
-                {verifyResult.status==="ok"?"✓ ":verifyResult.status==="sem_site"?"":"⚠️ "}{verifyResult.message}
-              </div>
-            )}
-          </>)}
-        </div>)}
+        <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
+          <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:700,textDecoration:"none"}}>Testar ↗</a>
+          {c.site_url&&c.github_minichat_path&&<button onClick={verificarNoAr} disabled={verifying} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:verifying?"default":"pointer",fontFamily:F}}>{verifying?"Checando…":"🔎 Verificar no site"}</button>}
+        </div>
+        {verifyResult&&(
+          <div style={{marginTop:8,color:verifyResult.status==="ok"?GREEN:verifyResult.status==="sem_site"?MUTED:RED,fontSize:12,lineHeight:1.5}}>
+            {verifyResult.status==="ok"?"✓ ":verifyResult.status==="sem_site"?"":"⚠️ "}{verifyResult.message}
+          </div>
+        )}
 
         <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginTop:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
         {showTecnico&&(<div style={{marginTop:10}}>
@@ -2677,9 +2674,27 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   // aparecer como "pendente" se já estão funcionando na prática.
   const siteOk=!!((c.github_repo&&c.github_file_path)||c.gtm_container_id||c.conn?.site);
   const sensorOk=!!(c.github_sensor_installed_at||c.gtm_sensor_installed_at||c.conn?.site);
-  const minichatInstOk=metodoAtual==="github"?!!(c.github_minichat_installed_at||c.conn?.minichat):null; // null = não se aplica (só existe via GitHub hoje)
   const configOk=!!(c.minichat_config?.whatsapp_number||c.minichat_config?.email_destino||c.conn?.minichat);
   const emailOk=!!c.conn?.email;
+  // Ter dado commit não prova que o site publicado usa o NOSSO Mini Chat — o caso da
+  // Lervet foi um commit certo, mas o botão de verdade do site ainda caía num mini
+  // chat antigo de outro projeto. Enquanto não temos um caminho instalado, cai no sinal
+  // de atividade real (c.conn) — clientes configurados manualmente antes dessa tela
+  // existir não podem virar "pendente" só por não terem passado por aqui.
+  const [minichatVerified,setMinichatVerified]=useState(null); // null = checando / não se aplica
+  useEffect(()=>{
+    if(metodoAtual!=="github"||!c.github_repo||!c.github_minichat_path){setMinichatVerified(null);return;}
+    let cancelled=false;
+    apiCall(`/api/admin/producers/${c.id}/github/verify-minichat`).then(d=>{
+      if(cancelled)return;
+      // Sem site_url cadastrado não tem como checar ao vivo — nesse caso específico
+      // não trava o card, cai de volta no sinal de atividade real.
+      if(d?.status==="sem_site"){setMinichatVerified(!!c.conn?.minichat);return;}
+      setMinichatVerified(d?.status==="ok");
+    });
+    return ()=>{cancelled=true;};
+  },[metodoAtual,c.github_repo,c.github_minichat_path,c.id]);
+  const minichatInstOk=metodoAtual==="github"?(c.github_minichat_path?(minichatVerified===null?false:minichatVerified):!!c.conn?.minichat):null; // null = não se aplica (só existe via GitHub hoje)
   const [botoesOk,setBotoesOk]=useState(null); // null = não verificado ainda / não se aplica
   useEffect(()=>{
     if(metodoAtual!=="github"||!c.github_repo){setBotoesOk(null);return;}
@@ -2688,11 +2703,17 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       if(d?.error||!d?.links){setBotoesOk(null);return;}
       const algumCorrigido=d.links.some(l=>l.href===minichatLink);
       // Não basta UM botão estar certo — se ainda sobrar algum link de WhatsApp (wa.me)
-      // apontando direto pra fora, o card não pode aparecer verde: foi exatamente esse
-      // "só um corrigido, os outros não" que fez o Thomas achar que a Temakeria estava
-      // pronta quando o botão "PEDIR DELIVERY" continuava indo pro número errado.
-      const whatsappNaoCorrigido=d.links.some(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href));
-      setBotoesOk(algumCorrigido&&!whatsappNaoCorrigido);
+      // apontando direto pra fora, OU algum link interno com cara de chat/atendimento
+      // rival (o caso da Lervet: um link pra página interna com o mini chat antigo dela,
+      // sem nenhum wa.me envolvido), o card não pode aparecer verde.
+      const rivalChatRe=/minichat|mini-chat|mini_chat|\bchat\b|atendimento|fale-?conosco/i;
+      const isInternal=h=>!/^https?:\/\//i.test(h)&&!/^(mailto:|tel:|#)/i.test(h);
+      const pendente=d.links.some(l=>{
+        if(l.href===minichatLink)return false;
+        if(/wa\.me|api\.whatsapp\.com/i.test(l.href))return true;
+        return isInternal(l.href)&&rivalChatRe.test(l.href);
+      });
+      setBotoesOk(algumCorrigido&&!pendente);
     });
   },[metodoAtual,c.github_repo,c.id]);
 
@@ -2741,7 +2762,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       <SiteAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("site")} done={cardDone("site")}/>
       <SensorAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("sensor")} done={cardDone("sensor")}/>
       {metodoAtual==="github"&&<VercelAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("vercel")} done={cardDone("vercel")}/>}
-      {metodoAtual==="github"&&<MinichatRepoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("minichat_repo")} done={cardDone("minichat_repo")} botoesOk={botoesOk}/>}
+      {metodoAtual==="github"&&<MinichatRepoAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("minichat_repo")} done={cardDone("minichat_repo")}/>}
       {metodoAtual==="github"&&<FotosDoSiteAdmin c={c} initialOpen={openCard("fotos")} done={false}/>}
       <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
@@ -2997,7 +3018,8 @@ function QuickStats({c}){
 const AUDIT_LABELS={
   minichat_fora_de_public:"Mini Chat instalado fora de public/",
   vercel_json_desatualizado:"vercel.json desatualizado",
-  botoes_whatsapp_pendentes:"Botões de WhatsApp ainda não apontavam pro Mini Chat",
+  botoes_whatsapp_pendentes:"Botões do site ainda não apontavam pro Mini Chat",
+  minichat_nao_confirmado:"Mini Chat não confirmado no site publicado",
   erro_ao_verificar:"Não consegui verificar esse repositório",
 };
 function SiteAuditModal({onClose,onAbrirCliente}){

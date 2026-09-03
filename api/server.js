@@ -3577,6 +3577,27 @@ function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   while ((m = reRouterPush.exec(content))) registra(m[2], "(router.push)", filePath);
 }
 
+// Link de WhatsApp cru (wa.me/api.whatsapp.com) não é a única forma de um botão do
+// site nunca ter sido corrigido — o caso da Lervet foi um botão que linkava pra uma
+// página INTERNA (ex: "/atendimento") com um mini chat próprio antigo, sem nenhum
+// wa.me envolvido. Um link interno com essas palavras no caminho é forte candidato a
+// ser um chat/atendimento rival que "Botões do site" nunca tocou — mesma lista de
+// palavras já usada em "Detectar caminhos automaticamente" (MinichatRepoAdmin, index.html).
+const RIVAL_CHAT_LINK_RE = /minichat|mini-chat|mini_chat|\bchat\b|atendimento|fale-?conosco/i;
+function isInternalLink(href) {
+  return !/^https?:\/\//i.test(href) && !/^(mailto:|tel:|#)/i.test(href);
+}
+// Um link "pendente" é um wa.me/api.whatsapp.com que ainda não aponta pro Mini Chat,
+// OU um link interno com cara de chat/atendimento rival — nos dois casos o botão de
+// verdade do site continua levando o cliente final pra outro lugar que não o nosso.
+function pendingChatLinks(links, minichatLink) {
+  return (links || []).filter(l => {
+    if (l.href === minichatLink) return false;
+    if (/wa\.me|api\.whatsapp\.com/i.test(l.href)) return true;
+    return isInternalLink(l.href) && RIVAL_CHAT_LINK_RE.test(l.href);
+  });
+}
+
 // Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
 // index.html — a página raiz só carrega o JS, e os botões de verdade vivem dentro do
 // código-fonte (.tsx/.jsx), renderizados no navegador. Quando o scan simples não acha
@@ -3870,6 +3891,18 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     try {
       const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
       sha = existing.data.sha;
+      // Já existe algo nesse caminho que não fomos nós que colocamos (não tem o nosso
+      // link dentro) — foi exatamente esse o caso da Lervet: um mini chat antigo de
+      // outro projeto no mesmo endereço. Avisa antes de sobrescrever, a não ser que o
+      // admin já tenha confirmado (force) ou seja o diagnóstico automático chamando.
+      const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
+      if (!existingContent.includes(minichatLink) && !req.body?.force) {
+        return res.json({
+          needsConfirm: true,
+          file_path: filePath,
+          message: `Já existe outro conteúdo em "${filePath}" — não é o nosso Mini Chat. Instalar aqui vai substituir esse arquivo.`,
+        });
+      }
     } catch (e) {
       if (e.response?.status !== 404) throw e;
     }
@@ -3896,32 +3929,42 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
 // o Thomas com o Temakeria Box: commit ok, site nunca atualizou). Busca a URL real e
 // confirma que é de fato a página-redirect do Mini Chat, não a home do site (SPA
 // engolindo a rota) nem um 404.
+// Confere DE VERDADE se o Mini Chat está no ar no domínio do cliente — fonte única
+// de verdade usada tanto pelo botão manual "Verificar" quanto pelo checklist de
+// Ativação e pelo diagnóstico automático (autofixSiteIssues). Ter um commit no
+// GitHub não prova nada sozinho: o deploy pode não ter terminado, o caminho pode
+// estar errado, ou — o caso que enganou o Thomas com a Lervet — pode já existir
+// OUTRO mini chat (de um projeto anterior) publicado nesse mesmo endereço.
+async function verifyMinichatLive(id) {
+  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path").eq("id", id).maybeSingle();
+  if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
+  const filePath = profile.github_minichat_path || "minichat.html";
+  const servedPath = filePath.replace(/^public\//, "");
+  const base = profile.site_url.replace(/\/+$/, "");
+  const url = `${base}/${servedPath}`;
+  const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
+  try {
+    const resp = await axios.get(url, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
+    const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
+    if (resp.status >= 200 && resp.status < 300 && body.includes(minichatMarker)) {
+      return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
+    }
+    if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
+      return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
+    }
+    if (resp.status === 404) {
+      return { status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.` };
+    }
+    return { status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente já existia outra coisa publicada nesse endereço.` };
+  } catch (e) {
+    return { status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` };
+  }
+}
+
 app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path").eq("id", id).maybeSingle();
-    if (!profile?.site_url) return res.json({ status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." });
-    const filePath = profile.github_minichat_path || "minichat.html";
-    const servedPath = filePath.replace(/^public\//, "");
-    const base = profile.site_url.replace(/\/+$/, "");
-    const url = `${base}/${servedPath}`;
-    const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
-    try {
-      const resp = await axios.get(url, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
-      const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
-      if (resp.status >= 200 && resp.status < 300 && body.includes(minichatMarker)) {
-        return res.json({ status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` });
-      }
-      if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
-        return res.json({ status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` });
-      }
-      if (resp.status === 404) {
-        return res.json({ status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.` });
-      }
-      return res.json({ status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente caiu na home do site (rota engolida pelo próprio site). Pode ser cache: espere ~1 min e tente de novo.` });
-    } catch (e) {
-      return res.json({ status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` });
-    }
+    const result = await verifyMinichatLive(req.params.id);
+    res.json(result);
   } catch (err) {
     console.error("[github/verify-minichat]", err.message);
     res.status(500).json({ error: err.message });
@@ -3969,8 +4012,17 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
         }
         const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
         const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-        const pendentes = links.filter(l => l.href !== minichatLink && /wa\.me|api\.whatsapp\.com/i.test(l.href));
-        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} link(s) de WhatsApp ainda apontam direto pra fora.`, count: pendentes.length });
+        const pendentes = pendingChatLinks(links, minichatLink);
+        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) ainda não apontam pro Mini Chat (WhatsApp direto ou outro chat/atendimento).`, count: pendentes.length });
+
+        // Não basta o commit ter dado certo — confere se o site publicado de verdade
+        // responde com o Mini Chat nesse endereço. Foi exatamente isso que enganou o
+        // Thomas com a Lervet: o checklist mostrava verde porque um arquivo nosso foi
+        // commitado, mas o caminho real do botão do site já tinha outro mini chat.
+        const live = await verifyMinichatLive(p.id);
+        if (live.status !== "ok" && live.status !== "sem_site") {
+          issues.push({ tipo: "minichat_nao_confirmado", detalhe: live.message });
+        }
       } catch (e) {
         issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
       }
@@ -4030,14 +4082,31 @@ async function autofixSiteIssues() {
 
       const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
       const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-      const pendentes = links.filter(l => l.href !== minichatLink && /wa\.me|api\.whatsapp\.com/i.test(l.href));
+      const pendentes = pendingChatLinks(links, minichatLink);
       if (pendentes.length) {
         try {
           const { changed } = await applyLinksToRepo(p.id, p.github_repo, pendentes.map(l => ({ href: l.href, file: l.file })), headers);
-          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} link(s) de WhatsApp trocados pelo Mini Chat.` });
-          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} link(s) de WhatsApp detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
+          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} botão(ões)/link(s) trocados pelo Mini Chat.` });
+          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
         } catch (e) {
           issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
+        }
+      }
+
+      // Confirma no site publicado de verdade — se não bater (404, conteúdo errado, ou
+      // já existia OUTRO mini chat nesse endereço, como aconteceu com a Lervet),
+      // reinstala por cima automaticamente. Não pede confirmação porque é automático
+      // (ninguém pra confirmar em segundo plano) e o Thomas foi explícito: todo
+      // produtor sem o nosso Mini Chat de verdade tem que ser atualizado sozinho.
+      if (p.github_minichat_path) {
+        const live = await verifyMinichatLive(p.id);
+        if (live.status !== "ok" && live.status !== "sem_site") {
+          try {
+            await reinstalarMinichatFile(p.id);
+            fixed.push({ tipo: "minichat_nao_confirmado", detalhe: `Reinstalado por cima (estava: ${live.message}). Confirmação final roda no próximo diagnóstico, depois do deploy.` });
+          } catch (e) {
+            issues.push({ tipo: "minichat_nao_confirmado", detalhe: `Não consegui reinstalar sozinho: ${e.message}` });
+          }
         }
       }
     } catch (e) {
