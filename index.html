@@ -1496,11 +1496,13 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         {verifyResult&&(
           <div style={{marginTop:8,color:verifyResult.status==="ok"?GREEN:verifyResult.status==="sem_site"?MUTED:RED,fontSize:12,lineHeight:1.5}}>
             {verifyResult.status==="ok"?"✓ ":verifyResult.status==="sem_site"?"":"⚠️ "}{verifyResult.message}
+            {verifyResult.detail&&!showTecnico&&<> <button onClick={()=>setShowTecnico(true)} style={{background:"none",border:"none",color:"inherit",textDecoration:"underline",fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>por quê?</button></>}
           </div>
         )}
 
         <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginTop:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
         {showTecnico&&(<div style={{marginTop:10}}>
+          {verifyResult?.detail&&<div style={{color:RED,fontSize:12,lineHeight:1.5,marginBottom:10}}>{verifyResult.detail}</div>}
           <div style={{background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
             <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>⚡ O que precisa de deploy vs o que é instantâneo</div>
             <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>

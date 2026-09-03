@@ -4113,7 +4113,7 @@ async function catchAllRewriteWarning(repo, headers) {
     const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
     const content = Buffer.from(resp.data.content, "base64").toString("utf8");
     if (hasCatchAllRewrite(content)) {
-      return "Atenção: esse repositório tem uma rota no vercel.json que redireciona TODO caminho pro app (comum em projetos com servidor próprio, tipo TanStack Start/Nitro) — isso pode impedir esse arquivo estático de ficar acessível, mesmo depois do deploy terminar. Se o teste não funcionar, a solução não é reinstalar de novo — é criar uma rota dentro do próprio código do app que redirecione pro Mini Chat.";
+      return "Esse repositório tem uma rota que redireciona todo caminho pro próprio app — pode ser o motivo. Se persistir, precisa de uma rota dentro do código do app, não reinstalar de novo.";
     }
   } catch {}
   return "";
@@ -4139,17 +4139,20 @@ async function verifyMinichatPath(base, servedPath, id, diagnosticoCatchAll) {
     const resp = await axios.get(cacheBustedUrl, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
     const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
     if (resp.status >= 200 && resp.status < 300 && body.includes(loaderSignature)) {
-      return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
+      return { status: "ok", url, message: `✓ Confirmado.` };
     }
     if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
-      return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
+      return { status: "ok", url, message: `✓ Confirmado.` };
     }
+    // Mensagem principal sempre curta — o diagnóstico técnico completo (a explicação de
+    // por que pode não estar pegando) só vai pra "detail", exibido apenas se o admin
+    // abrir "Detalhes técnicos". Uma parede de texto toda vez que testa não ajuda.
     if (resp.status === 404) {
-      return { status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.${await diagnosticoCatchAll()}` };
+      return { status: "nao_encontrado", url, message: `${url} deu 404.`, detail: (await diagnosticoCatchAll()) || "Aguarde o deploy terminar (~1 min) e teste de novo." };
     }
-    return { status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente já existia outra coisa publicada nesse endereço.${await diagnosticoCatchAll()}` };
+    return { status: "conteudo_errado", url, message: `${url} ainda não é o Mini Chat.`, detail: (await diagnosticoCatchAll()) || "Provavelmente já existia outra coisa publicada nesse endereço." };
   } catch (e) {
-    return { status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` };
+    return { status: "erro", url, message: `Não consegui acessar ${url}.` };
   }
 }
 
