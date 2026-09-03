@@ -4097,7 +4097,7 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
 
 // Estado do diagnóstico automático em memória — um job por vez, roda em segundo
 // plano (não bloqueia o admin esperando) e o painel consulta o andamento via polling.
-let siteAuditJob = { running: false, startedAt: null, finishedAt: null, results: null, error: null };
+let siteAuditJob = { running: false, startedAt: null, finishedAt: null, total: 0, done: 0, results: null, error: null };
 
 // Igual ao site-audit acima, só que em vez de só reportar, CORRIGE sozinho: move o
 // Mini Chat pra public/ e garante o vercel.json quando estiver errado (exatamente o
@@ -4105,7 +4105,9 @@ let siteAuditJob = { running: false, startedAt: null, finishedAt: null, results:
 // pendentes pro Mini Chat certo (o que "Marcar todos" + "Aplicar" já faz manualmente
 // em Botões do site). Roda pra todo produtor com GitHub vinculado — a pedido do
 // Thomas, pra nunca mais precisar abrir cliente por cliente pra achar e corrigir isso.
-async function autofixSiteIssues() {
+// onProgress(done,total) é chamado depois de cada produtor — permite a tela mostrar
+// uma porcentagem de verdade em vez de só "rodando", sem precisar adivinhar.
+async function autofixSiteIssues(onProgress) {
   const token = await getGithubToken();
   if (!token) throw new Error("GitHub ainda não conectado");
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
@@ -4113,6 +4115,8 @@ async function autofixSiteIssues() {
     .select("id,name,company_name,github_repo,github_minichat_path")
     .not("github_repo", "is", null);
 
+  const total = (profiles || []).length;
+  onProgress?.(0, total);
   const resultados = [];
   for (const p of (profiles || [])) {
     const fixed = [];
@@ -4188,16 +4192,20 @@ async function autofixSiteIssues() {
       issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
     }
     resultados.push({ id: p.id, name: p.name, company_name: p.company_name, github_repo: p.github_repo, fixed, issues });
+    onProgress?.(resultados.length, total);
   }
   return resultados;
 }
 
 async function runSiteAuditJob() {
   if (siteAuditJob.running) return;
-  siteAuditJob = { running: true, startedAt: new Date().toISOString(), finishedAt: null, results: null, error: null };
+  siteAuditJob = { running: true, startedAt: new Date().toISOString(), finishedAt: null, total: 0, done: 0, results: null, error: null };
   try {
-    const results = await autofixSiteIssues();
-    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), results, error: null };
+    const results = await autofixSiteIssues((done, total) => {
+      siteAuditJob.done = done;
+      siteAuditJob.total = total;
+    });
+    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), total: siteAuditJob.total, done: siteAuditJob.done, results, error: null };
     // Avisa o(s) admin(s) no celular com o resultado — sem isso, rodar sozinho em
     // segundo plano de nada adianta se ninguém sabe o que ele encontrou/corrigiu.
     const comAlgumaCoisa = results.filter(p => p.fixed?.length || p.issues?.length);
@@ -4212,7 +4220,7 @@ async function runSiteAuditJob() {
     }
   } catch (e) {
     console.error("[siteAuditJob]", e.message);
-    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), results: null, error: e.message };
+    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), total: siteAuditJob.total, done: siteAuditJob.done, results: null, error: e.message };
   }
 }
 
