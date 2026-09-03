@@ -158,6 +158,15 @@ trocar botões, trocar imagem) precisa respeitar isso:
    volta o mesmo erro genérico de "link não encontrado" pro Thomas. Também
    aceita valor de rota interna (`/minichat`, `/atendimento`), não só
    `https://` — nem todo link rival é WhatsApp.
+10. **`scanRepoJsxLinks()` precisa varrer TODA extensão de framework que
+    `detectRepoFramework()` já sabe reconhecer** — descoberto na auditoria
+    geral: o detector já identificava Vue/Svelte/Astro (pra nunca sobrescrever
+    o `vercel.json` deles, regra 6), mas o scanner de botões só olhava
+    `.tsx/.jsx/.ts/.js/.html` — pra um produtor futuro nesses frameworks,
+    "Botões do site"/"Corrigir botão agora" sempre dava "não achei nada",
+    mesmo com o botão visível no `<template>`. Se `detectRepoFramework()`
+    ganhar suporte a outro framework no futuro, adicione a extensão dele
+    aqui também (`api/server.js`, filtro de `arquivos` em `scanRepoJsxLinks`).
 
 Antes de fechar qualquer tarefa que mexe nesses endpoints, considere rodar
 (ou sugerir ao Thomas) a mesma correção nos produtores que já existem, não só

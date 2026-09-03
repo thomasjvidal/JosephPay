@@ -3635,8 +3635,12 @@ async function scanRepoJsxLinks(repo, headers, token) {
   const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
   const branch = repoInfo.data.default_branch;
   const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
+  // Inclui .vue/.svelte/.astro além de React/HTML — sem isso, um produtor futuro feito
+  // em Vue, Svelte ou Astro (frameworks que já sabemos IDENTIFICAR em detectRepoFramework,
+  // mas cujos arquivos de template nunca eram varridos aqui) sempre dava "não achei nenhum
+  // botão pendente", mesmo com o botão de WhatsApp bem na cara dentro do <template>.
   const arquivos = (treeResp.data.tree || [])
-    .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js|html?)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
+    .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js|html?|vue|svelte|astro)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
     .slice(0, 80);
 
   const groups = {};
