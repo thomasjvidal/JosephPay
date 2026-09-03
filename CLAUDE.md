@@ -78,13 +78,20 @@ existem, nem nos que forem cadastrados daqui pra frente. Qualquer endpoint
 que escreve no repositório GitHub de um cliente (instalar Mini Chat, sensor,
 trocar botões, trocar imagem) precisa respeitar isso:
 
-1. **Nunca criar um arquivo novo fora de `public/` num projeto com build**
-   (tem `package.json` → é Vite/Next/CRA/etc). Só o que está em `public/` é
-   copiado pro deploy final — qualquer outro arquivo novo commitado "funciona"
-   no GitHub mas nunca aparece no site publicado. Use `detectRepoFramework()`
-   / `ensureVercelConfig()` (`api/server.js`) antes de criar qualquer arquivo
-   novo num repo de cliente, e prefixe o caminho com `public/` quando for
-   projeto com build.
+1. **O Mini Chat NÃO é mais um arquivo estático em `public/` — é uma regra
+   de REDIRECIONAMENTO no `vercel.json`** (`ensureMinichatRedirect()`,
+   `api/server.js`). Um arquivo estático só funciona se a gente adivinhar
+   certo como aquele framework específico serve `public/`, e cada framework
+   faz diferente (ou nem faz, se tiver servidor próprio com rota "pega-tudo"
+   — TanStack Start, Remix, Nuxt). Um redirecionamento no `vercel.json` é
+   resolvido pelo Vercel na borda, antes de qualquer código do framework
+   rodar — funciona igual pra QUALQUER tipo de repositório, conhecido ou
+   não, sem precisar adivinhar nada. Nunca volte a criar arquivo estático
+   pra esse fim — foi tentado, quebrou no primeiro framework com servidor
+   próprio (TanStack Start, a Lervet) porque a rota "pega-tudo" do próprio
+   app interceptava a requisição antes do arquivo. Se algum dia PRECISAR
+   criar um arquivo novo num repo de cliente por outro motivo, aí sim use
+   `detectRepoFramework()`/`public/` — mas não é mais o caso do Mini Chat.
 2. **Scanner de links/botões precisa tratar `${...}` como bloco atômico.**
    Mensagens de WhatsApp pré-preenchidas (`` `https://wa.me/${tel}?text=${encodeURIComponent('Olá, ...')}` ``)
    têm aspas e vírgulas DENTRO do `${}` — um regex ingênuo corta a captura ali
@@ -117,7 +124,10 @@ trocar botões, trocar imagem) precisa respeitar isso:
    fosse customização — isso deixaria produtor antigo preso pra sempre. Foi
    assim que um vercel.json customizado pra TanStack Start virou um genérico
    de Vite e quebrou o deploy publicado da Lervet — o site tinha rodado o
-   diagnóstico automático em segundo plano.
+   diagnóstico automático em segundo plano. `ensureVercelConfig()` faz MERGE
+   com o conteúdo existente (nunca substitui o arquivo inteiro) — precisa
+   continuar assim pra não apagar a chave `redirects` do Mini Chat
+   (`ensureMinichatRedirect()`, regra 1) toda vez que rodar.
 7. **`applyLinksToRepo()` (troca de link) NUNCA roda sozinha, nem pra um
    `wa.me`/`api.whatsapp.com` cru** — só via admin que abriu "Botões do site",
    olhou o arquivo/texto do botão e clicou Aplicar. Achávamos que wa.me cru
@@ -132,9 +142,9 @@ trocar botões, trocar imagem) precisa respeitar isso:
    si só roda via `applyLinksToRepo()` chamada por um admin que olhou o
    arquivo e o texto do botão em "Botões do site", nunca pelo job automático.
 8. **Ao mudar o caminho de um arquivo que a JosephPay controla num repo de
-   cliente (ex: Mini Chat saindo da raiz pra `public/`), apague o arquivo no
-   caminho antigo** (`deleteStaleMinichatFile()`) — senão sobra duplicado pra
-   sempre, também descoberto na Lervet.
+   cliente, ou ao migrar do mecanismo antigo de arquivo estático pro
+   redirecionamento (regra 1), apague o arquivo antigo** (`deleteStaleMinichatFile()`)
+   — senão sobra duplicado pra sempre, também descoberto na Lervet.
 
 Antes de fechar qualquer tarefa que mexe nesses endpoints, considere rodar
 (ou sugerir ao Thomas) a mesma correção nos produtores que já existem, não só
