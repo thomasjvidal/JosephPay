@@ -3053,6 +3053,8 @@ const AUDIT_LABELS={
 function SiteAuditModal({onClose,onAbrirCliente}){
   const [status,setStatus]=useState(null);
   const [error,setError]=useState("");
+  const [corrigindo,setCorrigindo]=useState({}); // {producerId: true}
+  const [corrigidoMsg,setCorrigidoMsg]=useState({}); // {producerId: "✓ 1 botão corrigido"}
   const carregarStatus=()=>apiCall('/api/admin/producers/site-audit/status').then(d=>{if(!d?.error)setStatus(d);});
   useEffect(()=>{
     carregarStatus();
@@ -3064,6 +3066,24 @@ function SiteAuditModal({onClose,onAbrirCliente}){
     const d=await apiCall('/api/admin/producers/site-audit/run',{method:'POST'});
     if(d?.error){setError(d.error);return;}
     carregarStatus();
+  };
+  // Corrige o botão pendente direto daqui — sem sair pra outra tela. Mesma regra de
+  // detecção que já pinta "Botões do site" de vermelho no perfil do produtor.
+  const corrigirBotoesAgora=async(p,e)=>{
+    e.stopPropagation();
+    if(!p.github_repo)return;
+    setCorrigindo(s=>({...s,[p.id]:true}));
+    const scan=await apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(p.github_repo)}`);
+    if(scan.error||!scan.links){setCorrigindo(s=>({...s,[p.id]:false}));setCorrigidoMsg(m=>({...m,[p.id]:"Erro ao escanear: "+(scan.error||"")}));return;}
+    const minichatLink=`https://josephpay.com/minichat.html?uid=${p.id}`;
+    const rivalChatRe=/minichat|mini-chat|mini_chat|\bchat\b|atendimento|fale-?conosco/i;
+    const isInternal=h=>!/^https?:\/\//i.test(h)&&!/^(mailto:|tel:|#)/i.test(h);
+    const alvos=scan.links.filter(l=>l.href!==minichatLink&&(/wa\.me|api\.whatsapp\.com/i.test(l.href)||(isInternal(l.href)&&rivalChatRe.test(l.href))));
+    if(!alvos.length){setCorrigindo(s=>({...s,[p.id]:false}));setCorrigidoMsg(m=>({...m,[p.id]:"Não achei nada pra corrigir sozinho."}));return;}
+    const apply=await apiCall(`/api/admin/producers/${p.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file}))})});
+    setCorrigindo(s=>({...s,[p.id]:false}));
+    if(apply.error){setCorrigidoMsg(m=>({...m,[p.id]:"Erro: "+apply.error}));return;}
+    setCorrigidoMsg(m=>({...m,[p.id]:`✓ ${apply.changed} botão(ões) corrigido(s). Aguarde ~1 min pro site atualizar.`}));
   };
   const producers=status?.results||null;
   const comAlgumaAlteracao=(producers||[]).filter(p=>p.fixed?.length||p.issues?.length);
@@ -3111,6 +3131,12 @@ function SiteAuditModal({onClose,onAbrirCliente}){
                 {(p.issues||[]).map((iss,i)=>(
                   <div key={"i"+i} style={{color:RED,fontSize:11,lineHeight:1.5}}>⚠️ {AUDIT_LABELS[iss.tipo]||iss.tipo}{iss.detalhe?` — ${iss.detalhe}`:""}</div>
                 ))}
+                {corrigidoMsg[p.id]&&<div style={{color:corrigidoMsg[p.id].startsWith("✓")?GREEN:RED,fontSize:11,lineHeight:1.5,marginTop:4}}>{corrigidoMsg[p.id]}</div>}
+                {(p.issues||[]).some(iss=>iss.tipo==="botoes_whatsapp_pendentes")&&!corrigidoMsg[p.id]?.startsWith("✓")&&(
+                  <button onClick={e=>corrigirBotoesAgora(p,e)} disabled={corrigindo[p.id]} style={{marginTop:8,background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:100,padding:"8px 16px",color:GOLD,fontWeight:700,fontSize:12,cursor:corrigindo[p.id]?"default":"pointer",fontFamily:F}}>
+                    {corrigindo[p.id]?"Corrigindo…":"🔧 Corrigir botão agora"}
+                  </button>
+                )}
               </div>
             ))}
             {semNada.length>0&&(
