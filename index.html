@@ -255,6 +255,11 @@ const fmtLastLogin=(iso)=>{
 };
 const getToken=async()=>{if(!_sb)return null;const{data:{session}}=await _sb.auth.getSession();return session?.access_token||null;};
 const apiCall=async(path,opts={})=>{try{const token=await getToken();const res=await fetch(`${RAILWAY}${path}`,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...(opts.headers||{})},body:opts.body});const json=await res.json();if(res.status===402||json?.error==="subscription_required"){window.dispatchEvent(new CustomEvent("jp:paywall",{detail:json}));}return json;}catch(e){console.error("[api]",path,e.message);return{error:e.message};}};
+// Número de WhatsApp digitado com formatação (espaço, traço, parênteses) ou sem o código
+// do país quebra o link "wa.me/…" — o app não reconhece como telefone e mostra "nome de
+// usuário não está no WhatsApp" em vez de abrir a conversa. Usado em qualquer preview/link
+// de WhatsApp montado no Admin, pra sempre bater com o que o backend salva de verdade.
+const normalizeWhatsappDigits=raw=>{let d=String(raw||"").replace(/\D/g,"");if(d.length===10||d.length===11)d="55"+d;return d;};
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Notificações push (celular) ─────────────────────────────────────────────
@@ -2502,7 +2507,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preenchido, o botão final abre apenas esse link — útil para Calendly, página de vendas, etc.</div>
 
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
-      {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${wapNum.trim().replace(/\D/g,"")}`}/></div>}
+      {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${normalizeWhatsappDigits(wapNum)}`}/></div>}
       {c.minichat_config&&(<div style={{marginBottom:14}}>
         <Btn sm outline color={GOLD} onClick={gerarPrompt}>{gerandoSugestoes?"Pensando…":"✨ Sugerir melhorias com IA"}</Btn>
         {promptText&&(

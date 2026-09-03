@@ -2415,6 +2415,18 @@ async function autoFixMinichatLink(id) {
   }
 }
 
+// Número de WhatsApp digitado com formatação humana (espaço, traço, parênteses) ou sem
+// o código do país quebra o link "https://wa.me/<número>" — o WhatsApp não consegue
+// reconhecer como telefone e mostra "nome de usuário não está no WhatsApp" em vez de abrir
+// a conversa. Normaliza pra só dígitos e adiciona o 55 quando faltar (DDD de 2 dígitos +
+// telefone de 8/9 — o formato mais comum de número brasileiro cadastrado sem o código do país).
+function normalizeWhatsappNumber(raw) {
+  if (!raw) return raw;
+  let digits = String(raw).replace(/\D/g, "");
+  if (digits.length === 10 || digits.length === 11) digits = "55" + digits;
+  return digits || null;
+}
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2440,7 +2452,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       if (!cleanQuestions.length) cleanQuestions = null;
     }
     const minichat_config = {
-      whatsapp_number: whatsapp_number !== undefined ? whatsapp_number.trim() : existing.whatsapp_number,
+      whatsapp_number: whatsapp_number !== undefined ? normalizeWhatsappNumber(whatsapp_number.trim()) : existing.whatsapp_number,
       brand_name: brand_name !== undefined ? (brand_name?.trim() || null) : (existing.brand_name ?? null),
       greeting_name: greeting_name !== undefined ? (greeting_name?.trim() || brand_name?.trim() || null) : (existing.greeting_name ?? null),
       avatar_url: avatar_url !== undefined ? (avatar_url?.trim() || null) : (existing.avatar_url ?? null),
@@ -5127,17 +5139,24 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
 function parseBirthdate(raw) {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.trim();
-  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // DD/MM/AAAA ou DD-MM-AAAA
-  if (m) {
-    const [, d, mo, y] = m;
-    const date = new Date(Number(y), Number(mo) - 1, Number(d));
-    if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
-      return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    }
-    return null;
-  }
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // já em ISO
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // já em ISO
   if (m) return s;
+  // Qualquer separador entre os três números — "/", "-", ".", espaço — cobre o formato
+  // sugerido (DD/MM/AAAA) e variações que a pessoa acaba digitando no celular.
+  m = s.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4})$/);
+  if (!m) {
+    // Só dígitos, sem separador nenhum — o mais comum no teclado numérico do celular
+    // (ex: "09082000") — sem isso a resposta era descartada e o campo ficava "não
+    // informado" mesmo com a pessoa tendo respondido certinho.
+    const digits = s.replace(/\D/g, "");
+    if (digits.length === 8) m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)];
+  }
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  const date = new Date(Number(y), Number(mo) - 1, Number(d));
+  if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
+    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
   return null;
 }
 

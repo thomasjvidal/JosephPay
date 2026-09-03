@@ -417,6 +417,15 @@
     let DESTINATION_TYPE = "whatsapp";
     let CLOSING_MESSAGE = "Podemos conversar?";
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
+    // Número salvo com formatação (espaço, traço, parênteses) ou sem o código do país
+    // quebra o link do WhatsApp — o app não reconhece como telefone e mostra "nome de
+    // usuário não está no WhatsApp" em vez de abrir a conversa. Normaliza aqui, na hora
+    // de montar o link, pra funcionar mesmo pra número já salvo assim antes dessa correção.
+    function normalizeWhatsappNumber(raw) {
+        let digits = String(raw || '').replace(/\D/g, '');
+        if (digits.length === 10 || digits.length === 11) digits = '55' + digits;
+        return digits;
+    }
 
     function getVisitorId() {
         try {
@@ -772,7 +781,7 @@
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'whatsapp' });
 
         const useRedirect = REDIRECT_LINK && DESTINATION_TYPE !== "whatsapp";
-        const targetUrl = useRedirect ? REDIRECT_LINK : `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
+        const targetUrl = useRedirect ? REDIRECT_LINK : `https://wa.me/${normalizeWhatsappNumber(WHATSAPP_NUMBER)}?text=${encodeURIComponent(buildMessage())}`;
         const btnFinalHtml = useRedirect ? '↗ Continuar' : '📱 Abrir WhatsApp';
 
         setTimeout(() => {
