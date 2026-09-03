@@ -3894,6 +3894,13 @@ async function ensureVercelConfig(repo, headers, detected, id) {
   } catch (e) {
     if (e.response?.status !== 404) throw e;
   }
+  // Formato legado do Vercel ("routes") não pode ser misturado com as chaves modernas
+  // que a gente escreve aqui (framework/buildCommand/rewrites) — o Vercel rejeita o
+  // arquivo inteiro se os dois aparecerem juntos. Nunca mexe nesse caso; deixa como
+  // "customizado" pro admin revisar — mistura os dois teria quebrado o deploy inteiro.
+  if (Array.isArray(existingCfg.routes)) {
+    return { changed: false, skipped: "vercel_json_customizado" };
+  }
   // NUNCA substitui o arquivo inteiro — só garante que as chaves de build (framework/
   // buildCommand/outputDirectory/rewrites) estão certas, preservando qualquer outra
   // chave que já esteja lá (ex: "redirects" do Mini Chat, cuidado por ensureMinichatRedirect
