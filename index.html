@@ -1402,7 +1402,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     setFixing(false);
     if(d.error){setMsg("Erro: "+d.error);return;}
     setInstalledAt(new Date().toISOString());
-    setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.`);
+    setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.${d.warning?` ⚠️ ${d.warning}`:""}`);
     onUpdated&&onUpdated();
   };
   const invalidarMinichat=async()=>{
@@ -1455,9 +1455,10 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     }
     setInstalledAt(new Date().toISOString());
     setSugestoes([]);
-    setMsg(d.file_path!==minichatPath.trim()
+    const base=d.file_path!==minichatPath.trim()
       ? `✓ Instalado em ${d.file_path} (movido pra public/ automaticamente). Aguarde ~1 min pro site atualizar.`
-      : `✓ Instalado em ${d.file_path}. Aguarde ~1 min pro site atualizar.`);
+      : `✓ Instalado em ${d.file_path}. Aguarde ~1 min pro site atualizar.`;
+    setMsg(d.warning?`${base} ⚠️ ${d.warning}`:base);
     onUpdated&&onUpdated();
     // Confere sozinho se pegou no site do cliente ~75s depois (tempo do deploy da
     // Vercel) — assim não depende de o admin lembrar de clicar em "Verificar".

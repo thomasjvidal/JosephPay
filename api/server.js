@@ -2550,14 +2550,15 @@ async function reinstalarMinichatFile(id) {
   await deleteStaleMinichatFile(repo, headers, oldPath, filePath);
   await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
   autoFixMinichatLink(id).catch(() => {});
-  return { file_path: filePath };
+  const warning = await catchAllRewriteWarning(repo, headers);
+  return { file_path: filePath, warning: warning || undefined };
 }
 
 app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { file_path } = await reinstalarMinichatFile(id);
-    res.json({ ok: true, file_path });
+    const { file_path, warning } = await reinstalarMinichatFile(id);
+    res.json({ ok: true, file_path, warning });
   } catch (err) {
     console.error("[reinstall-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -3991,7 +3992,11 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
     // autoFix já enxergue o caminho correto.
     autoFixMinichatLink(id).catch(() => {});
-    res.json({ ok: true, file_path: filePath, served_path: servedPath });
+    // Avisa JÁ na hora de instalar se esse repo tem uma rota "pega-tudo" que pode impedir
+    // o arquivo de ficar acessível — sem isso o admin só descobre depois de "reinstalar"
+    // várias vezes achando que não pegou.
+    const warning = await catchAllRewriteWarning(repo, headers);
+    res.json({ ok: true, file_path: filePath, served_path: servedPath, warning: warning || undefined });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
@@ -4010,13 +4015,49 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
 // GitHub não prova nada sozinho: o deploy pode não ter terminado, o caminho pode
 // estar errado, ou — o caso que enganou o Thomas com a Lervet — pode já existir
 // OUTRO mini chat (de um projeto anterior) publicado nesse mesmo endereço.
+// Uma rota "pega-tudo" no vercel.json (ex: { "source": "/(.*)", "destination": "/api/..." })
+// é normal — às vezes até obrigatória — em frameworks com servidor próprio (SSR/Nitro,
+// como TanStack Start, Remix, Nuxt, SvelteKit). Mas ela também intercepta QUALQUER arquivo
+// novo que a gente colocar em public/ ANTES do Vercel sequer olhar se existe um arquivo
+// estático ali — ou seja, nesses casos, instalar/reinstalar o loader pode nunca aparecer
+// no site, não importa quantas vezes a gente tente, porque a rota nunca deixa a requisição
+// chegar no arquivo estático. Detectar isso evita ficar "reinstalando" às cegas pra sempre.
+function hasCatchAllRewrite(vercelJsonText) {
+  try {
+    const cfg = JSON.parse(vercelJsonText);
+    const regras = [...(cfg.rewrites || []), ...(cfg.routes || [])];
+    return regras.some(r => {
+      const src = (r.source || r.src || "").trim();
+      return /^\^?\/?(\(\.\*\)|\.\*)\/?\$?$/.test(src);
+    });
+  } catch { return false; }
+}
+
+// Mesmo aviso usado tanto na hora de instalar (avisa ANTES de gastar um ciclo tentando)
+// quanto na verificação ao vivo (explica um "não achei" que na real é isso).
+async function catchAllRewriteWarning(repo, headers) {
+  try {
+    const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    const content = Buffer.from(resp.data.content, "base64").toString("utf8");
+    if (hasCatchAllRewrite(content)) {
+      return "Atenção: esse repositório tem uma rota no vercel.json que redireciona TODO caminho pro app (comum em projetos com servidor próprio, tipo TanStack Start/Nitro) — isso pode impedir esse arquivo estático de ficar acessível, mesmo depois do deploy terminar. Se o teste não funcionar, a solução não é reinstalar de novo — é criar uma rota dentro do próprio código do app que redirecione pro Mini Chat.";
+    }
+  } catch {}
+  return "";
+}
+
 async function verifyMinichatLive(id) {
-  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path").eq("id", id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
   if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
   const filePath = profile.github_minichat_path || "minichat.html";
   const servedPath = filePath.replace(/^public\//, "");
   const base = profile.site_url.replace(/\/+$/, "");
+  // Cache-busting: sem isso, o CDN da Vercel pode devolver uma resposta antiga do cache
+  // mesmo com Cache-Control:no-cache no pedido (isso é respeitado pelo navegador, não
+  // necessariamente pelo edge) — e a gente conclui "não atualizou" quando na real só
+  // pegou uma cópia velha.
   const url = `${base}/${servedPath}`;
+  const cacheBustedUrl = `${url}${url.includes("?") ? "&" : "?"}_jp=${Date.now()}`;
   const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
   // Confere a ASSINATURA exata do nosso loader (a tag <meta refresh> com o marker dentro),
   // não só se o texto do marker aparece em algum lugar da página. Um simples "includes"
@@ -4025,8 +4066,18 @@ async function verifyMinichatLive(id) {
   // mesmo link em outro lugar — ex: um botão de navegação que ficou apontando pra cá por
   // engano — e o card aparecia verde mesmo sem o loader de verdade estar publicado ali.
   const loaderSignature = `<meta http-equiv="refresh" content="0;url=${minichatMarker}">`;
+  // Diagnóstico extra: só roda quando a checagem principal falhar, pra explicar o motivo
+  // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
+  const diagnosticoCatchAll = async () => {
+    if (!profile.github_repo) return "";
+    const token = await getGithubToken();
+    if (!token) return "";
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const aviso = await catchAllRewriteWarning(profile.github_repo, headers);
+    return aviso ? ` ${aviso}` : "";
+  };
   try {
-    const resp = await axios.get(url, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
+    const resp = await axios.get(cacheBustedUrl, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
     const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
     if (resp.status >= 200 && resp.status < 300 && body.includes(loaderSignature)) {
       return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
@@ -4035,9 +4086,9 @@ async function verifyMinichatLive(id) {
       return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
     }
     if (resp.status === 404) {
-      return { status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.` };
+      return { status: "nao_encontrado", url, message: `${url} deu 404 — ou o deploy ainda não terminou (espere ~1 min e tente de novo), ou o arquivo não está publicado nesse caminho.${await diagnosticoCatchAll()}` };
     }
-    return { status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente já existia outra coisa publicada nesse endereço.` };
+    return { status: "conteudo_errado", url, message: `${url} respondeu, mas o conteúdo não é a página do Mini Chat — provavelmente já existia outra coisa publicada nesse endereço.${await diagnosticoCatchAll()}` };
   } catch (e) {
     return { status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` };
   }
