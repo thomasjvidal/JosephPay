@@ -1070,7 +1070,7 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
   const aplicar=async()=>{
     if(!selecionados.length)return;
     setApplying(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:selecionados.map(l=>({href:l.href,file:l.file||c.github_file_path}))})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:selecionados.map(l=>({href:l.href,file:l.file||c.github_file_path,varName:l.varName,varFile:l.varFile}))})});
     setApplying(false);
     if(d.error){setMsg(d.error);return;}
     setMsg(`✓ ${d.changed} link(s) atualizado(s).`);
@@ -1409,7 +1409,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     const isInternal=h=>!/^https?:\/\//i.test(h)&&!/^(mailto:|tel:|#)/i.test(h);
     const alvos=scan.links.filter(l=>l.href!==minichatLink&&(/wa\.me|api\.whatsapp\.com/i.test(l.href)||(isInternal(l.href)&&rivalChatRe.test(l.href))));
     if(!alvos.length){setCorrigindoBotao(false);setMsg("Não achei nenhum botão pendente pra corrigir sozinho — pode precisar revisar manualmente em \"Botões do site\".");return;}
-    const apply=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file}))})});
+    const apply=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file,varName:l.varName,varFile:l.varFile}))})});
     setCorrigindoBotao(false);
     if(apply.error){setMsg("Erro ao corrigir: "+apply.error);return;}
     setMsg(`✓ ${apply.changed} botão(ões) corrigido(s) — aponta(m) pro Mini Chat agora. Aguarde ~1 min pro site atualizar.`);
@@ -3080,7 +3080,7 @@ function SiteAuditModal({onClose,onAbrirCliente}){
     const isInternal=h=>!/^https?:\/\//i.test(h)&&!/^(mailto:|tel:|#)/i.test(h);
     const alvos=scan.links.filter(l=>l.href!==minichatLink&&(/wa\.me|api\.whatsapp\.com/i.test(l.href)||(isInternal(l.href)&&rivalChatRe.test(l.href))));
     if(!alvos.length){setCorrigindo(s=>({...s,[p.id]:false}));setCorrigidoMsg(m=>({...m,[p.id]:"Não achei nada pra corrigir sozinho."}));return;}
-    const apply=await apiCall(`/api/admin/producers/${p.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file}))})});
+    const apply=await apiCall(`/api/admin/producers/${p.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file,varName:l.varName,varFile:l.varFile}))})});
     setCorrigindo(s=>({...s,[p.id]:false}));
     if(apply.error){setCorrigidoMsg(m=>({...m,[p.id]:"Erro: "+apply.error}));return;}
     setCorrigidoMsg(m=>({...m,[p.id]:`✓ ${apply.changed} botão(ões) corrigido(s). Aguarde ~1 min pro site atualizar.`}));

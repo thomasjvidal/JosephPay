@@ -3568,12 +3568,17 @@ function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   // href/to passado como expressão JSX com string estática: href={"..."} ou href={'...'}
   const reHrefExpr = new RegExp(`\\b(?:href|to)\\s*=\\s*\\{\\s*(["'\`])(${STR_CONTENT})\\1\\s*\\}`, "gi");
   while ((m = reHrefExpr.exec(content))) registra(m[2], "(atributo href={...})", filePath);
-  // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível
+  // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível.
+  // O texto da URL não existe literalmente NESTE arquivo (só o nome da variável) — pra
+  // aplicar uma troca de verdade, quem for editar precisa mexer no arquivo de constantes
+  // onde a variável é DEFINIDA, não procurar a URL aqui. Por isso passa varName/varFile
+  // adiante — sem isso, "aplicar" tentava achar a URL neste arquivo e nunca encontrava
+  // (erro "nenhum link encontrado", mesmo o link tendo sido detectado certinho no scan).
   const reHrefVar = /\b(?:href|to)\s*=\s*\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
   while ((m = reHrefVar.exec(content))) {
     const varName = m[1];
     const resolved = varMap[varName];
-    if (resolved) registra(resolved, `(variável: ${varName})`, filePath);
+    if (resolved) registra(resolved.url, `(variável: ${varName})`, filePath, { varName, varFile: resolved.file });
     else registra(`{${varName}}`, `(variável: ${varName})`, filePath);
   }
   // botão que redireciona via JS em vez de <a href> — comum pra abrir WhatsApp num onClick
@@ -3635,11 +3640,11 @@ async function scanRepoJsxLinks(repo, headers, token) {
     .slice(0, 80);
 
   const groups = {};
-  const registra = (href, text, filePath) => {
+  const registra = (href, text, filePath, varMeta) => {
     href = (href || "").trim();
     if (!href || href.startsWith("#")) return;
     const key = `${filePath}::${href}`;
-    if (!groups[key]) groups[key] = { href, file: filePath, count: 0, samples: [] };
+    if (!groups[key]) groups[key] = { href, file: filePath, count: 0, samples: [], ...(varMeta || {}) };
     groups[key].count++;
     text = (text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
     if (text && groups[key].samples.length < 3 && !groups[key].samples.includes(text)) groups[key].samples.push(text);
@@ -3647,6 +3652,9 @@ async function scanRepoJsxLinks(repo, headers, token) {
 
   // Pré-lê arquivos de constantes (lib/site.ts, constants.ts, etc.) pra resolver
   // variáveis como href={WHATSAPP_URL} que o scan de JSX não consegue ver diretamente.
+  // Guarda também EM QUAL ARQUIVO cada constante foi definida — sem isso, "aplicar"
+  // tentava substituir a URL dentro do arquivo JSX (onde só existe o nome da variável,
+  // nunca a URL em si) e sempre falhava com "nenhum link encontrado".
   const varMap = {};
   const constFiles = arquivos.filter(f => /\b(site|constants?|config|urls?)\.(ts|js)$/i.test(f.path));
   await Promise.all(constFiles.map(async f => {
@@ -3655,7 +3663,7 @@ async function scanRepoJsxLinks(repo, headers, token) {
       // export const VARNAME = "https://..." (valor pode estar na mesma linha ou na seguinte)
       const reConst = /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`](https?:\/\/[^"'`\n]+)["'`]/g;
       let cm;
-      while ((cm = reConst.exec(c))) varMap[cm[1]] = cm[2];
+      while ((cm = reConst.exec(c))) varMap[cm[1]] = { url: cm[2], file: f.path };
     } catch {}
   }));
 
@@ -3703,11 +3711,17 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
 async function applyLinksToRepo(id, repo, itens, headers) {
   const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
   const porArquivo = {};
-  itens.forEach(({ href, file }) => {
-    if (!href || !file) return;
-    (porArquivo[file] = porArquivo[file] || []).push(href);
+  // Link resolvido de uma variável (href={WHATSAPP_URL}) não tem a URL literal no
+  // arquivo JSX — só o nome da variável. Precisa editar onde a constante é DECLARADA
+  // (varFile), não procurar a URL no arquivo onde ela é só usada — sem essa distinção,
+  // "aplicar" sempre dava "nenhum link encontrado" pra esse tipo de link.
+  const porVarFile = {};
+  itens.forEach(({ href, file, varName, varFile }) => {
+    if (!href) return;
+    if (varName && varFile) (porVarFile[varFile] = porVarFile[varFile] || []).push(varName);
+    else if (file) (porArquivo[file] = porArquivo[file] || []).push(href);
   });
-  if (!Object.keys(porArquivo).length) return { changed: 0 };
+  if (!Object.keys(porArquivo).length && !Object.keys(porVarFile).length) return { changed: 0 };
 
   let changed = 0;
   for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
@@ -3734,6 +3748,28 @@ async function applyLinksToRepo(id, repo, itens, headers) {
     if (!mudouAqui) continue;
     await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
       message: "JosephPay: aponta botões do site pro Mini Chat",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      sha,
+    }, { headers });
+  }
+  for (const [filePath, varNames] of Object.entries(porVarFile)) {
+    const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+    const sha = fileResp.data.sha;
+    let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+    let mudouAqui = false;
+    [...new Set(varNames)].forEach(varName => {
+      const before = content;
+      // Troca só o VALOR da declaração dessa constante (pelo nome, não pela URL antiga
+      // — a URL pode já estar diferente do que o scan viu, o nome da constante não muda).
+      content = content.replace(
+        new RegExp(`(export\\s+const\\s+${varName}\\s*=\\s*(?:[\\r\\n]\\s*)?["'\`])[^"'\`]*(["'\`])`),
+        `$1${minichatLink}$2`
+      );
+      if (content !== before) { changed++; mudouAqui = true; }
+    });
+    if (!mudouAqui) continue;
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: aponta constante de link pro Mini Chat",
       content: Buffer.from(content, "utf8").toString("base64"),
       sha,
     }, { headers });
