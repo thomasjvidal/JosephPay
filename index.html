@@ -2074,9 +2074,13 @@ function ProdutosDoCliente({ownerId,nome}){
   const [editPrice,setEditPrice]=useState("");
   const [editSaving,setEditSaving]=useState(false);
   const [deletingId,setDeletingId]=useState(null);
+  const [erroProdutos,setErroProdutos]=useState(false);
   useEffect(()=>{
     if(!ownerId)return;
-    apiCall(`/api/admin/products?owner=${ownerId}`).then(d=>{if(d?.products)setProdutos(d.products);else setProdutos([]);});
+    apiCall(`/api/admin/products?owner=${ownerId}`).then(d=>{
+      if(Array.isArray(d?.products)){setProdutos(d.products);setErroProdutos(false);}
+      else setErroProdutos(true);
+    });
   },[ownerId,refresh]);
   const copiar=(id)=>{
     navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${id}`).then(()=>{setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);});
@@ -2106,7 +2110,13 @@ function ProdutosDoCliente({ownerId,nome}){
         <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Produtos de {nome||"—"}</span>
         <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Novo produto</Btn>
       </div>
-      {produtos===null&&[1,2].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div></div>))}
+      {produtos===null&&!erroProdutos&&[1,2].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div></div>))}
+      {erroProdutos&&(
+        <div style={{padding:"20px",textAlign:"center"}}>
+          <div style={{color:RED,fontSize:12,marginBottom:8}}>Não consegui carregar os produtos agora — falha passageira de conexão, nada foi apagado.</div>
+          <button onClick={()=>{setErroProdutos(false);setProdutos(null);setRefresh(r=>r+1);}} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>Tentar de novo</button>
+        </div>
+      )}
       {produtos!==null&&produtos.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produto cadastrado ainda.</div>}
       {(produtos||[]).map((p,i)=>(
         <div key={p.id||i} style={{borderBottom:i<(produtos.length-1)?`1px solid ${BDR}`:"none"}}>
@@ -2146,11 +2156,23 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
   const [deleting,setDeleting]=useState(false);
   const [err,setErr]=useState("");
   const [sales,setSales]=useState(null);
+  // Falha de rede/servidor (ex: deploy reiniciando) e "esse produtor realmente não tem
+  // contato nenhum" são coisas MUITO diferentes pra mostrar — antes as duas caíam na
+  // mesma mensagem "Nenhum contato aqui ainda", dando a impressão de que os contatos
+  // tinham sumido quando na real era só uma falha passageira de carregamento.
+  const [erroLista,setErroLista]=useState(false);
   const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const todayMid=(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate());})();
+  const carregarLista=()=>{
+    if(!ownerId)return;
+    apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{
+      if(Array.isArray(d?.customers)){setLista(d.customers);setErroLista(false);}
+      else setErroLista(true);
+    });
+  };
   useEffect(()=>{
-    if(!ownerId||!open||lista!==null)return;
-    apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{if(d?.customers)setLista(d.customers);else setLista([]);});
+    if(!ownerId||!open||lista!==null||erroLista)return;
+    carregarLista();
   },[ownerId,open]);
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
   const srcLabel=s=>s==='minichat'?'Site':s==='google_ads'?'Google Ads':s==='manual'?'Manual':'Compra';
@@ -2256,7 +2278,13 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Clientes do produtor" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
-        {lista===null&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
+        {lista===null&&!erroLista&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
+        {erroLista&&(
+          <div style={{padding:"10px 0"}}>
+            <div style={{color:RED,fontSize:12,marginBottom:8}}>Não consegui carregar os contatos agora — pode ser uma falha passageira de conexão. Os dados não foram apagados, só não carregaram.</div>
+            <button onClick={()=>{setErroLista(false);carregarLista();}} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>Tentar de novo</button>
+          </div>
+        )}
         {lista!==null&&(
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
@@ -3185,8 +3213,15 @@ function ClientesAdmin(){
   const [refresh,setRefresh]=useState(0);
   const [ordem,setOrdem]=useState(()=>localStorage.getItem('jp_admin_ordem_clientes')||"volume");
   const [filtro,setFiltro]=useState("todos");
+  // Falha passageira de rede/servidor e "não tem produtor nenhum cadastrado" são coisas
+  // bem diferentes de mostrar — antes as duas caíam na mesma tela "Nenhum produtor
+  // cadastrado", dando a impressão errada de que os produtores tinham sumido.
+  const [erroClients,setErroClients]=useState(false);
   useEffect(()=>{
-    apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);else setClients([]);});
+    apiCall('/api/admin/clients').then(d=>{
+      if(Array.isArray(d?.clients)){setClients(d.clients);setErroClients(false);}
+      else setErroClients(true);
+    });
   },[refresh]);
   if(sel!==null){
     const c=clients?.find(x=>x.id===sel)||null;
@@ -3233,7 +3268,13 @@ function ClientesAdmin(){
           <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
         ))}
       </div>
-      {clients===null&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
+      {clients===null&&!erroClients&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
+      {erroClients&&(
+        <div style={{padding:"20px",textAlign:"center"}}>
+          <div style={{color:RED,fontSize:13,marginBottom:10}}>Não consegui carregar os produtores agora — pode ser uma falha passageira de conexão. Ninguém foi apagado, só não carregou.</div>
+          <button onClick={()=>{setErroClients(false);setClients(null);setRefresh(r=>r+1);}} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"8px 16px",color:MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>Tentar de novo</button>
+        </div>
+      )}
       {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
       {clientsOrdenados.map((c,i)=>(
         <div key={c.id||i} onClick={()=>setSel(c.id)} style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px",cursor:"pointer",transition:"border-color 0.15s"}}>
