@@ -1569,7 +1569,7 @@ app.delete("/api/admin/sales/:saleId", requireAuth, requireAdmin, async (req, re
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id,disabled_at")
+      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_minichat_verified_ok,github_vercel_ready_at,google_ads_customer_id,disabled_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1605,7 +1605,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     });
 
     const enriched = await Promise.all((data || []).map(async (p) => {
-      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid, hasMiniChat] = await Promise.all([
+      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
         // whatsapp_instance só indica que a aba Disparos foi aberta uma vez (o nome da instância
@@ -1621,7 +1621,6 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview"),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").gte("created_at", todayStart.toISOString()),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").eq("has_gclid", true).then(r => r.count > 0, () => false),
-        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).ilike("page", "%minichat%").then(r => (r.count || 0) > 0, () => false),
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
@@ -1645,7 +1644,12 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
           whatsapp: wapConnected,
           site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || vtotal > 0,
           email:    !!p.email_connected,
-          minichat: hasMiniChat,
+          // Site com GitHub: confia SÓ na última verificação ao vivo (verifyMinichatLive)
+          // — a mesma verdade mostrada dentro do perfil do produtor. Antes usava "teve
+          // alguma visita numa página com 'minichat' no nome" — ficava verde pra sempre
+          // mesmo com o Mini Chat quebrado, e nunca batia com o que aparecia lá dentro.
+          // Site via GTM não passa por essa verificação — usa se já tem config salva.
+          minichat: p.github_repo ? !!p.github_minichat_verified_ok : !!(p.minichat_config?.whatsapp_number || p.minichat_config?.email_destino),
           googleAds: !!hasGclid,
         },
       };
@@ -4182,9 +4186,16 @@ async function verifyMinichatLive(id) {
   let ultimoResultado = null;
   for (const p of paths) {
     const resultado = await verifyMinichatPath(base, p.replace(/^public\//, ""), id, diagnosticoCatchAll);
-    if (resultado.status === "ok") return resultado;
+    if (resultado.status === "ok") { ultimoResultado = resultado; break; }
     ultimoResultado = resultado;
   }
+  // Guarda o resultado — é isso que o card do produtor na lista de Clientes usa pra
+  // mostrar a MESMA verdade que aparece dentro do perfil, em vez de um sinal fraco
+  // (visita histórica numa página com "minichat" no nome, que nunca desliga sozinho).
+  await supabase.from("profiles").update({
+    github_minichat_verified_ok: ultimoResultado?.status === "ok",
+    github_minichat_verified_at: new Date().toISOString(),
+  }).eq("id", id).then(null, () => {});
   return ultimoResultado;
 }
 
