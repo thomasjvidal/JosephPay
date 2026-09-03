@@ -104,6 +104,28 @@ trocar botões, trocar imagem) precisa respeitar isso:
    única opção; isso é uma dependência externa que o Thomas quer eliminada.
    Se um fluxo assim já existir, priorize automatizar com `callGroq`/
    `callAnthropic` em vez de manter só o copiar/colar manual.
+6. **Nunca sobrescrever um `vercel.json` (ou qualquer config) que já existia
+   e não fomos nós que escrevemos por último** — mesmo pra um framework que
+   achamos que reconhecemos. `ensureVercelConfig()` só sobrescreve se o sha
+   atual do arquivo bater com o que a JosephPay salvou da última vez
+   (`github_vercel_config_sha`), e nunca mexe em framework fora da lista que
+   sabemos montar de cor (`unknownFramework` em `detectRepoFramework()`). Foi
+   assim que um vercel.json customizado pra TanStack Start virou um genérico
+   de Vite e quebrou o deploy publicado da Lervet — o site tinha rodado o
+   diagnóstico automático em segundo plano.
+7. **Nunca aplicar sozinho (sem revisão humana) uma troca de link INTERNO**
+   (ex: `/atendimento`, `/contato`) achando que é um chat rival — só um `wa.me`/
+   `api.whatsapp.com` cru é inequívoco o suficiente pra trocar sem olhar.
+   Link interno pode ser reaproveitado em vários lugares do site (nav, rodapé,
+   "voltar") ou ser uma página legítima sem nenhuma relação com chat — foi
+   assim que a Lervet teve o link "Go home" trocado pro Mini Chat sem querer.
+   Use `pendingChatLinks()` só pra AVISAR (checklist, diagnóstico); a troca em
+   si só roda via `applyLinksToRepo()` chamada por um admin que olhou o
+   arquivo e o texto do botão em "Botões do site", nunca pelo job automático.
+8. **Ao mudar o caminho de um arquivo que a JosephPay controla num repo de
+   cliente (ex: Mini Chat saindo da raiz pra `public/`), apague o arquivo no
+   caminho antigo** (`deleteStaleMinichatFile()`) — senão sobra duplicado pra
+   sempre, também descoberto na Lervet.
 
 Antes de fechar qualquer tarefa que mexe nesses endpoints, considere rodar
 (ou sugerir ao Thomas) a mesma correção nos produtores que já existem, não só

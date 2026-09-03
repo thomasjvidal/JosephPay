@@ -2488,11 +2488,29 @@ app.post("/api/admin/producers/:id/github/invalidate-minichat", requireAuth, req
 // o vercel.json certo, e recommita o arquivo redirect. Extraído da rota abaixo pra
 // poder ser chamado tanto por um clique do admin quanto pelo diagnóstico automático
 // em segundo plano (autofixSiteIssues).
+// Apaga um arquivo antigo do Mini Chat que ficou pra trás quando o caminho mudou (ex:
+// "minichat.html" na raiz virou "public/minichat.html") — sem isso sobra arquivo
+// duplicado no repositório do cliente pra sempre. Só apaga se for de fato o caminho
+// antigo que a JosephPay tinha salvo, nunca um arquivo que o admin não escolheu.
+async function deleteStaleMinichatFile(repo, headers, oldPath, newPath) {
+  if (!oldPath || oldPath === newPath) return;
+  try {
+    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(oldPath)}`, { headers });
+    await axios.delete(`https://api.github.com/repos/${repo}/contents/${encodeURI(oldPath)}`, {
+      headers,
+      data: { message: "JosephPay: remove Mini Chat duplicado (caminho antigo)", sha: existing.data.sha },
+    });
+  } catch (e) {
+    if (e.response?.status !== 404) console.warn("[deleteStaleMinichatFile]", e.message);
+  }
+}
+
 async function reinstalarMinichatFile(id) {
   const { data: profile } = await supabase.from("profiles")
     .select("github_repo,github_minichat_path")
     .eq("id", id).maybeSingle();
   if (!profile?.github_repo) throw new Error("Repositório não vinculado");
+  const oldPath = profile.github_minichat_path || null;
   let filePath = profile.github_minichat_path || "minichat.html";
   const token = await getGithubToken();
   if (!token) throw new Error("GitHub não conectado");
@@ -2508,7 +2526,7 @@ async function reinstalarMinichatFile(id) {
       filePath = `public/${filePath}`;
     }
     if (detected.isBuildProject) {
-      await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
+      await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
         if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
       });
     }
@@ -2529,6 +2547,7 @@ async function reinstalarMinichatFile(id) {
     content: Buffer.from(loaderHtml, "utf8").toString("base64"),
     ...(sha ? { sha } : {}),
   }, { headers });
+  await deleteStaleMinichatFile(repo, headers, oldPath, filePath);
   await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
   autoFixMinichatLink(id).catch(() => {});
   return { file_path: filePath };
@@ -3754,13 +3773,28 @@ function detectRepoFramework(allPaths) {
   const hasPackageJson = allPaths.includes("package.json");
   const hasViteConfig  = allPaths.some(p => /^vite\.config\.[jt]s$/.test(p));
   const hasNextConfig  = allPaths.some(p => /^next\.config\.[jt]sx?$/.test(p));
-  const hasTanStack    = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
+  const hasTanStackRoutes = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
+  // "TanStack Start" (SSR via Vinxi/Nitro — app.config.ts é a assinatura) é um framework
+  // BEM diferente de "TanStack Router" puro dentro de um SPA Vite comum: mesma pasta de
+  // rotas, builds completamente diferentes. Tratar os dois como "é Vite" foi o que gerou
+  // um vercel.json errado (framework:"vite" + outputDirectory:"dist") num projeto Start —
+  // que não builda pra uma pasta dist/ estática, e quebrou o site publicado da Lervet.
+  const hasTanStackStart = allPaths.some(p => /^app\.config\.[jt]s$/.test(p));
+  const hasTanStack = hasTanStackRoutes && !hasTanStackStart;
+  const hasAstroConfig   = allPaths.some(p => /^astro\.config\.[jt]s$/.test(p));
+  const hasSvelteConfig  = allPaths.some(p => /^svelte\.config\.[jt]s$/.test(p));
+  const hasNuxtConfig    = allPaths.some(p => /^nuxt\.config\.[jt]s$/.test(p));
+  const hasRemixConfig   = allPaths.some(p => /^remix\.config\.[jt]s$/.test(p));
+  // Qualquer framework fora dos que sabemos montar um vercel.json correto de cor — melhor
+  // não inventar um molde genérico errado do que arriscar quebrar o build.
+  const unknownFramework = hasPackageJson && !hasViteConfig && !hasNextConfig && !hasTanStack
+    && (hasTanStackStart || hasAstroConfig || hasSvelteConfig || hasNuxtConfig || hasRemixConfig);
   const hasPublicDir   = allPaths.some(p => /^public\//.test(p));
   // Qualquer projeto com package.json passa por um passo de build (Vite/Next/CRA/etc)
   // que só publica o que está dentro de public/ — arquivos soltos na raiz do repo
   // não vão pro ar, mesmo que o commit no GitHub funcione normalmente.
   const isBuildProject = hasPackageJson;
-  return { hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack, hasPublicDir, isBuildProject };
+  return { hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack, unknownFramework, hasPublicDir, isBuildProject };
 }
 
 function buildVercelConfig({ hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack }) {
@@ -3787,7 +3821,18 @@ function buildVercelConfig({ hasPackageJson, hasViteConfig, hasNextConfig, hasTa
 // pro tipo de projeto detectado — chamada tanto pelo botão manual "Preparar pra
 // Vercel" quanto automaticamente sempre que instalamos algo novo no repo, pra
 // nunca depender de alguém lembrar de clicar nesse botão.
-async function ensureVercelConfig(repo, headers, detected) {
+//
+// Duas travas de segurança pra nunca mais sobrescrever um vercel.json que não é nosso
+// (o bug que quebrou o deploy da Lervet, testado e validado por outro projeto dela):
+// 1. Framework que não sabemos montar de cor (TanStack Start, Astro, Svelte, Nuxt,
+//    Remix, e qualquer outro que vier no futuro) — nunca cria/sobrescreve, só avisa.
+// 2. Já existe um vercel.json e não fomos NÓS que escrevemos da última vez (ou alguém
+//    mudou desde então) — também não mexe, só avisa. `id` é o produtor, usado pra
+//    lembrar o sha do que a JosephPay escreveu por último.
+async function ensureVercelConfig(repo, headers, detected, id) {
+  if (detected.unknownFramework) {
+    return { changed: false, skipped: "framework_desconhecido" };
+  }
   const vercelConfig = buildVercelConfig(detected);
   const desired = JSON.stringify(vercelConfig, null, 2) + "\n";
   let existingSha = null;
@@ -3796,6 +3841,12 @@ async function ensureVercelConfig(repo, headers, detected) {
     existingSha = existing.data.sha;
     const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
     if (existingContent === desired) return { changed: false, config: vercelConfig };
+    if (id) {
+      const { data: profile } = await supabase.from("profiles").select("github_vercel_config_sha").eq("id", id).maybeSingle();
+      if (profile?.github_vercel_config_sha !== existingSha) {
+        return { changed: false, config: vercelConfig, skipped: "vercel_json_customizado" };
+      }
+    }
   } catch (e) {
     if (e.response?.status !== 404) throw e;
   }
@@ -3804,7 +3855,8 @@ async function ensureVercelConfig(repo, headers, detected) {
     content: Buffer.from(desired, "utf8").toString("base64"),
   };
   if (existingSha) body.sha = existingSha;
-  await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
+  const put = await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
+  if (id) await supabase.from("profiles").update({ github_vercel_config_sha: put.data.content.sha }).eq("id", id).catch(() => {});
   return { changed: true, config: vercelConfig };
 }
 
@@ -3824,7 +3876,13 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
     const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
     const detected = detectRepoFramework(allPaths);
-    const { changed, config } = await ensureVercelConfig(repo, headers, detected);
+    const { changed, config, skipped } = await ensureVercelConfig(repo, headers, detected, id);
+    if (skipped === "framework_desconhecido") {
+      return res.json({ ok: true, skipped, message: "Esse tipo de projeto eu ainda não sei montar um vercel.json de cor (não é HTML puro, Vite ou Next) — pra não arriscar quebrar o build, não mexi em nada. Se já tem um vercel.json, ele continua como está." });
+    }
+    if (skipped === "vercel_json_customizado") {
+      return res.json({ ok: true, skipped, message: "Já existe um vercel.json nesse repositório que não fui eu que escrevi (ou foi alterado depois) — não mexi pra não sobrescrever uma configuração customizada de propósito." });
+    }
     if (!changed) return res.json({ ok: true, already: true, config });
     await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
     res.json({ ok: true, config });
@@ -3842,8 +3900,9 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     const { id } = req.params;
     let filePath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "");
     if (!filePath) return res.status(400).json({ error: "Caminho do arquivo é obrigatório" });
-    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("github_repo,github_minichat_path").eq("id", id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
+    const oldPath = profile.github_minichat_path || null;
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
@@ -3866,7 +3925,7 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
         // servedPath é o caminho real na URL do site — Vite/Next servem o conteúdo
         // de public/ a partir da raiz, então "public/minichat.html" vira "/minichat.html".
         servedPath = filePath.replace(/^public\//, "");
-        await ensureVercelConfig(repo, headers, detected).then(({ changed }) => {
+        await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
           if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
         });
       }
@@ -3911,6 +3970,7 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
       content: Buffer.from(loaderHtml, "utf8").toString("base64"),
       ...(sha ? { sha } : {}),
     }, { headers });
+    await deleteStaleMinichatFile(repo, headers, oldPath, filePath);
     await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
     // Corrige qualquer link com uid errado nos demais arquivos do repo (ex: botões do site
     // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
@@ -4073,24 +4133,39 @@ async function autofixSiteIssues() {
           issues.push({ tipo: "minichat_fora_de_public", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
         }
       } else if (detected.isBuildProject) {
-        const { changed } = await ensureVercelConfig(p.github_repo, headers, detected);
+        const { changed, skipped } = await ensureVercelConfig(p.github_repo, headers, detected, p.id);
         if (changed) {
           await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", p.id);
           fixed.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json corrigido." });
+        } else if (skipped === "framework_desconhecido") {
+          issues.push({ tipo: "vercel_json_desatualizado", detalhe: "Framework que não sei montar vercel.json de cor — não mexi, precisa revisar manualmente." });
+        } else if (skipped === "vercel_json_customizado") {
+          issues.push({ tipo: "vercel_json_desatualizado", detalhe: "Já existe um vercel.json customizado (não fui eu que escrevi) — não sobrescrevi." });
         }
       }
 
       const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
       const links = await scanRepoJsxLinks(p.github_repo, headers, token);
       const pendentes = pendingChatLinks(links, minichatLink);
-      if (pendentes.length) {
+      // Só aplica sozinho o caso inequívoco: link cru de WhatsApp (wa.me/api.whatsapp.com)
+      // não tem outro uso possível num site. Link INTERNO com cara de chat/atendimento é
+      // heurística — pode ser (e já foi, na Lervet) uma página "Sobre/Atendimento" legítima,
+      // ou o mesmo href reaproveitado em outro lugar do site (ex: "Voltar", nav, rodapé).
+      // Trocar isso sozinho, sem um humano olhar o arquivo e o texto do botão, já quebrou
+      // navegação de cliente — fica só como aviso pra revisar em "Botões do site".
+      const whatsappPendentes = pendentes.filter(l => /wa\.me|api\.whatsapp\.com/i.test(l.href));
+      const internosPendentes = pendentes.filter(l => !whatsappPendentes.includes(l));
+      if (whatsappPendentes.length) {
         try {
-          const { changed } = await applyLinksToRepo(p.id, p.github_repo, pendentes.map(l => ({ href: l.href, file: l.file })), headers);
-          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} botão(ões)/link(s) trocados pelo Mini Chat.` });
-          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
+          const { changed } = await applyLinksToRepo(p.id, p.github_repo, whatsappPendentes.map(l => ({ href: l.href, file: l.file })), headers);
+          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} link(s) de WhatsApp trocados pelo Mini Chat.` });
+          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${whatsappPendentes.length} link(s) de WhatsApp detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
         } catch (e) {
           issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
         }
+      }
+      if (internosPendentes.length) {
+        issues.push({ tipo: "botoes_chat_rival_pendente", detalhe: `${internosPendentes.length} link(s) interno(s) parecem outro chat/atendimento — reviso e aplico manualmente em "Botões do site", nunca sozinho.` });
       }
 
       // Confirma no site publicado de verdade — se não bater (404, conteúdo errado, ou
