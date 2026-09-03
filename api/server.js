@@ -3650,33 +3650,42 @@ async function scanRepoJsxLinks(repo, headers, token) {
     if (text && groups[key].samples.length < 3 && !groups[key].samples.includes(text)) groups[key].samples.push(text);
   };
 
-  // Pré-lê arquivos de constantes (lib/site.ts, constants.ts, etc.) pra resolver
-  // variáveis como href={WHATSAPP_URL} que o scan de JSX não consegue ver diretamente.
-  // Guarda também EM QUAL ARQUIVO cada constante foi definida — sem isso, "aplicar"
-  // tentava substituir a URL dentro do arquivo JSX (onde só existe o nome da variável,
-  // nunca a URL em si) e sempre falhava com "nenhum link encontrado".
-  const varMap = {};
-  const constFiles = arquivos.filter(f => /\b(site|constants?|config|urls?)\.(ts|js)$/i.test(f.path));
-  await Promise.all(constFiles.map(async f => {
-    try {
-      const c = await readGithubFile(repo, f.path, headers, token);
-      // export const VARNAME = "https://..." (valor pode estar na mesma linha ou na seguinte)
-      const reConst = /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`](https?:\/\/[^"'`\n]+)["'`]/g;
-      let cm;
-      while ((cm = reConst.exec(c))) varMap[cm[1]] = { url: cm[2], file: f.path };
-    } catch {}
-  }));
-
-  // Processa em lotes pra não estourar o rate limit da API do GitHub nem demorar demais.
+  // Lê o conteúdo de TODO arquivo do repositório antes de tentar resolver variáveis —
+  // uma constante como MINICHAT/WHATSAPP_URL pode estar declarada em QUALQUER arquivo
+  // (inclusive dentro da própria rota que a usa, sem export nenhum), não só num arquivo
+  // chamado "site.ts"/"constants.ts". Foi assim que a Lervet quebrou: a constante MINICHAT
+  // ficava dentro de src/routes/index.tsx, um arquivo que a busca antiga nunca olhava —
+  // pra funcionar igual em QUALQUER produtor futuro, sem precisar de ajuste manual depois,
+  // isso não pode depender de convenção de nome de arquivo.
+  const conteudoPorArquivo = {};
   const LOTE = 10;
   for (let i = 0; i < arquivos.length; i += LOTE) {
     const lote = arquivos.slice(i, i + LOTE);
     await Promise.all(lote.map(async item => {
-      let content;
-      try { content = await readGithubFile(repo, item.path, headers, token); }
-      catch { return; }
-      extractLinksFromContent(content, item.path, registra, varMap);
+      try { conteudoPorArquivo[item.path] = await readGithubFile(repo, item.path, headers, token); }
+      catch {}
     }));
+  }
+
+  // Monta o mapa de variáveis olhando TODO arquivo lido (com ou sem "export" na frente —
+  // uma constante local, usada só dentro do próprio arquivo, não precisa ser exportada).
+  // Aceita link externo (https://wa.me/...) e também rota interna (/minichat,
+  // /atendimento) e tel:/mailto:, que é o formato mais comum desse tipo de constante.
+  const varMap = {};
+  const reConst = /(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`]((?:https?:\/\/|\/|tel:|mailto:)[^"'`\n]*)["'`]/g;
+  for (const [filePath, content] of Object.entries(conteudoPorArquivo)) {
+    reConst.lastIndex = 0;
+    let cm;
+    while ((cm = reConst.exec(content))) {
+      // Não sobrescreve se um arquivo anterior já resolveu o mesmo nome — colisão de
+      // nome entre arquivos diferentes é rara o bastante pra não valer a complexidade
+      // de desambiguar.
+      if (!varMap[cm[1]]) varMap[cm[1]] = { url: cm[2], file: filePath };
+    }
+  }
+
+  for (const [filePath, content] of Object.entries(conteudoPorArquivo)) {
+    extractLinksFromContent(content, filePath, registra, varMap);
   }
   return Object.values(groups).sort((a, b) => b.count - a.count);
 }
@@ -3785,12 +3794,13 @@ async function applyLinksToRepo(id, repo, itens, headers) {
       : await readGithubFile(repo, filePath, headers, await getGithubToken());
     let mudouAqui = false;
     [...new Set(varNames)].forEach(varName => {
-      const textoAindaNoArquivo = new RegExp(`export\\s+const\\s+${varName}\\s*=`).test(content);
+      // "export" é opcional — a constante pode ser local ao arquivo, sem export nenhum.
+      const textoAindaNoArquivo = new RegExp(`(?:export\\s+)?const\\s+${varName}\\s*=`).test(content);
       const before = content;
       // Troca só o VALOR da declaração dessa constante (pelo nome, não pela URL antiga
       // — a URL pode já estar diferente do que o scan viu, o nome da constante não muda).
       content = content.replace(
-        new RegExp(`(export\\s+const\\s+${varName}\\s*=\\s*(?:[\\r\\n]\\s*)?["'\`])[^"'\`]*(["'\`])`),
+        new RegExp(`((?:export\\s+)?const\\s+${varName}\\s*=\\s*(?:[\\r\\n]\\s*)?["'\`])[^"'\`]*(["'\`])`),
         `$1${minichatLink}$2`
       );
       const mudou = content !== before;

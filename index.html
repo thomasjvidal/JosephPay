@@ -1376,6 +1376,11 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
   const [showTecnico,setShowTecnico]=useState(false);
   const [minichatPath,setMinichatPath]=useState(c.github_minichat_path||"minichat.html");
+  // O campo de caminho só aparece editável se o admin pedir — por padrão mostra uma
+  // frase, não uma caixa de texto pré-preenchida. Uma caixa de texto com "minichat.html"
+  // já escrito dava a impressão de que o Mini Chat já estava configurado/conectado
+  // mesmo antes de clicar em instalar (ou mesmo já tendo falhado na verificação).
+  const [showPathInput,setShowPathInput]=useState(false);
   const [installing,setInstalling]=useState(false);
   const [fixing,setFixing]=useState(false);
   const [invalidating,setInvalidating]=useState(false);
@@ -1489,22 +1494,29 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Aponta esse caminho do site direto pro Mini Chat. Pros botões de verdade do site (ex: "COMPRAR") abrirem o Mini Chat, use <b style={{color:TEXT}}>"Botões do site"</b> abaixo.</div>
-        <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
-          {detecting?"🔍 Detectando…":"🔍 Detectar caminho automaticamente"}
-        </button>
-        {sugestoes.length>0&&(
-          <div style={{marginBottom:12}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados:</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {sugestoes.map(s=>(
-                <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"monospace",textAlign:"left"}}>
-                  {s}
-                </button>
-              ))}
-            </div>
+        {!showPathInput?(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:12}}>
+            Vamos usar o caminho <b style={{color:TEXT,fontFamily:"monospace"}}>{minichatPath}</b>.{" "}
+            <button onClick={()=>setShowPathInput(true)} style={{background:"none",border:"none",color:GOLD,textDecoration:"underline",fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>usar outro caminho</button>
           </div>
-        )}
-        <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
+        ):(<>
+          <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
+            {detecting?"🔍 Detectando…":"🔍 Detectar caminho automaticamente"}
+          </button>
+          {sugestoes.length>0&&(
+            <div style={{marginBottom:12}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados:</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {sugestoes.map(s=>(
+                  <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"monospace",textAlign:"left"}}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
+        </>)}
         <button onClick={()=>instalar()} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
           {installing?"Instalando…":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
         </button>

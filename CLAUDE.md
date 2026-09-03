@@ -145,6 +145,19 @@ trocar botões, trocar imagem) precisa respeitar isso:
    cliente, ou ao migrar do mecanismo antigo de arquivo estático pro
    redirecionamento (regra 1), apague o arquivo antigo** (`deleteStaleMinichatFile()`)
    — senão sobra duplicado pra sempre, também descoberto na Lervet.
+9. **Resolução de variável (`href={NOME}`) tem que varrer o repositório
+   INTEIRO, nunca só arquivos com nome de convenção** (`site.ts`,
+   `constants.ts` etc. — `scanRepoJsxLinks()`). A constante pode estar
+   declarada sem `export`, dentro do próprio arquivo de rota que a usa — foi
+   o caso da Lervet (`const MINICHAT` direto em `src/routes/index.tsx`), um
+   lugar que a busca restrita por nome de arquivo nunca ia olhar. Por isso
+   `scanRepoJsxLinks()` lê o conteúdo de todo arquivo primeiro e só DEPOIS
+   monta o mapa de variáveis olhando todos eles — sem essa ordem (variável
+   resolvida só por arquivos "candidatos") sempre existe algum framework novo
+   que declara a constante num lugar que a heurística de nome não cobre, e aí
+   volta o mesmo erro genérico de "link não encontrado" pro Thomas. Também
+   aceita valor de rota interna (`/minichat`, `/atendimento`), não só
+   `https://` — nem todo link rival é WhatsApp.
 
 Antes de fechar qualquer tarefa que mexe nesses endpoints, considere rodar
 (ou sugerir ao Thomas) a mesma correção nos produtores que já existem, não só
