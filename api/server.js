@@ -3852,7 +3852,7 @@ async function ensureVercelConfig(repo, headers, detected, id) {
     if (existingContent === desired) {
       // Já está certo. Se ainda não tínhamos a "impressão digital" salva (produtor
       // de antes dessa trava existir), grava agora sem reescrever nada no repo.
-      if (id && storedSha !== existingSha) await supabase.from("profiles").update({ github_vercel_config_sha: existingSha }).eq("id", id).catch(() => {});
+      if (id && storedSha !== existingSha) await supabase.from("profiles").update({ github_vercel_config_sha: existingSha }).eq("id", id).then(null, () => {});
       return { changed: false, config: vercelConfig };
     }
     // Só bloqueia a reescrita se JÁ tínhamos uma impressão digital salva (ou seja,
@@ -3871,7 +3871,7 @@ async function ensureVercelConfig(repo, headers, detected, id) {
   };
   if (existingSha) body.sha = existingSha;
   const put = await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
-  if (id) await supabase.from("profiles").update({ github_vercel_config_sha: put.data.content.sha }).eq("id", id).catch(() => {});
+  if (id) await supabase.from("profiles").update({ github_vercel_config_sha: put.data.content.sha }).eq("id", id).then(null, () => {});
   return { changed: true, config: vercelConfig };
 }
 
@@ -4018,10 +4018,17 @@ async function verifyMinichatLive(id) {
   const base = profile.site_url.replace(/\/+$/, "");
   const url = `${base}/${servedPath}`;
   const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
+  // Confere a ASSINATURA exata do nosso loader (a tag <meta refresh> com o marker dentro),
+  // não só se o texto do marker aparece em algum lugar da página. Um simples "includes"
+  // dava falso positivo: a página de erro/fallback do site (servida pra qualquer caminho
+  // que não existe, tipo /minichat.html quando o arquivo não está lá) podia conter esse
+  // mesmo link em outro lugar — ex: um botão de navegação que ficou apontando pra cá por
+  // engano — e o card aparecia verde mesmo sem o loader de verdade estar publicado ali.
+  const loaderSignature = `<meta http-equiv="refresh" content="0;url=${minichatMarker}">`;
   try {
     const resp = await axios.get(url, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
     const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
-    if (resp.status >= 200 && resp.status < 300 && body.includes(minichatMarker)) {
+    if (resp.status >= 200 && resp.status < 300 && body.includes(loaderSignature)) {
       return { status: "ok", url, message: `Confirmado — ${url} está no ar e redireciona certo pro Mini Chat.` };
     }
     if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
