@@ -3830,22 +3830,37 @@ function buildVercelConfig({ hasPackageJson, hasViteConfig, hasNextConfig, hasTa
 //    mudou desde então) — também não mexe, só avisa. `id` é o produtor, usado pra
 //    lembrar o sha do que a JosephPay escreveu por último.
 async function ensureVercelConfig(repo, headers, detected, id) {
+  // Só trava de vez pra framework que NÃO sabemos montar de cor (TanStack Start,
+  // Astro, etc.) — Vite e Next continuam sendo cuidados normalmente, sempre, mesmo
+  // pra produtor antigo que ainda não tinha essa proteção salva (não pode virar
+  // "nunca mais mexo" pro caso que a gente já testou e sabe fazer certo).
   if (detected.unknownFramework) {
     return { changed: false, skipped: "framework_desconhecido" };
   }
   const vercelConfig = buildVercelConfig(detected);
   const desired = JSON.stringify(vercelConfig, null, 2) + "\n";
+  let storedSha = null;
+  if (id) {
+    const { data: profile } = await supabase.from("profiles").select("github_vercel_config_sha").eq("id", id).maybeSingle();
+    storedSha = profile?.github_vercel_config_sha || null;
+  }
   let existingSha = null;
   try {
     const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
     existingSha = existing.data.sha;
     const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
-    if (existingContent === desired) return { changed: false, config: vercelConfig };
-    if (id) {
-      const { data: profile } = await supabase.from("profiles").select("github_vercel_config_sha").eq("id", id).maybeSingle();
-      if (profile?.github_vercel_config_sha !== existingSha) {
-        return { changed: false, config: vercelConfig, skipped: "vercel_json_customizado" };
-      }
+    if (existingContent === desired) {
+      // Já está certo. Se ainda não tínhamos a "impressão digital" salva (produtor
+      // de antes dessa trava existir), grava agora sem reescrever nada no repo.
+      if (id && storedSha !== existingSha) await supabase.from("profiles").update({ github_vercel_config_sha: existingSha }).eq("id", id).catch(() => {});
+      return { changed: false, config: vercelConfig };
+    }
+    // Só bloqueia a reescrita se JÁ tínhamos uma impressão digital salva (ou seja,
+    // a JosephPay já escreveu esse arquivo antes) e ela não bate mais — sinal de
+    // que alguém trocou por fora depois que passamos a cuidar dele. Sem impressão
+    // digital ainda é só o caso comum de produtor antigo — adota e escreve normal.
+    if (id && storedSha && storedSha !== existingSha) {
+      return { changed: false, config: vercelConfig, skipped: "vercel_json_customizado" };
     }
   } catch (e) {
     if (e.response?.status !== 404) throw e;

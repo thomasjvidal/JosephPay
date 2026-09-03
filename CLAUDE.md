@@ -104,12 +104,17 @@ trocar botões, trocar imagem) precisa respeitar isso:
    única opção; isso é uma dependência externa que o Thomas quer eliminada.
    Se um fluxo assim já existir, priorize automatizar com `callGroq`/
    `callAnthropic` em vez de manter só o copiar/colar manual.
-6. **Nunca sobrescrever um `vercel.json` (ou qualquer config) que já existia
-   e não fomos nós que escrevemos por último** — mesmo pra um framework que
-   achamos que reconhecemos. `ensureVercelConfig()` só sobrescreve se o sha
-   atual do arquivo bater com o que a JosephPay salvou da última vez
-   (`github_vercel_config_sha`), e nunca mexe em framework fora da lista que
-   sabemos montar de cor (`unknownFramework` em `detectRepoFramework()`). Foi
+6. **Framework que a JosephPay sabe montar de cor (Vite, Next, HTML estático)
+   continua sendo cuidado sempre — inclusive corrigido quando estiver errado —
+   mesmo em produtor antigo que ainda não tinha `github_vercel_config_sha`
+   salvo.** A trava de "não sobrescrever" só vale em dois casos: (a) framework
+   fora da lista que sabemos montar de cor (`unknownFramework` em
+   `detectRepoFramework()` — TanStack Start é o primeiro caso, mas serve pra
+   qualquer framework novo que vier); (b) já tínhamos uma "impressão digital"
+   salva desse arquivo (a JosephPay escreveu ele antes) e o sha atual não bate
+   mais — sinal de que alguém mudou por fora DEPOIS que passamos a cuidar
+   dele. Nunca travar o caso comum (Vite/Next sem sha salvo ainda) como se
+   fosse customização — isso deixaria produtor antigo preso pra sempre. Foi
    assim que um vercel.json customizado pra TanStack Start virou um genérico
    de Vite e quebrou o deploy publicado da Lervet — o site tinha rodado o
    diagnóstico automático em segundo plano.
