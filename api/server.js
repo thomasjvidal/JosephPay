@@ -2532,22 +2532,32 @@ async function reinstalarMinichatFile(id) {
     console.warn("[reinstalarMinichatFile] detecção de framework falhou, seguindo assim mesmo:", e.message);
   }
 
-  await ensureMinichatRedirect(repo, headers, id, desiredPath);
+  // Redescobre sozinho o(s) caminho(s) real(is) toda vez que reinstala — o botão do
+  // site pode nunca ter sido o caminho padrão (foi exatamente o caso da Lervet:
+  // "/minichat/index.html", não "minichat.html"), e o admin não deveria precisar saber
+  // ou digitar isso. Aponta um redirecionamento pra cada candidato encontrado.
+  const detectados = await detectMinichatCandidatePaths(repo, headers, token);
+  const todosOsCaminhos = [...new Set([desiredPath, ...detectados])];
+  for (const p of todosOsCaminhos) {
+    await ensureMinichatRedirect(repo, headers, id, p);
+  }
   // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo (baseado
   // em arquivo, não em redirecionamento) — sobrar os dois é clutter e pode até
   // atrapalhar dependendo de como o framework prioriza rota x arquivo estático.
-  await deleteStaleMinichatFile(repo, headers, desiredPath, null);
-  await deleteStaleMinichatFile(repo, headers, `public/${desiredPath}`, null);
+  for (const p of todosOsCaminhos) {
+    await deleteStaleMinichatFile(repo, headers, p, null);
+    await deleteStaleMinichatFile(repo, headers, `public/${p}`, null);
+  }
   await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
   autoFixMinichatLink(id).catch(() => {});
-  return { file_path: desiredPath };
+  return { file_path: desiredPath, extra_paths: detectados };
 }
 
 app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { file_path, warning } = await reinstalarMinichatFile(id);
-    res.json({ ok: true, file_path, warning });
+    const { file_path, extra_paths } = await reinstalarMinichatFile(id);
+    res.json({ ok: true, file_path, extra_paths });
   } catch (err) {
     console.error("[reinstall-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -3905,14 +3915,16 @@ async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
   let novoCfg;
   if (Array.isArray(cfg.routes)) {
     // Formato legado do Vercel ("routes") — não pode ser misturado com "redirects"/
-    // "rewrites" modernos no mesmo arquivo, o Vercel rejeita. Remove qualquer entrada
-    // nossa anterior (destino ou caminho já usado) antes de adicionar a nova na frente.
-    const semNosso = cfg.routes.filter(r => r.headers?.Location !== destination && r.src !== `^${escaped}$`);
-    novoCfg = { ...cfg, routes: [{ src: `^${escaped}$`, status: 307, headers: { Location: destination } }, ...semNosso] };
+    // "rewrites" modernos no mesmo arquivo, o Vercel rejeita. Remove só uma entrada
+    // antiga NO MESMO caminho (senão duplica a cada reinstalação) — várias entradas
+    // com destinos iguais mas caminhos diferentes podem coexistir, porque a gente
+    // não sabe de antemão qual caminho é o botão de verdade do site do cliente.
+    const semEsseCaminho = cfg.routes.filter(r => r.src !== `^${escaped}$`);
+    novoCfg = { ...cfg, routes: [{ src: `^${escaped}$`, status: 307, headers: { Location: destination } }, ...semEsseCaminho] };
   } else {
     const atuais = Array.isArray(cfg.redirects) ? cfg.redirects : [];
-    const semNosso = atuais.filter(r => r.source !== source && !String(r.destination || "").includes("josephpay.com/minichat"));
-    novoCfg = { ...cfg, redirects: [{ source, destination, permanent: false }, ...semNosso] };
+    const semEsseCaminho = atuais.filter(r => r.source !== source);
+    novoCfg = { ...cfg, redirects: [{ source, destination, permanent: false }, ...semEsseCaminho] };
   }
 
   const desired = JSON.stringify(novoCfg, null, 2) + "\n";
@@ -3923,6 +3935,45 @@ async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
   if (sha) body.sha = sha;
   await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
   return { changed: true };
+}
+
+// Acha sozinho os caminhos internos do site com cara de "entrada de chat/atendimento"
+// (ex: o botão do site linkando pra "/minichat/index.html", em vez do "minichat.html"
+// que a gente supõe por padrão) — pra nunca depender do admin descobrir e digitar o
+// caminho certo à mão. Mesma heurística que já existia em "Detectar caminhos
+// automaticamente" no admin, agora rodando sozinha dentro de install/reinstall.
+async function detectMinichatCandidatePaths(repo, headers, token) {
+  try {
+    const links = await scanRepoJsxLinks(repo, headers, token);
+    const internos = links.filter(l => {
+      const h = l.href || "";
+      return !/^https?:\/\//i.test(h) && !/^(mailto:|tel:|#|\{)/.test(h) && h.length > 1;
+    });
+    const keywords = /minichat|mini-chat|mini_chat|\bchat\b|contact|contato|agendar|conversa|falar|atendimento/i;
+    const candidatos = internos.filter(l => keywords.test(l.href));
+    return [...new Set(candidatos.map(l => l.href.replace(/^\.\//, "").replace(/^\/+/, "")).filter(Boolean))].slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+// Lê direto do vercel.json quais caminhos JÁ estão redirecionando pro Mini Chat desse
+// produtor — fonte de verdade real (o que está de fato configurado), em vez de confiar
+// só no que ficou salvo no banco (que pode estar desatualizado ou incompleto se algum
+// caminho foi adicionado depois via detecção automática).
+async function getInstalledMinichatPaths(repo, headers, id) {
+  try {
+    const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    const content = Buffer.from(resp.data.content, "base64").toString("utf8");
+    const cfg = content.trim() ? JSON.parse(content) : {};
+    const destination = `https://josephpay.com/minichat.html?uid=${id}`;
+    if (Array.isArray(cfg.routes)) {
+      return cfg.routes.filter(r => r.headers?.Location === destination).map(r => r.src.replace(/^\^\/?/, "").replace(/\$$/, ""));
+    }
+    return (Array.isArray(cfg.redirects) ? cfg.redirects : []).filter(r => r.destination === destination).map(r => String(r.source || "").replace(/^\/+/, ""));
+  } catch {
+    return [];
+  }
 }
 
 // Prepara o repositório para deploy na Vercel — commita um vercel.json adequado ao tipo de
@@ -3994,19 +4045,31 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     // (ensureMinichatRedirect). Funciona pra qualquer tipo de projeto, mesmo os que a
     // gente não sabe montar vercel.json de cor, e mesmo com uma rota "pega-tudo" própria
     // do framework — nossa regra sempre entra na frente de qualquer outra no arquivo.
-    await ensureMinichatRedirect(repo, headers, id, desiredPath);
+    //
+    // Nunca depende do admin escrever ou escolher o caminho certo: escaneia o código do
+    // site sozinho procurando o link real que o botão de "chat"/"atendimento" já usa (o
+    // caso da Lervet foi um botão indo pra "/minichat/index.html", diferente do padrão
+    // "minichat.html") e aponta um redirecionamento pra CADA caminho candidato — cobre o
+    // padrão e qualquer variação real que o site já tenha, tudo de uma vez, sem perguntar.
+    const detectados = await detectMinichatCandidatePaths(repo, headers, token);
+    const todosOsCaminhos = [...new Set([desiredPath, ...detectados])];
+    for (const p of todosOsCaminhos) {
+      await ensureMinichatRedirect(repo, headers, id, p);
+    }
     // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo — sobrar
     // os dois é clutter e pode até atrapalhar dependendo de como o framework prioriza
     // rota x arquivo estático.
     await deleteStaleMinichatFile(repo, headers, oldPath, null);
-    await deleteStaleMinichatFile(repo, headers, desiredPath, null);
-    await deleteStaleMinichatFile(repo, headers, `public/${desiredPath}`, null);
+    for (const p of todosOsCaminhos) {
+      await deleteStaleMinichatFile(repo, headers, p, null);
+      await deleteStaleMinichatFile(repo, headers, `public/${p}`, null);
+    }
     await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
     // Corrige qualquer link com uid errado nos demais arquivos do repo (ex: botões do site
     // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
     // autoFix já enxergue o caminho correto.
     autoFixMinichatLink(id).catch(() => {});
-    res.json({ ok: true, file_path: desiredPath, served_path: desiredPath });
+    res.json({ ok: true, file_path: desiredPath, served_path: desiredPath, extra_paths: detectados });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
@@ -4056,36 +4119,22 @@ async function catchAllRewriteWarning(repo, headers) {
   return "";
 }
 
-async function verifyMinichatLive(id) {
-  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
-  if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
-  const filePath = profile.github_minichat_path || "minichat.html";
-  const servedPath = filePath.replace(/^public\//, "");
-  const base = profile.site_url.replace(/\/+$/, "");
+// Confere UM caminho específico. Extraído pra ser chamado em lista (verifyMinichatLive)
+// sem repetir a lógica — cada caminho candidato precisa da mesma checagem rigorosa.
+async function verifyMinichatPath(base, servedPath, id, diagnosticoCatchAll) {
+  const url = `${base}/${servedPath}`;
   // Cache-busting: sem isso, o CDN da Vercel pode devolver uma resposta antiga do cache
   // mesmo com Cache-Control:no-cache no pedido (isso é respeitado pelo navegador, não
   // necessariamente pelo edge) — e a gente conclui "não atualizou" quando na real só
   // pegou uma cópia velha.
-  const url = `${base}/${servedPath}`;
   const cacheBustedUrl = `${url}${url.includes("?") ? "&" : "?"}_jp=${Date.now()}`;
   const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
   // Confere a ASSINATURA exata do nosso loader (a tag <meta refresh> com o marker dentro),
   // não só se o texto do marker aparece em algum lugar da página. Um simples "includes"
   // dava falso positivo: a página de erro/fallback do site (servida pra qualquer caminho
-  // que não existe, tipo /minichat.html quando o arquivo não está lá) podia conter esse
-  // mesmo link em outro lugar — ex: um botão de navegação que ficou apontando pra cá por
-  // engano — e o card aparecia verde mesmo sem o loader de verdade estar publicado ali.
+  // que não existe) podia conter esse mesmo link em outro lugar — ex: um botão de
+  // navegação que ficou apontando pra cá por engano.
   const loaderSignature = `<meta http-equiv="refresh" content="0;url=${minichatMarker}">`;
-  // Diagnóstico extra: só roda quando a checagem principal falhar, pra explicar o motivo
-  // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
-  const diagnosticoCatchAll = async () => {
-    if (!profile.github_repo) return "";
-    const token = await getGithubToken();
-    if (!token) return "";
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const aviso = await catchAllRewriteWarning(profile.github_repo, headers);
-    return aviso ? ` ${aviso}` : "";
-  };
   try {
     const resp = await axios.get(cacheBustedUrl, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
     const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
@@ -4102,6 +4151,34 @@ async function verifyMinichatLive(id) {
   } catch (e) {
     return { status: "erro", url, message: `Não consegui acessar ${url}: ${e.code || e.message}.` };
   }
+}
+
+async function verifyMinichatLive(id) {
+  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
+  if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
+  const base = profile.site_url.replace(/\/+$/, "");
+  const token = profile.github_repo ? await getGithubToken() : null;
+  const headers = token ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" } : null;
+  // Lê do vercel.json quais caminhos JÁ estão configurados de verdade (pode ser mais de
+  // um — install/reinstall detectam e apontam vários automaticamente) — fonte de
+  // verdade real, não só o que ficou salvo no banco (pode estar desatualizado).
+  let paths = [];
+  if (headers && profile.github_repo) paths = await getInstalledMinichatPaths(profile.github_repo, headers, id);
+  if (!paths.length) paths = [(profile.github_minichat_path || "minichat.html").replace(/^public\//, "")];
+  // Diagnóstico extra: só roda quando TODAS as checagens falharem, pra explicar o motivo
+  // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
+  const diagnosticoCatchAll = async () => {
+    if (!headers || !profile.github_repo) return "";
+    const aviso = await catchAllRewriteWarning(profile.github_repo, headers);
+    return aviso ? ` ${aviso}` : "";
+  };
+  let ultimoResultado = null;
+  for (const p of paths) {
+    const resultado = await verifyMinichatPath(base, p.replace(/^public\//, ""), id, diagnosticoCatchAll);
+    if (resultado.status === "ok") return resultado;
+    ultimoResultado = resultado;
+  }
+  return ultimoResultado;
 }
 
 app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireAdmin, async (req, res) => {

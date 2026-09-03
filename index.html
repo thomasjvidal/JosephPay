@@ -1403,7 +1403,8 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(d.error){setMsg("Erro: "+d.error);return;}
     setInstalledAt(new Date().toISOString());
     if(d.file_path)setMinichatPath(d.file_path);
-    setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.${d.warning?` ⚠️ ${d.warning}`:""}`);
+    const extras=d.extra_paths?.length?` Também detectei e apontei: ${d.extra_paths.join(", ")}.`:"";
+    setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.${extras}${d.warning?` ⚠️ ${d.warning}`:""}`);
     onUpdated&&onUpdated();
   };
   const invalidarMinichat=async()=>{
@@ -1450,9 +1451,13 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     // o campo continuava mostrando o valor antigo (ex: com "public/" na frente, de uma
     // instalação com o mecanismo anterior), parecendo que nada mudou mesmo tendo mudado.
     if(d.file_path)setMinichatPath(d.file_path);
+    // O servidor escaneia o site sozinho e aponta redirecionamento pra qualquer outro
+    // caminho de chat/atendimento que achar (ex: "/minichat/index.html") — sem precisar
+    // que o admin descubra ou digite. Mostra isso quando encontrar algo extra.
+    const extras=d.extra_paths?.length?` (também detectei e apontei: ${d.extra_paths.join(", ")})`:"";
     const base=d.file_path!==minichatPath.trim()
-      ? `✓ Aponta pra ${d.file_path}. Aguarde ~1 min pro site atualizar.`
-      : `✓ Instalado em ${d.file_path}. Aguarde ~1 min pro site atualizar.`;
+      ? `✓ Aponta pra ${d.file_path}${extras}. Aguarde ~1 min pro site atualizar.`
+      : `✓ Instalado em ${d.file_path}${extras}. Aguarde ~1 min pro site atualizar.`;
     setMsg(d.warning?`${base} ⚠️ ${d.warning}`:base);
     onUpdated&&onUpdated();
     // Confere sozinho se pegou no site do cliente ~75s depois (tempo do deploy da
