@@ -1,0 +1,31 @@
+{
+  "appId": "com.josephpay.app",
+  "appName": "JosephPay",
+  "webDir": "www",
+  "server": {
+    "url": "https://joseph-pay.vercel.app",
+    "cleartext": false,
+    "allowNavigation": [
+      "joseph-pay.vercel.app",
+      "*.supabase.co"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#131312",
+    "preferredContentMode": "mobile",
+    "limitsNavigationsToAppBoundDomains": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#131312",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "Dark",
+      "backgroundColor": "#131312"
+    }
+  }
+}

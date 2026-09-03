@@ -6,6 +6,16 @@
 node_modules/
 api/node_modules/
 
+# iOS build artifacts (manter ios/ commitado — CodeMagic precisa do projeto Xcode)
+ios/App/Pods/
+ios/App/App.xcworkspace/xcshareddata/
+ios/App/build/
+*.ipa
+DerivedData/
+
+# Capacitor temp
+.capacitor/
+
 # Claude Code internals
 .claude/worktrees/
 .claude/projects/

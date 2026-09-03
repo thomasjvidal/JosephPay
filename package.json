@@ -1,0 +1,21 @@
+{
+  "name": "josephpay",
+  "version": "1.0.0",
+  "description": "JosephPay - Plataforma de pagamentos",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Web app - sem build step'",
+    "sync": "npx cap sync",
+    "open:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
