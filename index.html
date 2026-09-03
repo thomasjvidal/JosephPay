@@ -1407,6 +1407,11 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   const corrigirBotaoAgora=async()=>{
     if(!c.github_repo)return;
     setCorrigindoBotao(true);setMsg("");
+    // Limpa o resultado da verificação anterior assim que a correção começa — sem isso o
+    // aviso vermelho antigo ("ainda não é o Mini Chat") e o botão "Corrigir botão agora"
+    // continuavam na tela junto com a mensagem verde de sucesso, dando a impressão
+    // contraditória de que tem mais uma coisa pendente logo depois de já ter corrigido.
+    setVerifyResult(null);
     const scan=await apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}`);
     if(scan.error||!scan.links){setCorrigindoBotao(false);setMsg("Erro ao escanear: "+(scan.error||"repositório vazio"));return;}
     const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
@@ -1419,10 +1424,11 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(apply.error){setMsg("Erro ao corrigir: "+(apply.detail||apply.error));return;}
     setMsg(`✓ ${apply.changed} botão(ões) corrigido(s) — aponta(m) pro Mini Chat agora. Aguarde ~1 min pro site atualizar.`);
     onUpdated&&onUpdated();
+    if(c.site_url)setTimeout(()=>{verificarNoAr();},75000);
   };
   const corrigirUid=async()=>{
     if(!c.github_repo)return;
-    setFixing(true);setMsg("");
+    setFixing(true);setMsg("");setVerifyResult(null);
     const d=await apiCall(`/api/admin/producers/${c.id}/github/reinstall-minichat`,{method:'POST'});
     setFixing(false);
     if(d.error){setMsg("Erro: "+d.error);return;}
@@ -1431,6 +1437,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     const extras=d.extra_paths?.length?` Também detectei e apontei: ${d.extra_paths.join(", ")}.`:"";
     setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.${extras}${d.warning?` ⚠️ ${d.warning}`:""}`);
     onUpdated&&onUpdated();
+    if(c.site_url)setTimeout(()=>{verificarNoAr();},75000);
   };
   const invalidarMinichat=async()=>{
     setInvalidating(true);setMsg("");
@@ -1466,7 +1473,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   };
   const instalar=async()=>{
     if(!c.github_repo||!minichatPath.trim())return;
-    setInstalling(true);setMsg("");
+    setInstalling(true);setMsg("");setVerifyResult(null);
     const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
     setInstalling(false);
     if(d.error){setMsg(d.error);return;}
