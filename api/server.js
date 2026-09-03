@@ -4151,25 +4151,17 @@ async function autofixSiteIssues(onProgress) {
       const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
       const links = await scanRepoJsxLinks(p.github_repo, headers, token);
       const pendentes = pendingChatLinks(links, minichatLink);
-      // Só aplica sozinho o caso inequívoco: link cru de WhatsApp (wa.me/api.whatsapp.com)
-      // não tem outro uso possível num site. Link INTERNO com cara de chat/atendimento é
-      // heurística — pode ser (e já foi, na Lervet) uma página "Sobre/Atendimento" legítima,
-      // ou o mesmo href reaproveitado em outro lugar do site (ex: "Voltar", nav, rodapé).
-      // Trocar isso sozinho, sem um humano olhar o arquivo e o texto do botão, já quebrou
-      // navegação de cliente — fica só como aviso pra revisar em "Botões do site".
-      const whatsappPendentes = pendentes.filter(l => /wa\.me|api\.whatsapp\.com/i.test(l.href));
-      const internosPendentes = pendentes.filter(l => !whatsappPendentes.includes(l));
-      if (whatsappPendentes.length) {
-        try {
-          const { changed } = await applyLinksToRepo(p.id, p.github_repo, whatsappPendentes.map(l => ({ href: l.href, file: l.file })), headers);
-          if (changed) fixed.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${changed} link(s) de WhatsApp trocados pelo Mini Chat.` });
-          else issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${whatsappPendentes.length} link(s) de WhatsApp detectados, mas nenhum bateu com o arquivo pra trocar — precisa revisar manualmente em "Botões do site".` });
-        } catch (e) {
-          issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
-        }
-      }
-      if (internosPendentes.length) {
-        issues.push({ tipo: "botoes_chat_rival_pendente", detalhe: `${internosPendentes.length} link(s) interno(s) parecem outro chat/atendimento — reviso e aplico manualmente em "Botões do site", nunca sozinho.` });
+      // NUNCA aplica troca de link sozinho, nem um wa.me "inequívoco" — a Lervet provou
+      // que um wa.me também pode ser o passo final de um fluxo de pré-atendimento que o
+      // próprio cliente já construiu (o sendToWhatsApp do mini chat dele), e trocar isso
+      // sozinho vira um loop: quem termina de responder cai de novo no chat em vez de
+      // falar com alguém de verdade. Distinguir "botão que pula o Mini Chat" de "saída
+      // correta de um fluxo que já existe" precisa de alguém olhando o arquivo e o texto
+      // do botão — só isso vira aviso; a troca em si só roda manual, em "Botões do site".
+      if (pendentes.length) {
+        const whatsappCount = pendentes.filter(l => /wa\.me|api\.whatsapp\.com/i.test(l.href)).length;
+        const internoCount = pendentes.length - whatsappCount;
+        issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) pendente(s)${whatsappCount?` (${whatsappCount} WhatsApp`:""}${internoCount?`${whatsappCount?", ":" ("}${internoCount} interno`:""}${whatsappCount||internoCount?")":""} — revisar e aplicar manualmente em "Botões do site".` });
       }
 
       // Confirma no site publicado de verdade — se não bater (404, conteúdo errado, ou

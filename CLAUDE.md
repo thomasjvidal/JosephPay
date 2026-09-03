@@ -113,12 +113,16 @@ trocar botões, trocar imagem) precisa respeitar isso:
    assim que um vercel.json customizado pra TanStack Start virou um genérico
    de Vite e quebrou o deploy publicado da Lervet — o site tinha rodado o
    diagnóstico automático em segundo plano.
-7. **Nunca aplicar sozinho (sem revisão humana) uma troca de link INTERNO**
-   (ex: `/atendimento`, `/contato`) achando que é um chat rival — só um `wa.me`/
-   `api.whatsapp.com` cru é inequívoco o suficiente pra trocar sem olhar.
-   Link interno pode ser reaproveitado em vários lugares do site (nav, rodapé,
-   "voltar") ou ser uma página legítima sem nenhuma relação com chat — foi
-   assim que a Lervet teve o link "Go home" trocado pro Mini Chat sem querer.
+7. **`applyLinksToRepo()` (troca de link) NUNCA roda sozinha, nem pra um
+   `wa.me`/`api.whatsapp.com` cru** — só via admin que abriu "Botões do site",
+   olhou o arquivo/texto do botão e clicou Aplicar. Achávamos que wa.me cru
+   era sempre seguro de trocar sozinho ("não tem outro uso possível"), mas a
+   Lervet provou o contrário duas vezes: um link interno ("Go home") virou
+   Mini Chat sem querer, E o `sendToWhatsApp` final do mini chat que o
+   próprio cliente já tinha construído também era um wa.me — trocar esse
+   sozinho virou um loop (quem termina de responder cai de novo no chat em
+   vez de falar com alguém). `pendingChatLinks()`/`autofixSiteIssues()`
+   continuam DETECTANDO e avisando (site-audit, checklist), nunca aplicando.
    Use `pendingChatLinks()` só pra AVISAR (checklist, diagnóstico); a troca em
    si só roda via `applyLinksToRepo()` chamada por um admin que olhou o
    arquivo e o texto do botão em "Botões do site", nunca pelo job automático.
