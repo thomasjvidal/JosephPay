@@ -2510,48 +2510,37 @@ async function reinstalarMinichatFile(id) {
     .select("github_repo,github_minichat_path")
     .eq("id", id).maybeSingle();
   if (!profile?.github_repo) throw new Error("Repositório não vinculado");
-  const oldPath = profile.github_minichat_path || null;
-  let filePath = profile.github_minichat_path || "minichat.html";
+  const desiredPath = (profile.github_minichat_path || "minichat.html").replace(/^public\//, "");
   const token = await getGithubToken();
   if (!token) throw new Error("GitHub não conectado");
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
   const repo = profile.github_repo;
-  const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
 
+  // Garante as configurações de build ANTES do redirecionamento — ensureMinichatRedirect
+  // preserva tudo que já está no vercel.json, então rodar nessa ordem garante que o
+  // redirecionamento não é perdido numa eventual escrita de ensureVercelConfig depois.
   try {
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
     const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
     const detected = detectRepoFramework(allPaths);
-    if (detected.isBuildProject && !/^public\//.test(filePath)) {
-      filePath = `public/${filePath}`;
-    }
     if (detected.isBuildProject) {
       await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
         if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
       });
     }
   } catch (e) {
-    console.warn("[reinstalarMinichatFile] detecção de framework falhou, seguindo com o caminho salvo:", e.message);
+    console.warn("[reinstalarMinichatFile] detecção de framework falhou, seguindo assim mesmo:", e.message);
   }
 
-  const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
-  let sha;
-  try {
-    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-    sha = existing.data.sha;
-  } catch (e) {
-    if (e.response?.status !== 404) throw e;
-  }
-  await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-    message: "JosephPay: corrige UID do Mini Chat",
-    content: Buffer.from(loaderHtml, "utf8").toString("base64"),
-    ...(sha ? { sha } : {}),
-  }, { headers });
-  await deleteStaleMinichatFile(repo, headers, oldPath, filePath);
-  await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+  await ensureMinichatRedirect(repo, headers, id, desiredPath);
+  // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo (baseado
+  // em arquivo, não em redirecionamento) — sobrar os dois é clutter e pode até
+  // atrapalhar dependendo de como o framework prioriza rota x arquivo estático.
+  await deleteStaleMinichatFile(repo, headers, desiredPath, null);
+  await deleteStaleMinichatFile(repo, headers, `public/${desiredPath}`, null);
+  await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
   autoFixMinichatLink(id).catch(() => {});
-  const warning = await catchAllRewriteWarning(repo, headers);
-  return { file_path: filePath, warning: warning || undefined };
+  return { file_path: desiredPath };
 }
 
 app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
@@ -3839,17 +3828,29 @@ async function ensureVercelConfig(repo, headers, detected, id) {
     return { changed: false, skipped: "framework_desconhecido" };
   }
   const vercelConfig = buildVercelConfig(detected);
-  const desired = JSON.stringify(vercelConfig, null, 2) + "\n";
   let storedSha = null;
   if (id) {
     const { data: profile } = await supabase.from("profiles").select("github_vercel_config_sha").eq("id", id).maybeSingle();
     storedSha = profile?.github_vercel_config_sha || null;
   }
   let existingSha = null;
+  let existingContent = null;
+  let existingCfg = {};
   try {
     const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
     existingSha = existing.data.sha;
-    const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
+    existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
+    try { existingCfg = existingContent.trim() ? JSON.parse(existingContent) : {}; } catch { existingCfg = {}; }
+  } catch (e) {
+    if (e.response?.status !== 404) throw e;
+  }
+  // NUNCA substitui o arquivo inteiro — só garante que as chaves de build (framework/
+  // buildCommand/outputDirectory/rewrites) estão certas, preservando qualquer outra
+  // chave que já esteja lá (ex: "redirects" do Mini Chat, cuidado por ensureMinichatRedirect
+  // separadamente — sobrescrever o arquivo inteiro aqui apagaria esse redirecionamento
+  // toda vez que essa função rodasse de novo).
+  const desired = JSON.stringify({ ...existingCfg, ...vercelConfig }, null, 2) + "\n";
+  if (existingContent !== null) {
     if (existingContent === desired) {
       // Já está certo. Se ainda não tínhamos a "impressão digital" salva (produtor
       // de antes dessa trava existir), grava agora sem reescrever nada no repo.
@@ -3863,8 +3864,6 @@ async function ensureVercelConfig(repo, headers, detected, id) {
     if (id && storedSha && storedSha !== existingSha) {
       return { changed: false, config: vercelConfig, skipped: "vercel_json_customizado" };
     }
-  } catch (e) {
-    if (e.response?.status !== 404) throw e;
   }
   const body = {
     message: "JosephPay: prepara repositório pra deploy na Vercel",
@@ -3874,6 +3873,56 @@ async function ensureVercelConfig(repo, headers, detected, id) {
   const put = await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
   if (id) await supabase.from("profiles").update({ github_vercel_config_sha: put.data.content.sha }).eq("id", id).then(null, () => {});
   return { changed: true, config: vercelConfig };
+}
+
+// Aponta um caminho (ex: "/minichat.html") direto pro Mini Chat usando uma regra de
+// REDIRECIONAMENTO do próprio Vercel (redirects/routes no vercel.json) — não mais um
+// arquivo estático dentro do repositório. Isso funciona pra QUALQUER tipo de projeto,
+// conhecido ou não (TanStack Start, Astro, Remix, qualquer framework que vier no
+// futuro), porque não depende de saber onde/como o framework serve arquivos de public/
+// nem do build ter dado certo — o Vercel resolve essa regra na borda, antes de chamar
+// qualquer código do framework. E como nossa regra sempre entra NA FRENTE de qualquer
+// outra já existente no arquivo, ela vale mesmo em projetos com uma rota "pega-tudo"
+// própria (comum em apps com servidor próprio) — foi exatamente isso que impedia o
+// Mini Chat de aparecer no site da Lervet não importava quantas vezes reinstalasse.
+// Só mexe na chave "redirects"/"routes", nunca no resto do arquivo — pode rodar mesmo
+// em framework "desconhecido" que `ensureVercelConfig` se recusa a tocar.
+async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
+  const source = "/" + String(desiredPath || "minichat.html").replace(/^\/+/, "");
+  const destination = `https://josephpay.com/minichat.html?uid=${id}`;
+  let sha = null;
+  let cfg = {};
+  try {
+    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    sha = existing.data.sha;
+    const content = Buffer.from(existing.data.content, "base64").toString("utf8");
+    try { cfg = content.trim() ? JSON.parse(content) : {}; } catch { cfg = {}; }
+  } catch (e) {
+    if (e.response?.status !== 404) throw e;
+  }
+
+  const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let novoCfg;
+  if (Array.isArray(cfg.routes)) {
+    // Formato legado do Vercel ("routes") — não pode ser misturado com "redirects"/
+    // "rewrites" modernos no mesmo arquivo, o Vercel rejeita. Remove qualquer entrada
+    // nossa anterior (destino ou caminho já usado) antes de adicionar a nova na frente.
+    const semNosso = cfg.routes.filter(r => r.headers?.Location !== destination && r.src !== `^${escaped}$`);
+    novoCfg = { ...cfg, routes: [{ src: `^${escaped}$`, status: 307, headers: { Location: destination } }, ...semNosso] };
+  } else {
+    const atuais = Array.isArray(cfg.redirects) ? cfg.redirects : [];
+    const semNosso = atuais.filter(r => r.source !== source && !String(r.destination || "").includes("josephpay.com/minichat"));
+    novoCfg = { ...cfg, redirects: [{ source, destination, permanent: false }, ...semNosso] };
+  }
+
+  const desired = JSON.stringify(novoCfg, null, 2) + "\n";
+  const atual = JSON.stringify(cfg, null, 2) + "\n";
+  if (desired === atual) return { changed: false };
+
+  const body = { message: "JosephPay: aponta caminho do Mini Chat pro redirecionamento", content: Buffer.from(desired, "utf8").toString("base64") };
+  if (sha) body.sha = sha;
+  await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
+  return { changed: true };
 }
 
 // Prepara o repositório para deploy na Vercel — commita um vercel.json adequado ao tipo de
@@ -3914,8 +3963,8 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
 app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let filePath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "");
-    if (!filePath) return res.status(400).json({ error: "Caminho do arquivo é obrigatório" });
+    const desiredPath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "").replace(/^public\//, "");
+    if (!desiredPath) return res.status(400).json({ error: "Caminho é obrigatório" });
     const { data: profile } = await supabase.from("profiles").select("github_repo,github_minichat_path").eq("id", id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
     const oldPath = profile.github_minichat_path || null;
@@ -3923,80 +3972,41 @@ app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requir
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
-    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
 
-    // Detecta o tipo de projeto e garante o vercel.json certo ANTES de instalar —
-    // sem isso, num projeto Vite/Next/CRA o build simplesmente ignora qualquer
-    // arquivo novo fora de public/, e o commit "funciona" mas nunca aparece no
-    // site publicado (o bug que já pegou o Dr. Ramon e o Temakeria Box).
-    let servedPath = filePath;
+    // Garante as configurações de build ANTES do redirecionamento (mesma ordem de
+    // reinstalarMinichatFile) — ensureMinichatRedirect preserva o resto do arquivo, então
+    // rodar nessa ordem garante que o redirecionamento não é perdido depois.
     try {
       const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
       const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
       const detected = detectRepoFramework(allPaths);
-      if (detected.isBuildProject && !/^public\//.test(filePath)) {
-        filePath = `public/${filePath}`;
-      }
       if (detected.isBuildProject) {
-        // servedPath é o caminho real na URL do site — Vite/Next servem o conteúdo
-        // de public/ a partir da raiz, então "public/minichat.html" vira "/minichat.html".
-        servedPath = filePath.replace(/^public\//, "");
         await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
           if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
         });
       }
     } catch (e) {
-      console.warn("[install-minichat] detecção de framework falhou, seguindo com o caminho original:", e.message);
+      console.warn("[install-minichat] detecção de framework falhou, seguindo assim mesmo:", e.message);
     }
-    const loaderHtml = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="0;url=${minichatLink}">
-<title>Mini Chat</title>
-<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>
-</head>
-<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">
-<p>Redirecionando…</p>
-</body>
-</html>
-`;
-    let sha;
-    try {
-      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-      sha = existing.data.sha;
-      // Já existe algo nesse caminho que não fomos nós que colocamos (não tem o nosso
-      // link dentro) — foi exatamente esse o caso da Lervet: um mini chat antigo de
-      // outro projeto no mesmo endereço. Avisa antes de sobrescrever, a não ser que o
-      // admin já tenha confirmado (force) ou seja o diagnóstico automático chamando.
-      const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
-      if (!existingContent.includes(minichatLink) && !req.body?.force) {
-        return res.json({
-          needsConfirm: true,
-          file_path: filePath,
-          message: `Já existe outro conteúdo em "${filePath}" — não é o nosso Mini Chat. Instalar aqui vai substituir esse arquivo.`,
-        });
-      }
-    } catch (e) {
-      if (e.response?.status !== 404) throw e;
-    }
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-      message: "JosephPay: instala página do Mini Chat",
-      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
-      ...(sha ? { sha } : {}),
-    }, { headers });
-    await deleteStaleMinichatFile(repo, headers, oldPath, filePath);
-    await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+
+    // Não cria mais um arquivo estático no repositório — em vez disso, aponta o caminho
+    // direto pro Mini Chat com uma regra de redirecionamento do próprio Vercel
+    // (ensureMinichatRedirect). Funciona pra qualquer tipo de projeto, mesmo os que a
+    // gente não sabe montar vercel.json de cor, e mesmo com uma rota "pega-tudo" própria
+    // do framework — nossa regra sempre entra na frente de qualquer outra no arquivo.
+    await ensureMinichatRedirect(repo, headers, id, desiredPath);
+    // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo — sobrar
+    // os dois é clutter e pode até atrapalhar dependendo de como o framework prioriza
+    // rota x arquivo estático.
+    await deleteStaleMinichatFile(repo, headers, oldPath, null);
+    await deleteStaleMinichatFile(repo, headers, desiredPath, null);
+    await deleteStaleMinichatFile(repo, headers, `public/${desiredPath}`, null);
+    await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
     // Corrige qualquer link com uid errado nos demais arquivos do repo (ex: botões do site
     // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
     // autoFix já enxergue o caminho correto.
     autoFixMinichatLink(id).catch(() => {});
-    // Avisa JÁ na hora de instalar se esse repo tem uma rota "pega-tudo" que pode impedir
-    // o arquivo de ficar acessível — sem isso o admin só descobre depois de "reinstalar"
-    // várias vezes achando que não pegou.
-    const warning = await catchAllRewriteWarning(repo, headers);
-    res.json({ ok: true, file_path: filePath, served_path: servedPath, warning: warning || undefined });
+    res.json({ ok: true, file_path: desiredPath, served_path: desiredPath });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
@@ -4131,17 +4141,21 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
         const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
         const detected = detectRepoFramework(allPaths);
 
-        if (detected.isBuildProject && p.github_minichat_path && !/^public\//.test(p.github_minichat_path)) {
-          issues.push({ tipo: "minichat_fora_de_public", detalhe: `Mini Chat instalado em "${p.github_minichat_path}", fora de public/ — não aparece no site publicado.` });
-        }
-        if (detected.isBuildProject) {
+        // Mini Chat não depende mais de arquivo dentro de public/ (usa redirecionamento
+        // no vercel.json agora — checado mais abaixo via verifyMinichatLive). Aqui só
+        // sinaliza vercel.json desatualizado pra framework que sabemos montar de cor —
+        // pra framework desconhecido nem ensureVercelConfig mexeria, então não tem
+        // "desatualizado" que faça sentido reportar.
+        if (detected.isBuildProject && !detected.unknownFramework) {
           const desired = JSON.stringify(buildVercelConfig(detected), null, 2) + "\n";
           let atual = null;
           try {
             const existing = await axios.get(`https://api.github.com/repos/${p.github_repo}/contents/vercel.json`, { headers });
             atual = Buffer.from(existing.data.content, "base64").toString("utf8");
           } catch (e) { if (e.response?.status !== 404) throw e; }
-          if (atual !== desired) issues.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json ausente ou diferente do esperado pra esse tipo de projeto." });
+          // Comparação simples (não faz merge como ensureVercelConfig) — só um sinal pro
+          // admin revisar manualmente; a correção de verdade sempre passa por ele.
+          if (atual === null || !atual.includes(desired.trim())) issues.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json ausente ou parece diferente do esperado pra esse tipo de projeto — revisar." });
         }
         const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
         const links = await scanRepoJsxLinks(p.github_repo, headers, token);
@@ -4201,15 +4215,10 @@ async function autofixSiteIssues(onProgress) {
       const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
       const detected = detectRepoFramework(allPaths);
 
-      const minichatForaDePublic = detected.isBuildProject && p.github_minichat_path && !/^public\//.test(p.github_minichat_path);
-      if (minichatForaDePublic) {
-        try {
-          await reinstalarMinichatFile(p.id);
-          fixed.push({ tipo: "minichat_fora_de_public", detalhe: "Movido pra public/ e vercel.json atualizado." });
-        } catch (e) {
-          issues.push({ tipo: "minichat_fora_de_public", detalhe: `Não consegui corrigir sozinho: ${e.message}` });
-        }
-      } else if (detected.isBuildProject) {
+      // O Mini Chat não depende mais de arquivo dentro de public/ (usa uma regra de
+      // redirecionamento no vercel.json agora — ver mais abaixo) — só garante as
+      // configurações de build aqui, sem essa distinção antiga.
+      if (detected.isBuildProject) {
         const { changed, skipped } = await ensureVercelConfig(p.github_repo, headers, detected, p.id);
         if (changed) {
           await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", p.id);
