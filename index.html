@@ -1395,6 +1395,26 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   // Checa sozinho assim que o card abre — não depende do admin lembrar de clicar em
   // "Verificar" pra saber se o status verde é real.
   useEffect(()=>{if(open&&c.site_url&&c.github_minichat_path&&!verifyResult&&!verifying)verificarNoAr();},[open]);
+  const [corrigindoBotao,setCorrigindoBotao]=useState(false);
+  // Um clique só: escaneia o repositório procurando o botão de verdade que ainda não
+  // aponta pro Mini Chat (mesma regra usada pra pintar "Botões do site" de vermelho) e
+  // já aplica a troca — sem precisar abrir outro card, marcar nada nem escolher link.
+  const corrigirBotaoAgora=async()=>{
+    if(!c.github_repo)return;
+    setCorrigindoBotao(true);setMsg("");
+    const scan=await apiCall(`/api/admin/github/scan-links?repo=${encodeURIComponent(c.github_repo)}`);
+    if(scan.error||!scan.links){setCorrigindoBotao(false);setMsg("Erro ao escanear: "+(scan.error||"repositório vazio"));return;}
+    const minichatLink=`https://josephpay.com/minichat.html?uid=${c.id}`;
+    const rivalChatRe=/minichat|mini-chat|mini_chat|\bchat\b|atendimento|fale-?conosco/i;
+    const isInternal=h=>!/^https?:\/\//i.test(h)&&!/^(mailto:|tel:|#)/i.test(h);
+    const alvos=scan.links.filter(l=>l.href!==minichatLink&&(/wa\.me|api\.whatsapp\.com/i.test(l.href)||(isInternal(l.href)&&rivalChatRe.test(l.href))));
+    if(!alvos.length){setCorrigindoBotao(false);setMsg("Não achei nenhum botão pendente pra corrigir sozinho — pode precisar revisar manualmente em \"Botões do site\".");return;}
+    const apply=await apiCall(`/api/admin/producers/${c.id}/github/apply-links`,{method:'POST',body:JSON.stringify({links:alvos.map(l=>({href:l.href,file:l.file}))})});
+    setCorrigindoBotao(false);
+    if(apply.error){setMsg("Erro ao corrigir: "+apply.error);return;}
+    setMsg(`✓ ${apply.changed} botão(ões) corrigido(s) — aponta(m) pro Mini Chat agora. Aguarde ~1 min pro site atualizar.`);
+    onUpdated&&onUpdated();
+  };
   const corrigirUid=async()=>{
     if(!c.github_repo)return;
     setFixing(true);setMsg("");
@@ -1498,6 +1518,11 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
             {verifyResult.status==="ok"?"✓ ":verifyResult.status==="sem_site"?"":"⚠️ "}{verifyResult.message}
             {verifyResult.detail&&!showTecnico&&<> <button onClick={()=>setShowTecnico(true)} style={{background:"none",border:"none",color:"inherit",textDecoration:"underline",fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>por quê?</button></>}
           </div>
+        )}
+        {verifyResult&&verifyResult.status!=="ok"&&verifyResult.status!=="sem_site"&&c.github_repo&&(
+          <button onClick={corrigirBotaoAgora} disabled={corrigindoBotao} style={{width:"100%",background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:12,padding:"12px",color:GOLD,fontWeight:700,fontSize:13,cursor:corrigindoBotao?"default":"pointer",fontFamily:F,marginTop:10}}>
+            {corrigindoBotao?"Corrigindo…":"🔧 Corrigir botão agora"}
+          </button>
         )}
 
         <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginTop:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>

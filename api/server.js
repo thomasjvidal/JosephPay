@@ -4146,11 +4146,15 @@ async function verifyMinichatPath(base, servedPath, id, diagnosticoCatchAll) {
     }
     // Mensagem principal sempre curta — o diagnóstico técnico completo (a explicação de
     // por que pode não estar pegando) só vai pra "detail", exibido apenas se o admin
-    // abrir "Detalhes técnicos". Uma parede de texto toda vez que testa não ajuda.
+    // abrir "Detalhes técnicos". E "detail" sempre termina numa ação concreta — nunca só
+    // explica o problema e para aí, sem dizer o que fazer a seguir.
+    const resolucao = "Clique em \"Corrigir botão agora\" abaixo — aponta o botão de verdade do site direto pro Mini Chat, sem depender de caminho nem de redirecionamento nenhum.";
     if (resp.status === 404) {
-      return { status: "nao_encontrado", url, message: `${url} deu 404.`, detail: (await diagnosticoCatchAll()) || "Aguarde o deploy terminar (~1 min) e teste de novo." };
+      const porque = await diagnosticoCatchAll();
+      return { status: "nao_encontrado", url, message: `${url} deu 404.`, detail: `${porque || "Ou o deploy ainda não terminou (espere ~1 min), ou esse caminho específico não existe nesse site."} ${resolucao}` };
     }
-    return { status: "conteudo_errado", url, message: `${url} ainda não é o Mini Chat.`, detail: (await diagnosticoCatchAll()) || "Provavelmente já existia outra coisa publicada nesse endereço." };
+    const porque2 = await diagnosticoCatchAll();
+    return { status: "conteudo_errado", url, message: `${url} ainda não é o Mini Chat.`, detail: `${porque2 || "Provavelmente já existia outra coisa publicada nesse endereço."} ${resolucao}` };
   } catch (e) {
     return { status: "erro", url, message: `Não consegui acessar ${url}.` };
   }
