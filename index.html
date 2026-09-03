@@ -1402,6 +1402,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     setFixing(false);
     if(d.error){setMsg("Erro: "+d.error);return;}
     setInstalledAt(new Date().toISOString());
+    if(d.file_path)setMinichatPath(d.file_path);
     setMsg(`✓ UID corrigido em ${d.file_path}. Aguarde o Vercel redeploy (~1 min) e teste.${d.warning?` ⚠️ ${d.warning}`:""}`);
     onUpdated&&onUpdated();
   };
@@ -1437,23 +1438,20 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     if(paths.length)setSugestoes(paths);
     else setMsg("Não achei nenhum link interno nos botões do site (ex: '/contato', '/minichat') — os botões parecem apontar direto pra fora (WhatsApp, Instagram etc). Nesse caso pode deixar o caminho padrão abaixo (minichat.html) e seguir — não precisa ser exatamente igual a um link que já existe no site.");
   };
-  const instalar=async(force)=>{
+  const instalar=async()=>{
     if(!c.github_repo||!minichatPath.trim())return;
     setInstalling(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim(),...(force?{force:true}:{})})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/install-minichat`,{method:'POST',body:JSON.stringify({file_path:minichatPath.trim()})});
     setInstalling(false);
     if(d.error){setMsg(d.error);return;}
-    if(d.needsConfirm){
-      // Já existe outro conteúdo nesse caminho (não é o nosso Mini Chat) — o caso da
-      // Lervet foi exatamente esse: substituir sem avisar teria apagado sem o admin
-      // saber que já tinha algo ali; perguntar sem avisar deixaria o duplicado parado.
-      if(window.confirm(`${d.message} Continuar?`))instalar(true);
-      return;
-    }
     setInstalledAt(new Date().toISOString());
     setSugestoes([]);
+    // Reflete o caminho normalizado de volta no campo — sem isso, depois de reinstalar
+    // o campo continuava mostrando o valor antigo (ex: com "public/" na frente, de uma
+    // instalação com o mecanismo anterior), parecendo que nada mudou mesmo tendo mudado.
+    if(d.file_path)setMinichatPath(d.file_path);
     const base=d.file_path!==minichatPath.trim()
-      ? `✓ Instalado em ${d.file_path} (movido pra public/ automaticamente). Aguarde ~1 min pro site atualizar.`
+      ? `✓ Aponta pra ${d.file_path}. Aguarde ~1 min pro site atualizar.`
       : `✓ Instalado em ${d.file_path}. Aguarde ~1 min pro site atualizar.`;
     setMsg(d.warning?`${base} ⚠️ ${d.warning}`:base);
     onUpdated&&onUpdated();
