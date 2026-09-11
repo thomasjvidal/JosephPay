@@ -227,7 +227,7 @@ textarea{resize:none}
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
 const {useState,useEffect,useRef}=React;
-const {AreaChart,Area,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,BarChart,Bar}=Recharts;
+const {AreaChart,Area,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,BarChart,Bar,LineChart,Line,PieChart,Pie,Cell,Legend}=Recharts;
 
 // ── Supabase config ─────────────────────────────────────────────────────────
 // Preencha com suas credenciais do painel Supabase (Settings → API)
@@ -4407,61 +4407,148 @@ function GARelatorios({cliente,presetDias,setPresetDias,tipoRelatorio,setTipoRel
 }
 
 function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
-  const [overview,setOverview]=useState(null);
+  const [report,setReport]=useState(null);
   useEffect(()=>{
     if(!clienteId)return;
-    setOverview(null);
+    setReport(null);
     const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setOverview);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/report?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setReport);
   },[clienteId,presetDias]);
-  if(!overview)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
-  const a=overview.atual,p=overview.anterior;
-  const periodoLabel=`${new Date(overview.periodo.from).toLocaleDateString('pt-BR')} — ${new Date(overview.periodo.to).toLocaleDateString('pt-BR')}`;
+  if(!report)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Gerando relatório…</div>;
+  if(report.error)return <div style={{color:RED,fontSize:13,textAlign:"center",padding:20}}>{report.error}</div>;
+  const a=report.atual,p=report.anterior;
+  const periodoLabel=`${new Date(report.periodo.from).toLocaleDateString('pt-BR')} — ${new Date(report.periodo.to).toLocaleDateString('pt-BR')}`;
   const TIPO_LABEL={semanal:"Relatório Semanal",quinzenal:"Relatório Quinzenal",mensal:"Relatório Mensal",trimestral:"Relatório Trimestral"};
-  const conclusoes=[
-    `${a.contatos} contato(s) chegaram nesse período.`,
-    a.clientes>0?`${a.clientes} virou/viraram cliente${a.clientes>1?"s":""}.`:"Nenhum contato virou cliente ainda nesse período.",
-    a.faturamento>0?`Isso gerou ${fmtBRL(a.faturamento)} em faturamento.`:null,
-    a.contatos>=p.contatos?"O número de contatos cresceu em relação ao período anterior.":"O número de contatos caiu em relação ao período anterior — vale revisar o anúncio.",
-  ].filter(Boolean);
-  const linhas=[
-    {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):null},
-    {label:"Contatos",v:String(a.contatos)},
-    {label:"Interessados",v:String(a.interessados)},
-    {label:"Clientes",v:String(a.clientes)},
-    {label:"Faturamento",v:fmtBRL(a.faturamento)},
-  ].filter(r=>r.v!=null);
+  const PIE_CORES=[GOLD,GREEN,BLUE,GOLD2,MUTED];
+  // Só entra na lista de "canais ativos" o que dá pra confirmar de verdade nesse
+  // período — nunca lista um canal só porque existe em outro lugar do cadastro.
+  const canaisAtivos=[report.investimento!=null?"Google Ads":null,report.conversasWhatsapp>0?"WhatsApp":null].filter(Boolean);
+  const KPIS=[
+    {label:"Contatos",v:String(a.contatos),sub:pctChange(a.contatos,p.contatos),accent:GOLD,icon:"◈"},
+    {label:"Interessados",v:String(a.interessados),sub:pctChange(a.interessados,p.interessados),accent:GREEN,icon:"◎"},
+    {label:"Visitas ao site",v:String(a.visitas),sub:pctChange(a.visitas,p.visitas),accent:BLUE,icon:"👁"},
+    {label:"Conversas no WhatsApp",v:String(report.conversasWhatsapp),accent:GOLD2,icon:"💬"},
+  ];
+  if(report.investimento!=null)KPIS.push({label:"Investimento",v:fmtBRL(report.investimento),accent:GOLD,icon:"⊕"});
   const compartilhar=()=>{
-    const texto=`${TIPO_LABEL[tipoRelatorio]} — ${cliente?.name}\n${periodoLabel}\n\n${linhas.map(l=>`${l.label}: ${l.v}`).join("\n")}`;
+    const texto=`${TIPO_LABEL[tipoRelatorio]} de Resultados — ${cliente?.name}\n${periodoLabel}\n\n${KPIS.map(k=>`${k.label}: ${k.v}`).join("\n")}`;
     if(navigator.share)navigator.share({title:"Relatório",text:texto}).catch(()=>{});
     else navigator.clipboard?.writeText(texto);
   };
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <style>{`@media print{.jp-bnav,.jp-sidebar,.jp-topbar{display:none !important}}`}</style>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"24px 20px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-          <Avatar url={cliente?.avatar_url} name={cliente?.name} size={40} radius={12}/>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px 20px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:18,flexWrap:"wrap"}}>
           <div>
-            <div style={{color:TEXT,fontWeight:800,fontSize:15}}>{cliente?.name}</div>
-            <div style={{color:MUTED,fontSize:11}}>{TIPO_LABEL[tipoRelatorio]} · {periodoLabel}</div>
+            <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:20,letterSpacing:"-0.01em"}}>Joseph Pay<span style={{fontSize:11,verticalAlign:"super"}}>®</span></div>
+            <div style={{color:MUTED,fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginTop:2}}>Mais contatos. Mais clientes.</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{color:MUTED,fontSize:11}}>{periodoLabel}</div>
+            {canaisAtivos.length>0&&(
+              <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",marginTop:4}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+                <span style={{color:MUTED,fontSize:10}}>{canaisAtivos.join(" · ")}</span>
+              </div>
+            )}
           </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
-          {linhas.map(r=>(
-            <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",background:CARD2,borderRadius:12}}>
-              <span style={{color:MUTED,fontSize:12,fontWeight:600}}>{r.label}</span>
-              <span style={{color:TEXT,fontSize:15,fontWeight:800}}>{r.v}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>O que aconteceu</div>
-        <ul style={{margin:"0 0 16px",padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.8}}>
-          {conclusoes.map((c,i)=>(<li key={i}>{c}</li>))}
-        </ul>
-        {!overview.adsConnected&&overview.investimento==null&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>Investimento em anúncios aparece aqui depois que o Google Ads for conectado pra esse cliente.</div>}
-        {overview.investimentoManual&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>🖊️ Investimento inserido manualmente em {new Date(overview.investimentoManualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado pra esse cliente.</div>}
+        <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:3}}>{TIPO_LABEL[tipoRelatorio]} de Resultados</div>
+        <div style={{color:TEXT,fontWeight:700,fontSize:15}}>{cliente?.name}</div>
+        {report.businessContext&&<div style={{color:MUTED,fontSize:11,textTransform:"uppercase",letterSpacing:"0.04em",marginTop:2}}>{report.businessContext}</div>}
       </div>
+
+      <div className="kpi-grid">
+        {KPIS.map(k=>(<KPICard key={k.label} label={k.label} value={k.v} sub={k.sub} accent={k.accent} icon={k.icon}/>))}
+      </div>
+
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:10}}>Evolução de interessados</div>
+        <ResponsiveContainer width="100%" height={140}>
+          <LineChart data={report.evolucaoInteressados} margin={{top:6,right:6,left:-28,bottom:0}}>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.05)" vertical={false}/>
+            <XAxis dataKey="mes" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+            <YAxis hide/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}} labelStyle={{color:MUTED,fontSize:10}}/>
+            <Line type="monotone" dataKey="interessados" stroke={GOLD} strokeWidth={2} dot={{r:3,fill:GOLD,strokeWidth:0}}/>
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:10}}>Canais de origem</div>
+        {report.canaisOrigem.length===0?(
+          <div style={{color:MUTED,fontSize:12,textAlign:"center",padding:10}}>Nenhum contato nesse período ainda.</div>
+        ):(<>
+          <ResponsiveContainer width="100%" height={150}>
+            <PieChart>
+              <Pie data={report.canaisOrigem} dataKey="count" nameKey="label" innerRadius={38} outerRadius={62} paddingAngle={2} strokeWidth={0}>
+                {report.canaisOrigem.map((c,i)=>(<Cell key={c.source} fill={PIE_CORES[i%PIE_CORES.length]}/>))}
+              </Pie>
+              <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}}/>
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+            {report.canaisOrigem.map((c,i)=>(
+              <div key={c.source} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12}}>
+                <span style={{display:"flex",alignItems:"center",gap:7,color:TEXT}}><span style={{width:8,height:8,borderRadius:"50%",background:PIE_CORES[i%PIE_CORES.length],flexShrink:0}}/>{c.label}</span>
+                <span style={{color:MUTED}}>{c.count} · {c.pct}%</span>
+              </div>
+            ))}
+          </div>
+        </>)}
+      </div>
+
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:2}}>Horários com mais contatos</div>
+        <div style={{color:MUTED,fontSize:10,marginBottom:10}}>Horário de Brasília</div>
+        <ResponsiveContainer width="100%" height={140}>
+          <BarChart data={report.horarios} margin={{top:6,right:6,left:-28,bottom:0}}>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.05)" vertical={false}/>
+            <XAxis dataKey="faixa" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+            <YAxis hide/>
+            <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}}/>
+            <Bar dataKey="contatos" fill={GOLD} radius={[4,4,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {report.interesses&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>O que as pessoas procuraram</div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {report.interesses.map((it,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<report.interesses.length-1?`1px solid ${BDR}`:"none"}}>
+                <span style={{color:TEXT,fontSize:13}}>{it.nome}</span>
+                <span style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{color:MUTED,fontSize:11}}>{it.count}</span>
+                  <span style={{color:GOLD,fontWeight:700,fontSize:12,minWidth:32,textAlign:"right"}}>{it.pct}%</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.insights?.length>0&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>O que descobrimos este mês</div>
+          <ul style={{margin:0,padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.8}}>
+            {report.insights.map((s,i)=>(<li key={i}>{s}</li>))}
+          </ul>
+        </div>
+      )}
+
+      {report.investimentoManual&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5,padding:"0 4px"}}>🖊️ Investimento inserido manualmente em {new Date(report.investimentoManualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado pra esse cliente.</div>}
+      {report.investimento==null&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5,padding:"0 4px"}}>Investimento aparece aqui depois de conectar o Google Ads ou inserir manualmente (Visão geral).</div>}
+
+      <div style={{textAlign:"center",padding:"8px 4px 4px",color:MUTED,fontSize:10,lineHeight:1.6}}>
+        <div style={{fontFamily:SF,color:TEXT,fontSize:13,fontWeight:700,marginBottom:2}}>Joseph Pay<span style={{fontSize:9,verticalAlign:"super"}}>®</span></div>
+        Tecnologia para o crescimento da sua empresa.<br/>
+        Relatório gerado em {new Date().toLocaleDateString('pt-BR')}
+      </div>
+
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Btn sm outline onClick={()=>window.print()}>Exportar PDF</Btn>
         <Btn sm outline onClick={compartilhar}>Compartilhar</Btn>

@@ -3175,6 +3175,157 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
   }
 });
 
+// Relatório rico (gráficos + insights de IA) — só chamado quando o admin clica em
+// "Gerar relatório" (não pela Visão Geral, que precisa responder rápido): roda mais
+// queries e uma chamada de IA, uma espera aceitável só nessa ação específica.
+// Cada número aqui vem de uma tabela real — nada é estimado/inventado. As duas seções
+// do mockup original (ligações recebidas, funil de recuperação de disparos) ficaram de
+// fora de propósito: não existe rastreio real pra nenhuma das duas hoje.
+app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    const from = req.query.from ? new Date(req.query.from) : new Date(to.getTime() - 30 * 86400000);
+    const rangeMs = Math.max(to.getTime() - from.getTime(), 86400000);
+    const prevTo = new Date(from.getTime());
+    const prevFrom = new Date(from.getTime() - rangeMs);
+    const periodoDias = Number(req.query.periodo_dias) || null;
+
+    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,avatar_url,minichat_config,google_ads_customer_id,google_refresh_token").eq("id", id).maybeSingle();
+    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
+    const mc = profile.minichat_config || {};
+
+    const periodStats = async (start, end) => {
+      const [customersRes, salesRes, visitsRes] = await Promise.all([
+        supabase.from("customers").select("id,status,source,created_at").eq("owner_id", id).is("deleted_at", null).gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+        supabase.from("sales").select("amount,gross_amount").eq("owner_id", id).eq("status", "pago").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+        supabase.from("visits").select("has_gclid").eq("owner_id", id).eq("event_type", "pageview").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
+      ]);
+      const customers = customersRes.data || [];
+      const sales = salesRes.data || [];
+      const visits = visitsRes.data || [];
+      return {
+        customers,
+        contatos: customers.length,
+        interessados: customers.filter(c => c.status === "lead").length,
+        clientes: customers.filter(c => c.status === "cliente" || c.status === "assinante").length,
+        faturamento: Math.round(sales.reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0) * 100) / 100,
+        visitas: visits.length,
+        visitasAnuncio: visits.filter(v => v.has_gclid).length,
+      };
+    };
+
+    const [statsAtual, statsAnterior, developerToken, sessoesRes] = await Promise.all([
+      periodStats(from, to),
+      periodStats(prevFrom, prevTo),
+      getGoogleAdsDeveloperToken(),
+      supabase.from("minichat_sessions").select("answers,finished_via,completed_at,created_at").eq("owner_id", id).gte("created_at", from.toISOString()).lt("created_at", to.toISOString()),
+    ]);
+    const { customers: customersAtual, ...atual } = statsAtual;
+    const { customers: _c2, ...anterior } = statsAnterior;
+    const sessoes = sessoesRes.data || [];
+
+    const adsToken = await getAdsAccessToken(profile);
+    const adsConnected = !!(profile.google_ads_customer_id && developerToken && adsToken);
+    let investimento = null;
+    if (adsConnected) {
+      try {
+        const fromStr = from.toISOString().slice(0, 10), toStr = to.toISOString().slice(0, 10);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`, adsToken);
+        investimento = Math.round((rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0) / 1e6) * 100) / 100;
+      } catch { /* fica null, resolvido pela snapshot manual abaixo */ }
+    }
+    let investimentoManual = false, investimentoManualAt = null;
+    if (investimento == null && periodoDias) {
+      const { atual: snapAtual } = await getManualSnapshots(id, periodoDias);
+      if (snapAtual) { investimento = Number(snapAtual.investimento_total); investimentoManual = true; investimentoManualAt = snapAtual.created_at; }
+    }
+
+    // Evolução de interessados — 6 meses corridos, sempre (independe do período
+    // escolhido nos chips, igual ao mockup mostrar Mar-Ago junto de um relatório de Ago).
+    const seisMesesAtras = new Date(to.getTime()); seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 5); seisMesesAtras.setDate(1); seisMesesAtras.setHours(0, 0, 0, 0);
+    const { data: leadsSeisMeses } = await supabase.from("customers").select("created_at").eq("owner_id", id).eq("status", "lead").is("deleted_at", null).gte("created_at", seisMesesAtras.toISOString());
+    const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const evolucaoInteressados = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(to.getFullYear(), to.getMonth() - i, 1);
+      evolucaoInteressados.push({ mes: MESES[d.getMonth()], interessados: 0, _y: d.getFullYear(), _m: d.getMonth() });
+    }
+    (leadsSeisMeses || []).forEach(c => {
+      const d = new Date(c.created_at);
+      const bucket = evolucaoInteressados.find(b => b._y === d.getFullYear() && b._m === d.getMonth());
+      if (bucket) bucket.interessados++;
+    });
+    evolucaoInteressados.forEach(b => { delete b._y; delete b._m; });
+
+    // Horários com mais contatos — bucket por hora em America/Sao_Paulo (não getHours()
+    // cru, que muda com o fuso da máquina que roda o código).
+    const FAIXAS = [{ label: "00-06h", ini: 0, fim: 6 }, { label: "06-12h", ini: 6, fim: 12 }, { label: "12-18h", ini: 12, fim: 18 }, { label: "18-21h", ini: 18, fim: 21 }, { label: "21-24h", ini: 21, fim: 24 }];
+    const horarios = FAIXAS.map(f => ({ faixa: f.label, contatos: 0 }));
+    customersAtual.forEach(c => {
+      const hora = Number(new Date(c.created_at).toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }));
+      const idx = FAIXAS.findIndex(f => hora >= f.ini && hora < f.fim);
+      if (idx >= 0) horarios[idx].contatos++;
+    });
+
+    // Canais de origem — só os 4 valores que existem de verdade (nunca "Google Meu
+    // Negócio"/"Indicação", que não são rastreados em lugar nenhum do sistema).
+    const SOURCE_LABEL = { minichat: "Site", google_ads: "Google Ads", manual: "Manual", checkout: "Compra" };
+    const canaisPorFonte = {};
+    customersAtual.forEach(c => { const s = c.source || "checkout"; canaisPorFonte[s] = (canaisPorFonte[s] || 0) + 1; });
+    const totalCanais = customersAtual.length || 1;
+    const canaisOrigem = Object.entries(canaisPorFonte).map(([source, count]) => ({ source, label: SOURCE_LABEL[source] || source, count, pct: Math.round((count / totalCanais) * 100) })).sort((a, b) => b.count - a.count);
+
+    // Conversas no WhatsApp — sessões do Mini Chat concluídas via WhatsApp.
+    const conversasWhatsapp = sessoes.filter(s => s.completed_at && s.finished_via === "whatsapp").length;
+
+    // "O que as pessoas procuraram" — só confiável pra quem usa o fluxo PADRÃO do Mini
+    // Chat (perguntas customizadas podem ter outra coisa na posição 0) — nesse caso
+    // devolve null e o card some sozinho no frontend, nunca mostra dado errado.
+    let interesses = null;
+    if (!mc.questions?.length) {
+      const contagem = {};
+      sessoes.forEach(s => { const r = Array.isArray(s.answers) ? s.answers[0] : null; const nome = r?.answer && String(r.answer).trim(); if (nome) contagem[nome] = (contagem[nome] || 0) + 1; });
+      const totalInteresses = Object.values(contagem).reduce((a, b) => a + b, 0);
+      if (totalInteresses > 0) interesses = Object.entries(contagem).map(([nome, count]) => ({ nome, count, pct: Math.round((count / totalInteresses) * 100) })).sort((a, b) => b.count - a.count).slice(0, 8);
+    }
+
+    // Insights de IA — só comenta os números já calculados acima, nunca abre pergunta
+    // livre (evita a IA inventar um dado que não foi passado).
+    const dadosParaIA = {
+      contatos: atual.contatos, contatosAnterior: anterior.contatos,
+      interessados: atual.interessados, interessadosAnterior: anterior.interessados,
+      clientes: atual.clientes, faturamento: atual.faturamento,
+      canaisOrigem: canaisOrigem.map(c => `${c.label}: ${c.pct}%`),
+      horarioPico: horarios.slice().sort((a, b) => b.contatos - a.contatos)[0]?.faixa,
+      servicoMaisProcurado: interesses?.[0] ? `${interesses[0].nome} (${interesses[0].pct}%)` : null,
+      conversasWhatsapp,
+      investimento,
+    };
+    const systemPromptInsights = `Você resume o desempenho de marketing de um negócio pro dono, em português direto e curto. Aqui estão os números reais do período (JSON): ${JSON.stringify(dadosParaIA)}\n\nEscreva de 3 a 4 frases curtas (uma por linha), cada uma comentando um número acima. NÃO invente nenhum dado que não esteja nesse JSON — se um campo vier null, não fale sobre ele. Responda SOMENTE um array JSON puro de strings, sem markdown, ex: ["frase 1","frase 2"]`;
+    let insights = [];
+    try {
+      let reply = null;
+      for (const key of GROQ_KEYS) { try { reply = await callGroq(key, systemPromptInsights, [{ role: "user", content: "Gere os insights." }]); break; } catch {} }
+      if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(systemPromptInsights, [{ role: "user", content: "Gere os insights." }]); } catch {} }
+      if (reply) { const m = reply.match(/\[[\s\S]*\]/); if (m) insights = JSON.parse(m[0]).filter(s => typeof s === "string" && s.trim()).slice(0, 4); }
+    } catch (e) { console.error("[google-ads/report] insights IA falharam:", e.message); }
+
+    res.json({
+      cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
+      businessContext: mc.business_context || null,
+      periodo: { from: from.toISOString(), to: to.toISOString() },
+      investimento, investimentoManual, investimentoManualAt,
+      atual, anterior,
+      conversasWhatsapp,
+      evolucaoInteressados, horarios, canaisOrigem, interesses, insights,
+    });
+  } catch (err) {
+    console.error("[google-ads/report]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Status do Google Ads por produtor
 app.get("/api/admin/producers/:id/google/status", requireAuth, requireAdmin, async (req, res) => {
   try {
