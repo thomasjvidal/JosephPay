@@ -4534,10 +4534,13 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
                 <span style={{color:MUTED,fontSize:10}}>{canaisAtivos.join(" · ")}</span>
               </div>
             )}
-            {shareInfo&&(
+            {shareInfo&&!shareInfo.error&&(
               <div style={{color:shareInfo.viewed_at?GREEN:MUTED,fontSize:10,marginTop:4}}>
                 {shareInfo.viewed_at?`👁 Visualizado${shareInfo.viewed_by?` por ${shareInfo.viewed_by}`:""} em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')}`:"Ainda não visualizado"}
               </div>
+            )}
+            {shareInfo?.error&&(
+              <div style={{color:RED,fontSize:10,marginTop:4,maxWidth:160,textAlign:"right"}}>Não consegui salvar: {shareInfo.error}</div>
             )}
           </div>
         </div>
@@ -4690,7 +4693,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Btn sm outline onClick={()=>window.print()}>Exportar PDF</Btn>
-        <Btn sm outline onClick={compartilhar} disabled={!linkPublico}>{linkPublico?"Compartilhar link":"Salvando…"}</Btn>
+        <Btn sm outline onClick={compartilhar} disabled={!linkPublico}>{linkPublico?"Compartilhar link":(shareInfo?.error?"Erro ao salvar":"Salvando…")}</Btn>
       </div>
     </div>
   );

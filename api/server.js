@@ -3385,7 +3385,8 @@ app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, require
     if (!dados?.periodo?.to) return res.status(400).json({ error: "Dados do relatório ausentes" });
     const to = new Date(dados.periodo.to);
     const ano = to.getFullYear(), mes = to.getMonth() + 1;
-    const { data: existente } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at,viewed_by").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
+    const { data: existente, error: erroSelect } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at,viewed_by").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
+    if (erroSelect) return res.status(500).json({ error: erroSelect.message });
     if (existente) {
       await supabase.from("google_ads_reports").update({ periodo_from: dados.periodo.from, periodo_to: dados.periodo.to, dados, updated_at: new Date().toISOString() }).eq("id", existente.id);
       return res.json({ share_token: existente.share_token, viewed_at: existente.viewed_at, viewed_by: existente.viewed_by });
