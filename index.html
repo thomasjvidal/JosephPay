@@ -2310,6 +2310,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
                   <div style={{textAlign:"right",flexShrink:0,marginRight:4}}>
                     <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
                     <div style={{color:MUTED,fontSize:10,marginTop:2}}>{c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"}</div>
+                    {c.times_seen>1&&<div style={{color:GOLD,fontSize:9,fontWeight:700,marginTop:2}}>🔁 veio {c.times_seen}x</div>}
                   </div>
                   <button onClick={e=>{e.stopPropagation();abrirEdicao(c);}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
                 </div>
@@ -2331,6 +2332,7 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
   const [savedCount,setSavedCount]=useState(null);
+  const [savedDup,setSavedDup]=useState(0);
   const parseLine=(line)=>{
     line=line.trim();
     if(!line)return null;
@@ -2352,6 +2354,11 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   // marcado como vindo do Google Ads (mesmo padrão que já existia pra esse tipo de lead),
   // "Contato N" nos outros casos.
   const parsed=text.split("\n").map(parseLine).filter(Boolean).map((c,i)=>({...c,name:c.name||`Contato${origemGoogleAds?" Google":""} ${i+1}`}));
+  const copiarPrompt=()=>{
+    const prompt=`Você vai receber um PDF ou capturas de tela com uma lista de leads/contatos (nome, telefone e/ou e-mail). Extraia CADA contato e devolva um por linha, neste formato: Nome, telefone, email (pode omitir o que não existir, mas mantendo as vírgulas — ex: "Maria Souza, 21988887777," se não tiver e-mail). Um contato por linha, sem numeração, sem markdown, sem texto antes ou depois — só a lista.`;
+    navigator.clipboard.writeText(prompt).catch(()=>{});
+    alert('Prompt copiado! Cole no ChatGPT junto com o PDF ou os prints dos leads, copie a lista que ele devolver e cole direto na caixa de texto abaixo.');
+  };
   const salvar=async()=>{
     if(!parsed.length)return;
     setSaving(true);setError("");
@@ -2359,7 +2366,8 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
     const d=await apiCall(`/api/admin/producers/${ownerId}/customers/bulk`,{method:'POST',body:JSON.stringify({contacts})});
     setSaving(false);
     if(d.error){setError(d.error);return;}
-    setSavedCount(d.count);
+    setSavedCount(d.inserted??d.count);
+    setSavedDup(d.duplicated||0);
     onCreated&&onCreated();
   };
   return(
@@ -2369,14 +2377,16 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
         {savedCount!==null?(
           <div style={{textAlign:"center",padding:"20px 0 10px"}}>
             <div style={{color:GREEN,fontSize:40,marginBottom:12}}>✓</div>
-            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:8}}>{savedCount} contato(s) adicionado(s)!</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:8}}>{savedCount} contato(s) novo(s) adicionado(s)!</div>
+            {savedDup>0&&<div style={{color:GOLD,fontSize:13,marginBottom:8}}>{savedDup} já existia(m) — só atualizei quantas vezes voltaram, sem duplicar.</div>}
             <div style={{color:MUTED,fontSize:13,marginBottom:20}}>Já aparecem no CRM de {nome}, direto no painel dele.</div>
             <button onClick={onClose} style={{width:"100%",background:GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
           </div>
         ):(
           <>
             <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:6}}>Adicionar contatos</div>
-            <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Cole a lista — um contato por linha. O sistema separa nome, telefone e e-mail sozinho. Depois só marca quem é interessado ou já é cliente.</div>
+            <div style={{color:MUTED,fontSize:12,marginBottom:12,lineHeight:1.5}}>Cole a lista — um contato por linha. O sistema separa nome, telefone e e-mail sozinho. Depois só marca quem é interessado ou já é cliente. Quem já existir (mesmo telefone) não duplica — só conta quantas vezes voltou.</div>
+            <button onClick={copiarPrompt} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:12}}>Copiar prompt pro ChatGPT</button>
             <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"João Silva, 21999998888, joao@email.com\nMaria Souza, 21988887777"} rows={5} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:14,resize:"vertical"}}/>
             <label style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${origemGoogleAds?GOLD+"55":BDR}`,borderRadius:12,padding:"11px 14px",marginBottom:14,cursor:"pointer"}}>
               <input type="checkbox" checked={origemGoogleAds} onChange={e=>setOrigemGoogleAds(e.target.checked)} style={{width:16,height:16,flexShrink:0}}/>

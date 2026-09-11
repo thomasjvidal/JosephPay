@@ -1964,6 +1964,41 @@ app.patch("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (re
   }
 });
 
+// Cria/atualiza contatos evitando duplicar por telefone — se já existe um `customers`
+// desse owner com o mesmo telefone, só incrementa `times_seen`/`last_seen_at` na linha
+// existente em vez de nascer uma segunda linha. Contato sem telefone (só nome/e-mail)
+// não tem como conferir duplicata, sempre entra como novo. `rows` já vem pronto pra
+// inserir (owner_id, name, phone, email, status, source — o que cada chamador precisar).
+async function upsertCustomersByPhone(ownerId, rows) {
+  const comTelefone = rows.filter(r => r.phone);
+  const semTelefone = rows.filter(r => !r.phone);
+  let inserted = 0, duplicated = 0;
+  const paraInserir = [...semTelefone];
+
+  if (comTelefone.length) {
+    const telefones = [...new Set(comTelefone.map(r => r.phone))];
+    const { data: existentes } = await supabase.from("customers").select("id,phone,times_seen").eq("owner_id", ownerId).in("phone", telefones).is("deleted_at", null);
+    const porTelefone = {};
+    (existentes || []).forEach(e => { if (!porTelefone[e.phone]) porTelefone[e.phone] = e; });
+    for (const row of comTelefone) {
+      const existente = porTelefone[row.phone];
+      if (existente) {
+        await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id);
+        duplicated++;
+      } else {
+        paraInserir.push(row);
+      }
+    }
+  }
+
+  if (paraInserir.length) {
+    const { data, error } = await supabase.from("customers").insert(paraInserir.map(r => ({ ...r, times_seen: 1 }))).select("id");
+    if (error) throw error;
+    inserted = data.length;
+  }
+  return { inserted, duplicated };
+}
+
 // Admin adiciona contatos em massa direto no CRM de um cliente (tabela customers) —
 // os contatos aparecem no painel do próprio produtor, é a mesma tabela que ele usa.
 app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, async (req, res) => {
@@ -1985,14 +2020,13 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
       }))
       .filter(c => c.name);
     if (!rows.length) return res.status(400).json({ error: "Nenhum contato válido (precisa de nome)" });
-    const { data, error } = await supabase.from("customers").insert(rows).select("id");
-    if (error) return res.status(500).json({ error: error.message });
+    const { inserted, duplicated } = await upsertCustomersByPhone(id, rows);
     if (rows.length === 1) {
       sendPushToOwner(id, { title: "Novo interessado!", body: rows[0].name, url: "/" });
     } else {
       sendPushToOwner(id, { title: "Novos interessados!", body: `${rows.length} contatos adicionados`, url: "/" });
     }
-    res.json({ ok: true, count: data.length });
+    res.json({ ok: true, count: inserted + duplicated, inserted, duplicated });
   } catch (err) {
     console.error("[admin/producers customers bulk]", err.message);
     res.status(500).json({ error: err.message });
@@ -2007,7 +2041,7 @@ app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (
   try {
     const { data, error } = await supabase
       .from("customers")
-      .select("id,name,phone,email,status,source,birthday,created_at")
+      .select("id,name,phone,email,status,source,birthday,created_at,times_seen")
       .eq("owner_id", req.params.id)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
@@ -5374,22 +5408,13 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
 
   if (!rows.length) return res.json({ inserted: 0 });
 
-  // upsert por nome+owner — evita duplicatas exatas
-  const { data, error } = await supabase
-    .from("customers")
-    .upsert(rows, { onConflict: "owner_id,phone", ignoreDuplicates: true })
-    .select("id");
-
-  if (error) {
-    // fallback: insere um a um ignorando erros individuais
-    let inserted = 0;
-    for (const row of rows) {
-      const { error: e } = await supabase.from("customers").insert(row);
-      if (!e) inserted++;
-    }
-    return res.json({ inserted });
+  try {
+    const { inserted, duplicated } = await upsertCustomersByPhone(req.user.id, rows);
+    res.json({ inserted, duplicated });
+  } catch (err) {
+    console.error("[customers/import]", err.message);
+    res.status(500).json({ error: err.message });
   }
-  res.json({ inserted: data?.length || rows.length });
 });
 
 // Data de nascimento digitada em texto livre pelo visitante do Mini Chat (ex:
@@ -5455,16 +5480,29 @@ app.post("/api/leads/create", (req, res, next) => {
   const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
 
+  const telefone = phone?.trim() || null;
+  // Mesma pessoa conversando de novo no Mini Chat não pode virar uma segunda linha no
+  // CRM — só atualiza a contagem de quantas vezes voltou na linha que já existe.
+  if (telefone) {
+    const { data: existente } = await supabase.from("customers").select("id,times_seen").eq("owner_id", ownerKey).eq("phone", telefone).is("deleted_at", null).maybeSingle();
+    if (existente) {
+      const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
+      if (errUpd) return res.status(500).json({ error: errUpd.message });
+      return res.json(atualizado);
+    }
+  }
+
   const { data, error } = await supabase
     .from("customers")
     .insert({
       owner_id: profile.id,
       name: name.trim(),
-      phone: phone?.trim() || null,
+      phone: telefone,
       email: email?.trim() || null,
       birthday: parseBirthdate(birthday),
       source: "minichat",
       status: "lead",
+      times_seen: 1,
     })
     .select()
     .single();
