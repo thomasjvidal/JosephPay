@@ -1787,6 +1787,7 @@ function DashAdmin({onNav}){
   const [clients,setClients]=useState(null);
   const [ledger,setLedger]=useState(null);
   const [traffic,setTraffic]=useState(null);
+  const [comentarios,setComentarios]=useState(null);
   const siteRef=useRef(null);
   useEffect(()=>{
     apiCall('/api/admin/kpis').then(d=>{if(d&&!d.error)setKpis(d);});
@@ -1794,7 +1795,13 @@ function DashAdmin({onNav}){
     apiCall('/api/admin/clients').then(d=>{if(d?.clients)setClients(d.clients);});
     apiCall('/api/admin/ledger/balance').then(d=>{if(d&&!d.error)setLedger(d);});
     apiCall('/api/admin/analytics/visits').then(d=>{if(d&&!d.error)setTraffic(d);else setTraffic({total:0,sources:[]});});
+    apiCall('/api/admin/google-ads/comments/recent?limit=5').then(d=>{if(d?.comments)setComentarios(d.comments);});
   },[]);
+  const MESES_ABREV=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const abrirComentario=(c)=>{
+    if(c.owner_id)localStorage.setItem('jp_admin_ga_cliente_id',c.owner_id);
+    onNav("googleads");
+  };
   const sitesAtivos=(clients||[]).filter(c=>c.conn?.site).length;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1839,6 +1846,23 @@ function DashAdmin({onNav}){
         </div>
       </div>
       <AdvancedChart accent={GOLD} endpoint="/api/admin/chart"/>
+      {comentarios?.length>0&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
+            <span style={{color:TEXT,fontWeight:700,fontSize:14}}>💬 Comentários nos relatórios</span>
+          </div>
+          {comentarios.map((c,i)=>(
+            <div key={c.id} onClick={()=>abrirComentario(c)} style={{padding:"14px 18px",borderBottom:i<comentarios.length-1?`1px solid ${BDR}`:"none",cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:4}}>
+                <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{c.autor||"Anônimo"}</span>
+                <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{new Date(c.created_at).toLocaleDateString('pt-BR')}</span>
+              </div>
+              <div style={{color:MUTED,fontSize:11,marginBottom:4}}>relatório de {MESES_ABREV[c.mes-1]||"—"}{c.ano?`/${c.ano}`:""} · <span style={{color:"rgba(255,255,255,0.55)"}}>{c.producer_name||"Produtor"}</span></div>
+              <div style={{color:TEXT,fontSize:13,lineHeight:1.4}}>{c.texto}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
@@ -4223,6 +4247,7 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
 
 function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPresetDias,onNav}){
   const [overview,setOverview]=useState(null);
+  const [comentarios,setComentarios]=useState(null);
   const carregarOverview=()=>{
     if(!clienteId)return;
     const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
@@ -4231,8 +4256,11 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
   useEffect(()=>{
     if(!clienteId)return;
     setOverview(null);
+    setComentarios(null);
     carregarOverview();
+    apiCall(`/api/admin/google-ads/comments/recent?owner_id=${clienteId}&limit=3`).then(d=>{if(d?.comments)setComentarios(d.comments);});
   },[clienteId,presetDias]);
+  const MESES_ABREV=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
   const a=overview?.atual;
   const custoContato=(overview?.investimento!=null&&a?.contatos)?fmtBRL(overview.investimento/a.contatos):"—";
   const custoCliente=(overview?.investimento!=null&&a?.clientes)?fmtBRL(overview.investimento/a.clientes):"—";
@@ -4301,6 +4329,20 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           </div>
         )}
       </>)}
+      {comentarios?.length>0&&(
+        <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{color:GOLD,fontWeight:700,fontSize:12}}>💬 Comentários no relatório</div>
+          {comentarios.map(c=>(
+            <div key={c.id} onClick={()=>onNav("historico")} style={{cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:2}}>
+                <span style={{color:TEXT,fontWeight:700,fontSize:12}}>{c.autor||"Anônimo"}</span>
+                <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{MESES_ABREV[c.mes-1]||"—"}{c.ano?`/${c.ano}`:""}</span>
+              </div>
+              <div style={{color:MUTED,fontSize:12,lineHeight:1.4}}>{c.texto}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         {ACOES.map(ac=>(
           <button key={ac.id} onClick={()=>onNav(ac.id)} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"14px 10px",color:TEXT,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{ac.label}</button>

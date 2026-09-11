@@ -3426,6 +3426,46 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
   }
 });
 
+// Comentários recentes em relatórios do Google Ads — alimenta o aviso na Visão geral
+// (de um produtor) e o card no Dashboard (de todos os produtores, sem ?owner_id).
+app.get("/api/admin/google-ads/comments/recent", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 8, 50);
+    const ownerId = req.query.owner_id || null;
+    let reportQuery = supabase.from("google_ads_reports").select("id,owner_id,tipo,ano,mes");
+    if (ownerId) reportQuery = reportQuery.eq("owner_id", ownerId);
+    const { data: reports, error: erroReports } = await reportQuery;
+    if (erroReports) return res.status(500).json({ error: erroReports.message });
+    const reportMap = {};
+    (reports || []).forEach(r => { reportMap[r.id] = r; });
+    const reportIds = Object.keys(reportMap);
+    if (!reportIds.length) return res.json({ comments: [] });
+    const { data: comments, error } = await supabase.from("google_ads_report_comments")
+      .select("id,report_id,autor,texto,created_at")
+      .in("report_id", reportIds).order("created_at", { ascending: false }).limit(limit);
+    if (error) return res.status(500).json({ error: error.message });
+    const ownerIds = [...new Set((comments || []).map(c => reportMap[c.report_id]?.owner_id).filter(Boolean))];
+    let profileMap = {};
+    if (ownerIds.length) {
+      const { data: profiles } = await supabase.from("profiles").select("id,name").in("id", ownerIds);
+      (profiles || []).forEach(p => { profileMap[p.id] = p.name; });
+    }
+    res.json({
+      comments: (comments || []).map(c => {
+        const rep = reportMap[c.report_id];
+        return {
+          id: c.id, autor: c.autor, texto: c.texto, created_at: c.created_at,
+          owner_id: rep?.owner_id || null, producer_name: rep ? (profileMap[rep.owner_id] || null) : null,
+          tipo: rep?.tipo || null, ano: rep?.ano || null, mes: rep?.mes || null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("[google-ads/comments/recent]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Visualização pública do relatório salvo — sem login, sem acesso a mais nada do
 // sistema. Mesmo padrão de rota pública já usado em /api/minichat/config: CORS aberto,
 // busca só pelo token, nunca expõe o id do produtor nem qualquer outro dado.
