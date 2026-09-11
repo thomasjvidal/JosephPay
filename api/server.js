@@ -3235,11 +3235,20 @@ app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin,
         investimento = Math.round((rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0) / 1e6) * 100) / 100;
       } catch { /* fica null, resolvido pela snapshot manual abaixo */ }
     }
-    let investimentoManual = false, investimentoManualAt = null;
+    let investimentoManual = false, investimentoManualAt = null, impressoes = null, cliques = null, acoesLocais = null, termosPesquisa = [];
     if (investimento == null && periodoDias) {
       const { atual: snapAtual } = await getManualSnapshots(id, periodoDias);
-      if (snapAtual) { investimento = Number(snapAtual.investimento_total); investimentoManual = true; investimentoManualAt = snapAtual.created_at; }
+      if (snapAtual) {
+        investimento = Number(snapAtual.investimento_total);
+        investimentoManual = true;
+        investimentoManualAt = snapAtual.created_at;
+        impressoes = snapAtual.impressoes ?? null;
+        cliques = snapAtual.cliques ?? null;
+        acoesLocais = snapAtual.acoes_locais || null;
+        termosPesquisa = Array.isArray(snapAtual.termos_pesquisa) ? snapAtual.termos_pesquisa : [];
+      }
     }
+    const ctr = (impressoes && cliques != null) ? Math.round((cliques / impressoes) * 10000) / 100 : null;
 
     // Evolução de interessados — 6 meses corridos, sempre (independe do período
     // escolhido nos chips, igual ao mockup mostrar Mar-Ago junto de um relatório de Ago).
@@ -3300,9 +3309,12 @@ app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin,
       horarioPico: horarios.slice().sort((a, b) => b.contatos - a.contatos)[0]?.faixa,
       servicoMaisProcurado: interesses?.[0] ? `${interesses[0].nome} (${interesses[0].pct}%)` : null,
       conversasWhatsapp,
-      investimento,
+      investimento, impressoes, cliques, ctr,
+      chamadasGoogleAds: acoesLocais?.chamadas ?? null,
+      visitasLoja: acoesLocais?.visitas_loja ?? null,
+      termoMaisBuscado: termosPesquisa?.[0]?.termo || null,
     };
-    const systemPromptInsights = `Você resume o desempenho de marketing de um negócio pro dono, em português direto e curto. Aqui estão os números reais do período (JSON): ${JSON.stringify(dadosParaIA)}\n\nEscreva de 3 a 4 frases curtas (uma por linha), cada uma comentando um número acima. NÃO invente nenhum dado que não esteja nesse JSON — se um campo vier null, não fale sobre ele. Responda SOMENTE um array JSON puro de strings, sem markdown, ex: ["frase 1","frase 2"]`;
+    const systemPromptInsights = `Você resume o desempenho de marketing de um negócio pro dono, em português direto e curto. Aqui estão os números reais do período (JSON): ${JSON.stringify(dadosParaIA)}\n\nEscreva de 3 a 5 frases curtas (uma por linha), cada uma comentando um número acima. NÃO invente nenhum dado que não esteja nesse JSON — se um campo vier null, não fale sobre ele. Responda SOMENTE um array JSON puro de strings, sem markdown, ex: ["frase 1","frase 2"]`;
     let insights = [];
     try {
       let reply = null;
@@ -3316,6 +3328,7 @@ app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin,
       businessContext: mc.business_context || null,
       periodo: { from: from.toISOString(), to: to.toISOString() },
       investimento, investimentoManual, investimentoManualAt,
+      impressoes, cliques, ctr, acoesLocais, termosPesquisa,
       atual, anterior,
       conversasWhatsapp,
       evolucaoInteressados, horarios, canaisOrigem, interesses, insights,
@@ -3383,7 +3396,7 @@ async function getManualSnapshots(ownerId, periodoDias) {
   if (!periodoDias) return { atual: null, anterior: null };
   const { data } = await supabase
     .from("google_ads_manual_snapshots")
-    .select("id,investimento_total,campanhas,created_at")
+    .select("id,investimento_total,campanhas,impressoes,cliques,acoes_locais,termos_pesquisa,created_at")
     .eq("owner_id", ownerId)
     .eq("periodo_dias", periodoDias)
     .order("created_at", { ascending: false })
@@ -3436,7 +3449,7 @@ app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdm
 app.post("/api/admin/producers/:id/google-ads/manual-snapshot", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { periodo_dias, investimento_total, campanhas, raw_gpt_text } = req.body;
+    const { periodo_dias, investimento_total, campanhas, impressoes, cliques, acoes_locais, termos_pesquisa, raw_gpt_text } = req.body;
     if (![7, 14, 30, 90].includes(Number(periodo_dias))) return res.status(400).json({ error: "Período inválido" });
     const investimento = Number(investimento_total);
     if (!Number.isFinite(investimento) || investimento < 0) return res.status(400).json({ error: "Investimento total inválido" });
@@ -3445,11 +3458,26 @@ app.post("/api/admin/producers/:id/google-ads/manual-snapshot", requireAuth, req
           .map(c => ({ nome: String(c?.nome || "").trim(), investimento: Number(c?.investimento), cliques: c?.cliques != null ? Number(c.cliques) : null }))
           .filter(c => c.nome && Number.isFinite(c.investimento))
       : [];
+    // Campos extras opcionais — o admin pode colar só o investimento (como antes) ou o
+    // JSON completo (impressões, cliques, detalhamento de "ações locais" do Google Ads —
+    // visita à loja, chamada, rota, etc. — e termos de pesquisa com custo). Cada campo
+    // ausente/null fica null, nunca é estimado.
+    const numOrNull = v => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
+    const acoesLocaisLimpas = acoes_locais && typeof acoes_locais === "object"
+      ? { visitas_loja: numOrNull(acoes_locais.visitas_loja), visitas_site: numOrNull(acoes_locais.visitas_site), visualizacoes_rota: numOrNull(acoes_locais.visualizacoes_rota), chamadas: numOrNull(acoes_locais.chamadas), pedidos: numOrNull(acoes_locais.pedidos), visualizacoes_menu: numOrNull(acoes_locais.visualizacoes_menu), outras: numOrNull(acoes_locais.outras) }
+      : null;
+    const termosPesquisaLimpos = Array.isArray(termos_pesquisa)
+      ? termos_pesquisa.map(t => ({ termo: String(t?.termo || "").trim(), cliques: numOrNull(t?.cliques), custo: numOrNull(t?.custo) })).filter(t => t.termo)
+      : [];
     const { data, error } = await supabase.from("google_ads_manual_snapshots").insert({
       owner_id: id,
       periodo_dias: Number(periodo_dias),
       investimento_total: investimento,
       campanhas: campanhasLimpas,
+      impressoes: numOrNull(impressoes),
+      cliques: numOrNull(cliques),
+      acoes_locais: acoesLocaisLimpas,
+      termos_pesquisa: termosPesquisaLimpos,
       raw_gpt_text: raw_gpt_text ? String(raw_gpt_text).slice(0, 20000) : null,
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });

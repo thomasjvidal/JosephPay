@@ -4034,8 +4034,11 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
 // ══════════════════════════════════════════════════════════════════════════════
 
 function pctChange(atual,anterior){
-  if(!anterior)return atual>0?"+100%":"0%";
+  if(!anterior)return atual>0?"Novo":"0%";
   const pct=((atual-anterior)/anterior)*100;
+  // Base do período anterior muito pequena (ex: 1→62) dá um "+6100%" tecnicamente
+  // certo mas sem sentido pra quem lê o relatório — trava num teto legível.
+  if(pct>500)return "+500%+";
   return `${pct>=0?"+":""}${pct.toFixed(0)}%`;
 }
 
@@ -4081,10 +4084,11 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
   const pill={background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F};
   const periodoLabel=`${presetDias} dias`;
   const copiarPrompt=()=>{
-    const prompt=`Você vai receber uma ou mais capturas de tela do Google Ads (app ou site), do período de ${periodoLabel}. Extraia os dados reais visíveis e devolva SOMENTE um JSON puro, sem markdown, neste formato exato:\n\n{\n  "investimento_total": <número em reais, só dígitos e ponto>,\n  "campanhas": [\n    {"nome": "nome da campanha", "investimento": <número>, "cliques": <número ou null>}\n  ]\n}\n\nNão invente nenhum valor — se não conseguir ler algum número com certeza, use null nesse campo. Não escreva nada além do JSON.`;
+    const prompt=`Você vai receber várias capturas de tela do app do Google Ads (Visão geral, Impressões, Cliques, Ações locais, Chamadas, Termos de pesquisa), todas do período de ${periodoLabel}. Junte tudo num JSON SÓ, sem markdown, neste formato exato:\n\n{\n  "investimento_total": <número em reais>,\n  "impressoes": <número ou null>,\n  "cliques": <número ou null>,\n  "acoes_locais": {\n    "visitas_loja": <número ou null>,\n    "visitas_site": <número ou null>,\n    "visualizacoes_rota": <número ou null>,\n    "chamadas": <número ou null>,\n    "pedidos": <número ou null>,\n    "visualizacoes_menu": <número ou null>\n  },\n  "termos_pesquisa": [\n    {"termo": "texto pesquisado", "cliques": <número ou null>, "custo": <número ou null>}\n  ],\n  "campanhas": [\n    {"nome": "nome da campanha", "investimento": <número>, "cliques": <número ou null>}\n  ]\n}\n\nNão invente nenhum valor — se um número não aparecer em NENHUMA das capturas, use null nesse campo (nunca zero). Não escreva nada além do JSON.`;
     navigator.clipboard.writeText(prompt).catch(()=>{});
-    alert('Prompt copiado! Cole no ChatGPT junto com os prints do Google Ads, copie a resposta (o JSON) e clique em "Colar resposta do ChatGPT" abaixo.');
+    alert('Prompt copiado! Cole no ChatGPT junto com os prints do Google Ads (pode mandar várias telas de uma vez), copie a resposta (o JSON) e clique em "Colar resposta do ChatGPT" abaixo.');
   };
+  const numOrNull=v=>(v===null||v===undefined||v==="")?null:(Number.isFinite(Number(v))?Number(v):null);
   const importar=()=>{
     try{
       let raw=jsonInput.trim();
@@ -4094,7 +4098,10 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
       const investimento_total=Number(parsed.investimento_total);
       if(!Number.isFinite(investimento_total)||investimento_total<0)throw new Error("investimento_total ausente ou inválido");
       const campanhas=Array.isArray(parsed.campanhas)?parsed.campanhas.map(c=>({nome:String(c?.nome||""),investimento:Number(c?.investimento)||0,cliques:c?.cliques!=null?Number(c.cliques):null})).filter(c=>c.nome):[];
-      setPreview({investimento_total,campanhas});
+      const al=parsed.acoes_locais||{};
+      const acoes_locais={visitas_loja:numOrNull(al.visitas_loja),visitas_site:numOrNull(al.visitas_site),visualizacoes_rota:numOrNull(al.visualizacoes_rota),chamadas:numOrNull(al.chamadas),pedidos:numOrNull(al.pedidos),visualizacoes_menu:numOrNull(al.visualizacoes_menu)};
+      const termos_pesquisa=Array.isArray(parsed.termos_pesquisa)?parsed.termos_pesquisa.map(t=>({termo:String(t?.termo||""),cliques:numOrNull(t?.cliques),custo:numOrNull(t?.custo)})).filter(t=>t.termo):[];
+      setPreview({investimento_total,impressoes:numOrNull(parsed.impressoes),cliques:numOrNull(parsed.cliques),acoes_locais,termos_pesquisa,campanhas});
       setErro("");
     }catch(e){
       setPreview(null);
@@ -4104,7 +4111,7 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
   const salvar=async()=>{
     if(!preview)return;
     setSaving(true);
-    const d=await apiCall(`/api/admin/producers/${clienteId}/google-ads/manual-snapshot`,{method:'POST',body:JSON.stringify({periodo_dias:presetDias,investimento_total:preview.investimento_total,campanhas:preview.campanhas,raw_gpt_text:jsonInput})});
+    const d=await apiCall(`/api/admin/producers/${clienteId}/google-ads/manual-snapshot`,{method:'POST',body:JSON.stringify({periodo_dias:presetDias,...preview,raw_gpt_text:jsonInput})});
     setSaving(false);
     if(d.error){setErro(d.error);return;}
     setPreview(null);setJsonInput("");setShowImport(false);setOpen(false);
@@ -4134,6 +4141,39 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
             <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Investimento total (R$)</div>
             <input type="number" value={preview.investimento_total} onChange={e=>setPreview(p=>({...p,investimento_total:Number(e.target.value)}))} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"7px 10px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
           </div>
+          <div style={{display:"flex",gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Impressões</div>
+              <input type="number" value={preview.impressoes??""} onChange={e=>setPreview(p=>({...p,impressoes:numOrNull(e.target.value)}))} placeholder="—" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"7px 10px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Cliques no anúncio</div>
+              <input type="number" value={preview.cliques??""} onChange={e=>setPreview(p=>({...p,cliques:numOrNull(e.target.value)}))} placeholder="—" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"7px 10px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          <div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Ações locais (deixe em branco o que não tiver)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[["visitas_loja","Visitas à loja"],["chamadas","Chamadas"],["visualizacoes_rota","Rotas"],["visitas_site","Visitas ao site"],["pedidos","Pedidos"],["visualizacoes_menu","Menu"]].map(([k,l])=>(
+                <div key={k}>
+                  <div style={{color:MUTED,fontSize:9,marginBottom:2}}>{l}</div>
+                  <input type="number" value={preview.acoes_locais?.[k]??""} onChange={e=>setPreview(p=>({...p,acoes_locais:{...p.acoes_locais,[k]:numOrNull(e.target.value)}}))} placeholder="—" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 8px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+                </div>
+              ))}
+            </div>
+          </div>
+          {preview.termos_pesquisa?.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Termos de pesquisa</div>
+              {preview.termos_pesquisa.map((t,i)=>(
+                <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input value={t.termo} onChange={e=>setPreview(p=>{const ts=[...p.termos_pesquisa];ts[i]={...ts[i],termo:e.target.value};return{...p,termos_pesquisa:ts};})} style={{flex:2,background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 8px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,minWidth:0}}/>
+                  <input type="number" value={t.custo??""} onChange={e=>setPreview(p=>{const ts=[...p.termos_pesquisa];ts[i]={...ts[i],custo:numOrNull(e.target.value)};return{...p,termos_pesquisa:ts};})} placeholder="R$" style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 8px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,minWidth:0}}/>
+                  <button onClick={()=>setPreview(p=>({...p,termos_pesquisa:p.termos_pesquisa.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:RED,fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
           {preview.campanhas.length>0&&(
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Campanhas</div>
@@ -4462,6 +4502,15 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
       <div className="kpi-grid">
         {KPIS.map(k=>(<KPICard key={k.label} label={k.label} value={k.v} sub={k.sub} accent={k.accent} icon={k.icon}/>))}
       </div>
+      {a.contatos===a.interessados&&a.contatos>0&&<div style={{color:MUTED,fontSize:11,padding:"0 4px",lineHeight:1.4}}>Contatos e Interessados batem porque, até agora, nenhum contato desse período ainda virou cliente.</div>}
+
+      {(report.impressoes!=null||report.cliques!=null)&&(
+        <div className="kpi-grid">
+          {report.impressoes!=null&&<KPICard label="Impressões" value={report.impressoes.toLocaleString('pt-BR')} accent={BLUE} icon="👁"/>}
+          {report.cliques!=null&&<KPICard label="Cliques no anúncio" value={report.cliques.toLocaleString('pt-BR')} accent={GOLD2} icon="↑"/>}
+          {report.ctr!=null&&<KPICard label="CTR" value={`${report.ctr}%`} accent={GREEN} icon="◈"/>}
+        </div>
+      )}
 
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:10}}>Evolução de interessados</div>
@@ -4506,13 +4555,56 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         <ResponsiveContainer width="100%" height={140}>
           <BarChart data={report.horarios} margin={{top:6,right:6,left:-28,bottom:0}}>
             <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.05)" vertical={false}/>
-            <XAxis dataKey="faixa" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false}/>
+            <XAxis dataKey="faixa" tick={{fill:MUTED,fontSize:9,fontFamily:F}} axisLine={false} tickLine={false} interval={0}/>
             <YAxis hide/>
             <Tooltip contentStyle={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,color:"#fff",fontSize:12,fontFamily:F}}/>
             <Bar dataKey="contatos" fill={GOLD} radius={[4,4,0,0]}/>
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {report.acoesLocais&&(()=>{
+        const AL=[
+          {label:"Visitas à loja",v:report.acoesLocais.visitas_loja,icon:"🏪"},
+          {label:"Chamadas",v:report.acoesLocais.chamadas,icon:"📞"},
+          {label:"Visualizações de rota",v:report.acoesLocais.visualizacoes_rota,icon:"🚗"},
+          {label:"Visitas ao site",v:report.acoesLocais.visitas_site,icon:"🌐"},
+          {label:"Pedidos",v:report.acoesLocais.pedidos,icon:"📦"},
+          {label:"Visualizações do menu",v:report.acoesLocais.visualizacoes_menu,icon:"📋"},
+        ].filter(x=>x.v!=null);
+        if(!AL.length)return null;
+        return(
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+            <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:2}}>Ações locais no Google Ads</div>
+            <div style={{color:MUTED,fontSize:10,marginBottom:12}}>Ações que as pessoas fizeram depois de ver o anúncio</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {AL.map(x=>(
+                <div key={x.label} style={{background:CARD2,borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{color:MUTED,fontSize:10,marginBottom:2}}>{x.icon} {x.label}</div>
+                  <div style={{color:TEXT,fontWeight:800,fontSize:16}}>{x.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {report.termosPesquisa?.length>0&&(
+        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>Termos de pesquisa que mais geraram cliques</div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {report.termosPesquisa.map((t,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<report.termosPesquisa.length-1?`1px solid ${BDR}`:"none"}}>
+                <span style={{color:TEXT,fontSize:13}}>{t.termo}</span>
+                <span style={{display:"flex",alignItems:"center",gap:8}}>
+                  {t.cliques!=null&&<span style={{color:MUTED,fontSize:11}}>{t.cliques} cliques</span>}
+                  {t.custo!=null&&<span style={{color:GOLD,fontWeight:700,fontSize:12}}>{fmtBRL(t.custo)}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {report.interesses&&(
         <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
