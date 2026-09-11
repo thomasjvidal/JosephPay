@@ -2333,18 +2333,15 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   const [error,setError]=useState("");
   const [savedCount,setSavedCount]=useState(null);
   const [savedDup,setSavedDup]=useState(0);
-  // Continua a numeração de onde a base já está (ex: já existe "Contato Google 100" →
-  // o próximo lote começa em 101) — sem isso, toda lista nova recomeçava do 1 e ficava
-  // um monte de contato com o mesmo nome numerado.
+  // Continua a numeração a partir do TOTAL real de contatos já cadastrados desse
+  // produtor (não só de quem já tinha nome "Contato N") — contar só pelo padrão de
+  // nome batia errado com o total de verdade da lista (ex: 66 contatos na base, mas
+  // "Contato Google 50" pra frente, porque a maioria tem nome próprio).
   const [proximoNumero,setProximoNumero]=useState(1);
   useEffect(()=>{
     if(!ownerId)return;
     apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{
-      const nums=(d?.customers||[]).map(c=>{
-        const m=/^Contato(?: Google)? (\d+)$/.exec(c.name||"");
-        return m?Number(m[1]):0;
-      });
-      setProximoNumero((nums.length?Math.max(...nums):0)+1);
+      setProximoNumero((d?.customers?.length||0)+1);
     });
   },[ownerId]);
   const parseLine=(line)=>{
