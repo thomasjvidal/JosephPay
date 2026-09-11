@@ -2341,8 +2341,12 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
       else if(/^[\d\s()+.-]{8,}$/.test(p))phone=p.replace(/[^\d+]/g,"");
       else if(!name)name=p;
     });
-    if(!name)return null;
-    return{name,phone,email};
+    // Lista só com telefone (ex: exportada do Google Ads, sem nome nenhum) não pode
+    // ser descartada — sem isso, colar só números fazia a lista inteira desaparecer
+    // silenciosamente (nenhum contato reconhecido, botão de salvar ficava desabilitado
+    // sem explicar por quê).
+    if(!name&&!phone&&!email)return null;
+    return{name:name||phone||email,phone,email};
   };
   const parsed=text.split("\n").map(parseLine).filter(Boolean);
   const salvar=async()=>{
