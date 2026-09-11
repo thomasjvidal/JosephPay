@@ -4,19 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Relatório — Joseph Pay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body {
     background:#131312; color:#F2EFEA;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
     -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     min-height:100vh; min-height:100dvh;
     padding:20px 14px 60px;
   }
   .wrap { max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
   .card { background:#1C1C1A; border:1px solid rgba(255,255,255,0.06); border-radius:20px; padding:18px; }
-  .brand { font-family:Georgia,serif; font-weight:700; font-size:20px; color:#F2EFEA; }
-  .brand sup { font-size:11px; }
+  .brand { font-family:'Newsreader',Georgia,serif; font-weight:700; font-size:20px; color:#F2EFEA; letter-spacing:-0.01em; }
+  .brand sup { font-size:11px; vertical-align:super; }
   .tagline { color:#B0A894; font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; margin-top:2px; }
   .muted { color:#B0A894; }
   .row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
@@ -24,25 +26,26 @@
   .titulo { font-weight:800; font-size:18px; margin-bottom:3px; }
   .cliente { font-weight:700; font-size:15px; }
   .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .kpi { background:#1C1C1A; border:1px solid rgba(255,255,255,0.06); border-radius:16px; padding:14px; }
-  .kpi .lbl { color:#B0A894; font-size:10px; margin-bottom:6px; }
-  .kpi .val { font-weight:800; font-size:20px; }
-  .kpi .sub { font-size:10px; margin-top:3px; }
+  .kpi { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07); border-radius:14px; padding:14px 12px; }
+  .kpi .lbl { color:rgba(255,255,255,0.38); font-size:9.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:7px; }
+  .kpi .val { font-family:'Newsreader',Georgia,serif; color:#F2EFEA; font-weight:700; font-size:17px; letter-spacing:-0.02em; }
+  .kpi .val.green { color:#22C55E; }
+  .kpi .sub { color:rgba(255,255,255,0.3); font-size:10px; margin-top:3px; font-weight:500; }
   .sec-title { font-weight:700; font-size:13px; margin-bottom:10px; }
   .list-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:13px; }
   .list-row:last-child { border-bottom:none; }
-  .gold { color:#D4AF37; }
+  .gold { color:#D4AF37; font-weight:700; }
   .green { color:#22C55E; }
   .insights ul { margin:0; padding:0 0 0 18px; font-size:13px; line-height:1.8; }
   .insights .lbl { color:#D4AF37; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:10px; }
   .comment-box textarea, .comment-box input {
     width:100%; background:#20201E; border:1px solid rgba(255,255,255,0.08); border-radius:12px;
-    color:#F2EFEA; font-family:inherit; font-size:13px; padding:10px 12px; margin-bottom:8px;
+    color:#F2EFEA; font-family:'Inter',inherit; font-size:13px; padding:10px 12px; margin-bottom:8px;
   }
   .comment-box textarea { min-height:70px; resize:vertical; }
   .btn {
     width:100%; background:#D4AF37; border:none; border-radius:100px; padding:13px;
-    color:#0C0C0C; font-weight:700; font-size:14px; cursor:pointer;
+    color:#0C0C0C; font-weight:700; font-size:14px; cursor:pointer; font-family:'Inter',inherit;
   }
   .btn:disabled { opacity:0.5; cursor:default; }
   .comment-item { padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
@@ -74,8 +77,8 @@ function renderErro(msg){
   app.innerHTML = `<div class="center">${esc(msg)}</div>`;
 }
 
-function kpiCard(label, val, sub, accent){
-  return `<div class="kpi"><div class="lbl">${esc(label)}</div><div class="val" style="color:${accent||'#F2EFEA'}">${esc(val)}</div>${sub?`<div class="sub muted">${esc(sub)}</div>`:""}</div>`;
+function kpiCard(label, val, sub, green){
+  return `<div class="kpi"><div class="lbl">${esc(label)}</div><div class="val${green?" green":""}">${esc(val)}</div>${sub?`<div class="sub">${esc(sub)}</div>`:""}</div>`;
 }
 
 async function carregar(){
@@ -96,12 +99,12 @@ function render({producer, tipo, dados: r, comments}){
   const tipoLabel = TIPO_LABEL[tipo] || "Relatório de Resultados";
 
   const KPIS = [
-    kpiCard("Contatos", a.contatos, null, "#D4AF37"),
-    kpiCard("Interessados", a.interessados, null, "#22C55E"),
-    kpiCard("Visitas ao site", a.visitas, null, "#5B8DEF"),
-    kpiCard("Conversas no WhatsApp", r.conversasWhatsapp, null, "#F2CA50"),
+    kpiCard("Contatos", a.contatos),
+    kpiCard("Interessados", a.interessados, null, true),
+    kpiCard("Visitas ao site", a.visitas),
+    kpiCard("Conversas no WhatsApp", r.conversasWhatsapp),
   ];
-  if(r.investimento!=null) KPIS.push(kpiCard("Investimento", fmtBRL(r.investimento), null, "#D4AF37"));
+  if(r.investimento!=null) KPIS.push(kpiCard("Investimento", fmtBRL(r.investimento)));
 
   let html = `
     <div class="card">
@@ -121,10 +124,20 @@ function render({producer, tipo, dados: r, comments}){
 
   if(r.impressoes!=null || r.cliques!=null){
     let extra = [];
-    if(r.impressoes!=null) extra.push(kpiCard("Impressões", r.impressoes.toLocaleString('pt-BR'), null, "#5B8DEF"));
-    if(r.cliques!=null) extra.push(kpiCard("Cliques no anúncio", r.cliques.toLocaleString('pt-BR'), null, "#F2CA50"));
-    if(r.ctr!=null) extra.push(kpiCard("CTR", `${r.ctr}%`, null, "#22C55E"));
+    if(r.impressoes!=null) extra.push(kpiCard("Impressões", r.impressoes.toLocaleString('pt-BR')));
+    if(r.cliques!=null) extra.push(kpiCard("Cliques no anúncio", r.cliques.toLocaleString('pt-BR')));
+    if(r.ctr!=null) extra.push(kpiCard("CTR", `${r.ctr}%`, null, true));
     html += `<div class="kpi-grid">${extra.join("")}</div>`;
+  }
+
+  if(a.contatos===a.interessados && a.contatos>0){
+    html += `<div class="muted" style="font-size:11px;padding:0 4px;line-height:1.4">Contatos e Interessados batem porque, até agora, nenhum contato desse período ainda virou cliente.</div>`;
+  }
+
+  if(r.evolucaoInteressados?.length){
+    html += `<div class="card"><div class="sec-title">Evolução de interessados</div>`;
+    html += r.evolucaoInteressados.map(m => `<div class="list-row"><span>${esc(m.mes)}</span><span class="muted">${m.interessados}</span></div>`).join("");
+    html += `</div>`;
   }
 
   if(r.canaisOrigem?.length){
@@ -150,7 +163,7 @@ function render({producer, tipo, dados: r, comments}){
     ].filter(([,v]) => v!=null);
     if(AL.length){
       html += `<div class="card"><div class="sec-title">Ações locais no Google Ads</div>`;
-      html += AL.map(([l,v]) => `<div class="list-row"><span>${esc(l)}</span><span class="muted">${v}</span></div>`).join("");
+      html += AL.map(([l,v]) => `<div class="list-row"><span class="muted">${esc(l)}</span><span style="font-weight:800">${v}</span></div>`).join("");
       html += `</div>`;
     }
   }
@@ -163,7 +176,7 @@ function render({producer, tipo, dados: r, comments}){
 
   if(r.interesses?.length){
     html += `<div class="card"><div class="sec-title">O que as pessoas procuraram</div>`;
-    html += r.interesses.map(it => `<div class="list-row"><span>${esc(it.nome)}</span><span class="muted">${it.count} · ${it.pct}%</span></div>`).join("");
+    html += r.interesses.map(it => `<div class="list-row"><span>${esc(it.nome)}</span><span><span class="muted">${it.count}</span> <span class="gold">${it.pct}%</span></span></div>`).join("");
     html += `</div>`;
   }
 
