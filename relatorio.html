@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Relatório — Joseph Pay</title>
+<meta property="og:title" content="Relatório — Joseph Pay">
+<meta property="og:description" content="Seu relatório de resultados, direto do Joseph Pay.">
+<meta property="og:image" content="https://josephpay.com/favicon.jpeg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Relatório — Joseph Pay">
+<meta name="twitter:image" content="https://josephpay.com/favicon.jpeg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -32,12 +39,14 @@
   .kpi .val.green { color:#22C55E; }
   .kpi .sub { color:rgba(255,255,255,0.3); font-size:10px; margin-top:3px; font-weight:500; }
   .sec-title { font-weight:700; font-size:13px; margin-bottom:10px; }
+  .sec-sub { color:#B0A894; font-size:10px; margin-bottom:10px; margin-top:-6px; }
   .list-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:13px; }
   .list-row:last-child { border-bottom:none; }
   .gold { color:#D4AF37; font-weight:700; }
   .green { color:#22C55E; }
   .insights ul { margin:0; padding:0 0 0 18px; font-size:13px; line-height:1.8; }
   .insights .lbl { color:#D4AF37; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:10px; }
+  .legend-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:7px; flex-shrink:0; }
   .comment-box textarea, .comment-box input {
     width:100%; background:#20201E; border:1px solid rgba(255,255,255,0.08); border-radius:12px;
     color:#F2EFEA; font-family:'Inter',inherit; font-size:13px; padding:10px 12px; margin-bottom:8px;
@@ -55,11 +64,21 @@
   .comment-texto { font-size:13px; line-height:1.5; }
   .center { text-align:center; padding:30px 10px; color:#B0A894; font-size:13px; }
   .footer { text-align:center; padding:8px 4px; color:#B0A894; font-size:10px; line-height:1.6; }
+
+  .gate { position:fixed; inset:0; background:#131312; display:flex; align-items:center; justify-content:center; padding:20px; z-index:50; }
+  .gate-box { max-width:360px; width:100%; text-align:center; }
+  .gate-box .brand { font-size:26px; margin-bottom:4px; }
+  .gate-box .tagline { margin-bottom:26px; }
+  .gate-box p { color:#B0A894; font-size:13px; line-height:1.5; margin-bottom:18px; }
+  .gate-box input {
+    width:100%; background:#1C1C1A; border:1px solid rgba(255,255,255,0.1); border-radius:12px;
+    color:#F2EFEA; font-family:'Inter',inherit; font-size:14px; padding:13px 14px; margin-bottom:12px; text-align:center;
+  }
 </style>
 </head>
 <body>
 <div class="wrap" id="app">
-  <div class="center">Carregando relatório…</div>
+  <div class="center">Carregando…</div>
 </div>
 
 <script>
@@ -72,6 +91,8 @@ const fmtData = iso => new Date(iso).toLocaleDateString('pt-BR');
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 const TIPO_LABEL = {semanal:"Relatório Semanal",quinzenal:"Relatório Quinzenal",mensal:"Relatório Mensal",trimestral:"Relatório Trimestral"};
+const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", BLUE="#5B8DEF", MUTED="#B0A894";
+const PIE_CORES=[GOLD,GREEN,BLUE,GOLD2,MUTED];
 
 function renderErro(msg){
   app.innerHTML = `<div class="center">${esc(msg)}</div>`;
@@ -81,19 +102,94 @@ function kpiCard(label, val, sub, green){
   return `<div class="kpi"><div class="lbl">${esc(label)}</div><div class="val${green?" green":""}">${esc(val)}</div>${sub?`<div class="sub">${esc(sub)}</div>`:""}</div>`;
 }
 
-async function carregar(){
+// ── Gráficos leves em SVG puro (sem carregar React/Recharts só pra 3 cards) ──────
+function svgLineChart(data, key){
+  const W=300, H=110, padTop=10, padBot=20, padX=8;
+  const vals=data.map(d=>Number(d[key])||0);
+  const max=Math.max(...vals, 1);
+  const stepX=(W-padX*2)/Math.max(data.length-1,1);
+  const pts=data.map((d,i)=>{
+    const x=padX+i*stepX;
+    const y=padTop+(H-padTop-padBot)*(1-(Number(d[key])||0)/max);
+    return {x,y,v:d[key]};
+  });
+  const path=pts.map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const dots=pts.map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${GOLD}"/>`).join("");
+  const labels=data.map((d,i)=>`<text x="${(padX+i*stepX).toFixed(1)}" y="${H-4}" font-size="9" fill="${MUTED}" text-anchor="middle" font-family="Inter,sans-serif">${esc(d.mes||d.label||"")}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:140px" preserveAspectRatio="none"><path d="${path}" fill="none" stroke="${GOLD}" stroke-width="2" vector-effect="non-scaling-stroke"/>${dots}${labels}</svg>`;
+}
+
+function svgBarChart(data, key, labelKey){
+  const W=300, H=110, padBot=20, barGap=6;
+  const vals=data.map(d=>Number(d[key])||0);
+  const max=Math.max(...vals, 1);
+  const barW=(W-barGap*(data.length-1))/data.length;
+  const bars=data.map((d,i)=>{
+    const v=Number(d[key])||0;
+    const h=Math.max((v/max)*(H-padBot-6), v>0?2:0);
+    const x=i*(barW+barGap);
+    const y=H-padBot-h;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${GOLD}"/>`;
+  }).join("");
+  const labels=data.map((d,i)=>`<text x="${(i*(barW+barGap)+barW/2).toFixed(1)}" y="${H-4}" font-size="8" fill="${MUTED}" text-anchor="middle" font-family="Inter,sans-serif">${esc(d[labelKey]||"")}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:140px" preserveAspectRatio="none">${bars}${labels}</svg>`;
+}
+
+function svgDonutChart(data){
+  const size=150, r=52, cx=size/2, cy=size/2, strokeW=20;
+  const circ=2*Math.PI*r;
+  let acc=0;
+  const total=data.reduce((s,d)=>s+d.count,0)||1;
+  const arcs=data.map((d,i)=>{
+    const frac=d.count/total;
+    const len=frac*circ;
+    const dash=`${len.toFixed(2)} ${(circ-len).toFixed(2)}`;
+    const offset=(-acc*circ).toFixed(2);
+    acc+=frac;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${PIE_CORES[i%PIE_CORES.length]}" stroke-width="${strokeW}" stroke-dasharray="${dash}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${size} ${size}" style="width:150px;height:150px;display:block;margin:0 auto">${arcs}</svg>`;
+}
+
+async function carregar(nome){
   if(!token){ renderErro("Link inválido."); return; }
   let resp;
   try{
-    resp = await fetch(`${JOSEPHPAY_API}/api/public/google-ads-report/${encodeURIComponent(token)}`);
+    resp = await fetch(`${JOSEPHPAY_API}/api/public/google-ads-report/${encodeURIComponent(token)}?nome=${encodeURIComponent(nome)}`);
   }catch(e){ renderErro("Não foi possível carregar o relatório agora. Tente novamente em instantes."); return; }
   if(!resp.ok){ renderErro("Relatório não encontrado."); return; }
   const data = await resp.json();
   if(data.error){ renderErro(data.error); return; }
-  render(data);
+  render(data, nome);
 }
 
-function render({producer, tipo, dados: r, comments}){
+function mostrarPortao(){
+  const salvo = (() => { try { return localStorage.getItem(`jp_relatorio_nome_${token}`) || ""; } catch(e){ return ""; } })();
+  app.innerHTML = `
+    <div class="gate">
+      <div class="gate-box">
+        <div class="brand">Joseph Pay<sup>®</sup></div>
+        <div class="tagline">Mais contatos. Mais clientes.</div>
+        <p>Antes de ver o relatório, como você se chama?</p>
+        <input type="text" id="g-nome" placeholder="Seu nome" maxlength="120" value="${esc(salvo)}">
+        <button class="btn" id="g-entrar">Ver relatório</button>
+      </div>
+    </div>
+  `;
+  const input = document.getElementById("g-nome");
+  const entrar = () => {
+    const nome = input.value.trim();
+    if(!nome) { input.focus(); return; }
+    try { localStorage.setItem(`jp_relatorio_nome_${token}`, nome); } catch(e){}
+    app.innerHTML = `<div class="center">Carregando relatório…</div>`;
+    carregar(nome);
+  };
+  document.getElementById("g-entrar").addEventListener("click", entrar);
+  input.addEventListener("keydown", e => { if(e.key==="Enter") entrar(); });
+  input.focus();
+}
+
+function render({producer, tipo, dados: r, comments}, nomeVisitante){
   const a = r.atual;
   const periodoLabel = `${fmtData(r.periodo.from)} — ${fmtData(r.periodo.to)}`;
   const tipoLabel = TIPO_LABEL[tipo] || "Relatório de Resultados";
@@ -135,21 +231,17 @@ function render({producer, tipo, dados: r, comments}){
   }
 
   if(r.evolucaoInteressados?.length){
-    html += `<div class="card"><div class="sec-title">Evolução de interessados</div>`;
-    html += r.evolucaoInteressados.map(m => `<div class="list-row"><span>${esc(m.mes)}</span><span class="muted">${m.interessados}</span></div>`).join("");
-    html += `</div>`;
+    html += `<div class="card"><div class="sec-title">Evolução de interessados</div>${svgLineChart(r.evolucaoInteressados,"interessados")}</div>`;
   }
 
   if(r.canaisOrigem?.length){
-    html += `<div class="card"><div class="sec-title">Canais de origem</div>`;
-    html += r.canaisOrigem.map(c => `<div class="list-row"><span>${esc(c.label)}</span><span class="muted">${c.count} · ${c.pct}%</span></div>`).join("");
-    html += `</div>`;
+    html += `<div class="card"><div class="sec-title">Canais de origem</div>${svgDonutChart(r.canaisOrigem)}<div style="margin-top:12px">`;
+    html += r.canaisOrigem.map((c,i) => `<div class="list-row"><span style="display:flex;align-items:center"><span class="legend-dot" style="background:${PIE_CORES[i%PIE_CORES.length]}"></span>${esc(c.label)}</span><span class="muted">${c.count} · ${c.pct}%</span></div>`).join("");
+    html += `</div></div>`;
   }
 
   if(r.horarios?.length){
-    html += `<div class="card"><div class="sec-title">Horários com mais contatos</div>`;
-    html += r.horarios.map(h => `<div class="list-row"><span>${esc(h.faixa)}</span><span class="muted">${h.contatos}</span></div>`).join("");
-    html += `</div>`;
+    html += `<div class="card"><div class="sec-title">Horários com mais contatos</div><div class="sec-sub">Horário de Brasília</div>${svgBarChart(r.horarios,"contatos","faixa")}</div>`;
   }
 
   if(r.acoesLocais){
@@ -192,7 +284,7 @@ function render({producer, tipo, dados: r, comments}){
 
     <div class="card comment-box">
       <div class="sec-title">Deixar um comentário</div>
-      <input type="text" id="c-autor" placeholder="Seu nome (opcional)" maxlength="120">
+      <input type="text" id="c-autor" placeholder="Seu nome (opcional)" maxlength="120" value="${esc(nomeVisitante||"")}">
       <textarea id="c-texto" placeholder="Escreva aqui…" maxlength="2000"></textarea>
       <button class="btn" id="c-enviar">Enviar comentário</button>
       <div id="c-status" class="muted" style="font-size:11px;margin-top:8px"></div>
@@ -239,7 +331,7 @@ function render({producer, tipo, dados: r, comments}){
   });
 }
 
-carregar();
+mostrarPortao();
 </script>
 </body>
 </html>

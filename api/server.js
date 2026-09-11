@@ -3385,10 +3385,10 @@ app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, require
     if (!dados?.periodo?.to) return res.status(400).json({ error: "Dados do relatório ausentes" });
     const to = new Date(dados.periodo.to);
     const ano = to.getFullYear(), mes = to.getMonth() + 1;
-    const { data: existente } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
+    const { data: existente } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at,viewed_by").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
     if (existente) {
       await supabase.from("google_ads_reports").update({ periodo_from: dados.periodo.from, periodo_to: dados.periodo.to, dados, updated_at: new Date().toISOString() }).eq("id", existente.id);
-      return res.json({ share_token: existente.share_token, viewed_at: existente.viewed_at });
+      return res.json({ share_token: existente.share_token, viewed_at: existente.viewed_at, viewed_by: existente.viewed_by });
     }
     const share_token = crypto.randomBytes(12).toString("base64url");
     const { error } = await supabase.from("google_ads_reports").insert({
@@ -3397,7 +3397,7 @@ app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, require
       dados, share_token,
     });
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ share_token, viewed_at: null });
+    res.json({ share_token, viewed_at: null, viewed_by: null });
   } catch (err) {
     console.error("[google-ads/report/save]", err.message);
     res.status(500).json({ error: err.message });
@@ -3409,7 +3409,7 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
   try {
     const { id } = req.params;
     const { data: reports, error } = await supabase.from("google_ads_reports")
-      .select("id,tipo,ano,mes,periodo_from,periodo_to,share_token,viewed_at,created_at")
+      .select("id,tipo,ano,mes,periodo_from,periodo_to,share_token,viewed_at,viewed_by,created_at")
       .eq("owner_id", id).order("ano", { ascending: false }).order("mes", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     const ids = (reports || []).map(r => r.id);
@@ -3437,9 +3437,14 @@ app.get("/api/public/google-ads-report/:token", async (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   try {
     const { token } = req.params;
+    // Nome de quem tá vendo — o relatório.html pede antes de mostrar o relatório, pra
+    // o admin saber QUEM viu, não só que alguém viu.
+    const nome = req.query.nome ? String(req.query.nome).trim().slice(0, 120) : null;
     const { data: report } = await supabase.from("google_ads_reports").select("id,tipo,dados,owner_id,viewed_at").eq("share_token", token).maybeSingle();
     if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
-    if (!report.viewed_at) {
+    if (nome) {
+      supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString(), viewed_by: nome }).eq("id", report.id).then(null, () => {});
+    } else if (!report.viewed_at) {
       supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString() }).eq("id", report.id).then(null, () => {});
     }
     const { data: profile } = await supabase.from("profiles").select("name,avatar_url").eq("id", report.owner_id).maybeSingle();

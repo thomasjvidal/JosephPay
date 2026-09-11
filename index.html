@@ -4511,7 +4511,9 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
   const linkPublico=shareInfo?.share_token?`https://josephpay.com/relatorio.html?token=${shareInfo.share_token}`:null;
   const compartilhar=()=>{
     if(!linkPublico)return;
-    const texto=`${TIPO_LABEL[tipoRelatorio]} de Resultados — ${cliente?.name}\n${periodoLabel}\n\n${linkPublico}`;
+    // navigator.share com "text" e "url" juntos faz o app de destino (Mensagens, Notas)
+    // colar o link duas vezes — manda só um dos dois, nunca os dois.
+    const texto=`${TIPO_LABEL[tipoRelatorio]} de Resultados — ${cliente?.name}\n${periodoLabel}`;
     if(navigator.share)navigator.share({title:"Relatório",text:texto,url:linkPublico}).catch(()=>{});
     else navigator.clipboard?.writeText(linkPublico);
   };
@@ -4534,7 +4536,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
             )}
             {shareInfo&&(
               <div style={{color:shareInfo.viewed_at?GREEN:MUTED,fontSize:10,marginTop:4}}>
-                {shareInfo.viewed_at?`👁 Visualizado em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')}`:"Ainda não visualizado"}
+                {shareInfo.viewed_at?`👁 Visualizado${shareInfo.viewed_by?` por ${shareInfo.viewed_by}`:""} em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')}`:"Ainda não visualizado"}
               </div>
             )}
           </div>
@@ -4746,7 +4748,7 @@ function GAHistorico({clienteId,cliente}){
                   <div style={{color:MUTED,fontSize:11}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,fontWeight:600}}>{r.viewed_at?"👁 Visto":"Não visto"}</div>
+                  <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,fontWeight:600}}>{r.viewed_at?`👁 Visto${r.viewed_by?` por ${r.viewed_by}`:""}`:"Não visto"}</div>
                   {r.comment_count>0&&<div style={{color:GOLD,fontSize:11,marginTop:2}}>💬 {r.comment_count}</div>}
                 </div>
               </div>
