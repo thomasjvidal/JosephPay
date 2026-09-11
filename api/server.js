@@ -3373,6 +3373,120 @@ app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin,
   }
 });
 
+// Salva (ou atualiza) o relatório já gerado pelo admin — sempre a mesma linha por
+// (produtor, tipo, ano, mês), pra nunca duplicar no histórico: gerar de novo o
+// relatório de agosto substitui o de agosto, mantendo o mesmo link já compartilhado
+// (`share_token`). Recebe o JSON que GET .../report já devolveu, pra não recalcular
+// tudo de novo (principalmente a chamada de IA dos insights, que custa e demora).
+app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tipo, dados } = req.body;
+    if (!dados?.periodo?.to) return res.status(400).json({ error: "Dados do relatório ausentes" });
+    const to = new Date(dados.periodo.to);
+    const ano = to.getFullYear(), mes = to.getMonth() + 1;
+    const { data: existente } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
+    if (existente) {
+      await supabase.from("google_ads_reports").update({ periodo_from: dados.periodo.from, periodo_to: dados.periodo.to, dados, updated_at: new Date().toISOString() }).eq("id", existente.id);
+      return res.json({ share_token: existente.share_token, viewed_at: existente.viewed_at });
+    }
+    const share_token = crypto.randomBytes(12).toString("base64url");
+    const { error } = await supabase.from("google_ads_reports").insert({
+      owner_id: id, tipo: tipo || "mensal", ano, mes,
+      periodo_from: dados.periodo.from, periodo_to: dados.periodo.to,
+      dados, share_token,
+    });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ share_token, viewed_at: null });
+  } catch (err) {
+    console.error("[google-ads/report/save]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Histórico de relatórios salvos desse produtor — alimenta a tela "Histórico".
+app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: reports, error } = await supabase.from("google_ads_reports")
+      .select("id,tipo,ano,mes,periodo_from,periodo_to,share_token,viewed_at,created_at")
+      .eq("owner_id", id).order("ano", { ascending: false }).order("mes", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    const ids = (reports || []).map(r => r.id);
+    let contagem = {};
+    if (ids.length) {
+      const { data: comentarios } = await supabase.from("google_ads_report_comments").select("report_id").in("report_id", ids);
+      (comentarios || []).forEach(c => { contagem[c.report_id] = (contagem[c.report_id] || 0) + 1; });
+    }
+    res.json({ reports: (reports || []).map(r => ({ ...r, comment_count: contagem[r.id] || 0 })) });
+  } catch (err) {
+    console.error("[google-ads/reports]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Visualização pública do relatório salvo — sem login, sem acesso a mais nada do
+// sistema. Mesmo padrão de rota pública já usado em /api/minichat/config: CORS aberto,
+// busca só pelo token, nunca expõe o id do produtor nem qualquer outro dado.
+app.options("/api/public/google-ads-report/:token", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+app.get("/api/public/google-ads-report/:token", async (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  try {
+    const { token } = req.params;
+    const { data: report } = await supabase.from("google_ads_reports").select("id,tipo,dados,owner_id,viewed_at").eq("share_token", token).maybeSingle();
+    if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
+    if (!report.viewed_at) {
+      supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString() }).eq("id", report.id).then(null, () => {});
+    }
+    const { data: profile } = await supabase.from("profiles").select("name,avatar_url").eq("id", report.owner_id).maybeSingle();
+    const { data: comments } = await supabase.from("google_ads_report_comments").select("autor,texto,created_at").eq("report_id", report.id).order("created_at", { ascending: true });
+    res.json({ producer: { name: profile?.name || null, avatar_url: profile?.avatar_url || null }, tipo: report.tipo, dados: report.dados, comments: comments || [] });
+  } catch (err) {
+    console.error("[public/google-ads-report]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Comentário público no relatório (ex: o produtor respondendo pelo link) — mesmo
+// padrão de rate limit por chave já usado em /api/leads/create.
+const reportCommentRateMap = new Map();
+app.options("/api/public/google-ads-report/:token/comment", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+});
+app.post("/api/public/google-ads-report/:token/comment", async (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  try {
+    const { token } = req.params;
+    const now = Date.now();
+    const entry = reportCommentRateMap.get(token) || { count: 0, reset: now + 60000 };
+    if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
+    entry.count++;
+    reportCommentRateMap.set(token, entry);
+    if (entry.count > 5) return res.status(429).json({ error: "Muitos comentários seguidos, tente de novo em instantes." });
+
+    const { autor, texto } = req.body;
+    if (!texto || !texto.trim()) return res.status(400).json({ error: "Comentário vazio" });
+    const { data: report } = await supabase.from("google_ads_reports").select("id").eq("share_token", token).maybeSingle();
+    if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
+    const { data, error } = await supabase.from("google_ads_report_comments").insert({
+      report_id: report.id,
+      autor: autor ? String(autor).trim().slice(0, 120) : null,
+      texto: String(texto).trim().slice(0, 2000),
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    console.error("[public/google-ads-report/comment]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Status do Google Ads por produtor
 app.get("/api/admin/producers/:id/google/status", requireAuth, requireAdmin, async (req, res) => {
   try {

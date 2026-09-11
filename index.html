@@ -359,10 +359,10 @@ function Pill({label,value,accent,sub}){
   );
 }
 
-function Btn({children,onClick,color,outline,sm}){
+function Btn({children,onClick,color,outline,sm,disabled}){
   const c=color||GOLD;
   return(
-    <button onClick={onClick} style={{background:outline?"transparent":c,border:`1.5px solid ${outline?c+"70":"transparent"}`,borderRadius:100,padding:sm?"8px 22px":"15px 28px",color:outline?c:(c===GOLD?"#0C0C0C":TEXT),fontWeight:600,fontSize:sm?13:14,cursor:"pointer",width:(outline||sm)?"auto":"100%",fontFamily:F,letterSpacing:"0.01em"}}>
+    <button onClick={onClick} disabled={disabled} style={{background:outline?"transparent":c,border:`1.5px solid ${outline?c+"70":"transparent"}`,borderRadius:100,padding:sm?"8px 22px":"15px 28px",color:outline?c:(c===GOLD?"#0C0C0C":TEXT),fontWeight:600,fontSize:sm?13:14,cursor:disabled?"default":"pointer",opacity:disabled?0.5:1,width:(outline||sm)?"auto":"100%",fontFamily:F,letterSpacing:"0.01em"}}>
       {children}
     </button>
   );
@@ -4242,6 +4242,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
     {id:"anuncios",label:"Ver anúncios"},
     {id:"palavras",label:"Ver palavras-chave"},
     {id:"relatorios",label:"Gerar relatório"},
+    {id:"historico",label:"Ver histórico"},
   ];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -4476,11 +4477,20 @@ function GARelatorios({cliente,presetDias,setPresetDias,tipoRelatorio,setTipoRel
 
 function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
   const [report,setReport]=useState(null);
+  const [shareInfo,setShareInfo]=useState(null);
   useEffect(()=>{
     if(!clienteId)return;
     setReport(null);
+    setShareInfo(null);
     const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/report?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setReport);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/report?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(data=>{
+      setReport(data);
+      // Gerar o relatório já salva/atualiza a linha no histórico — sem precisar de um
+      // botão "Salvar" separado pra lembrar de clicar.
+      if(data&&!data.error){
+        apiCall(`/api/admin/producers/${clienteId}/google-ads/report/save`,{method:"POST",body:JSON.stringify({tipo:tipoRelatorio,dados:data})}).then(setShareInfo);
+      }
+    });
   },[clienteId,presetDias]);
   if(!report)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Gerando relatório…</div>;
   if(report.error)return <div style={{color:RED,fontSize:13,textAlign:"center",padding:20}}>{report.error}</div>;
@@ -4498,10 +4508,12 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
     {label:"Conversas no WhatsApp",v:String(report.conversasWhatsapp),accent:GOLD2,icon:"💬"},
   ];
   if(report.investimento!=null)KPIS.push({label:"Investimento",v:fmtBRL(report.investimento),accent:GOLD,icon:"⊕"});
+  const linkPublico=shareInfo?.share_token?`https://josephpay.com/relatorio.html?token=${shareInfo.share_token}`:null;
   const compartilhar=()=>{
-    const texto=`${TIPO_LABEL[tipoRelatorio]} de Resultados — ${cliente?.name}\n${periodoLabel}\n\n${KPIS.map(k=>`${k.label}: ${k.v}`).join("\n")}`;
-    if(navigator.share)navigator.share({title:"Relatório",text:texto}).catch(()=>{});
-    else navigator.clipboard?.writeText(texto);
+    if(!linkPublico)return;
+    const texto=`${TIPO_LABEL[tipoRelatorio]} de Resultados — ${cliente?.name}\n${periodoLabel}\n\n${linkPublico}`;
+    if(navigator.share)navigator.share({title:"Relatório",text:texto,url:linkPublico}).catch(()=>{});
+    else navigator.clipboard?.writeText(linkPublico);
   };
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -4518,6 +4530,11 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
               <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",marginTop:4}}>
                 <span style={{width:6,height:6,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
                 <span style={{color:MUTED,fontSize:10}}>{canaisAtivos.join(" · ")}</span>
+              </div>
+            )}
+            {shareInfo&&(
+              <div style={{color:shareInfo.viewed_at?GREEN:MUTED,fontSize:10,marginTop:4}}>
+                {shareInfo.viewed_at?`👁 Visualizado em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')}`:"Ainda não visualizado"}
               </div>
             )}
           </div>
@@ -4671,7 +4688,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Btn sm outline onClick={()=>window.print()}>Exportar PDF</Btn>
-        <Btn sm outline onClick={compartilhar}>Compartilhar</Btn>
+        <Btn sm outline onClick={compartilhar} disabled={!linkPublico}>{linkPublico?"Compartilhar link":"Salvando…"}</Btn>
       </div>
     </div>
   );
@@ -4689,6 +4706,55 @@ function GAIntegracao({clienteId,cliente}){
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px",color:MUTED,fontSize:13,lineHeight:1.6}}>
         O Google Ads de <b style={{color:TEXT}}>{cliente?.name||"esse produtor"}</b> funciona só por inserção manual agora — sem conexão automática. Volte pra "Visão geral" e use "🖊️ Inserir investimento manualmente".
       </div>
+    </div>
+  );
+}
+
+function GAHistorico({clienteId,cliente}){
+  const [reports,setReports]=useState(null);
+  const [copiadoId,setCopiadoId]=useState(null);
+  const carregar=()=>{
+    if(!clienteId)return;
+    setReports(null);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/reports`).then(d=>setReports(d?.reports||[]));
+  };
+  useEffect(carregar,[clienteId]);
+  const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const TIPO_LABEL={semanal:"Semanal",quinzenal:"Quinzenal",mensal:"Mensal",trimestral:"Trimestral"};
+  const copiarLink=(r)=>{
+    const link=`https://josephpay.com/relatorio.html?token=${r.share_token}`;
+    navigator.clipboard?.writeText(link);
+    setCopiadoId(r.id);
+    setTimeout(()=>setCopiadoId(id=>id===r.id?null:id),1800);
+  };
+  const porAno={};
+  (reports||[]).forEach(r=>{(porAno[r.ano]=porAno[r.ano]||[]).push(r);});
+  const anos=Object.keys(porAno).sort((a,b)=>b-a);
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Histórico de relatórios · {cliente?.name}</div>
+      {reports===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>}
+      {reports!==null&&reports.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum relatório salvo ainda — gere um em "Gerar relatório".</div>}
+      {anos.map(ano=>(
+        <div key={ano} style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginTop:4}}>{ano}</div>
+          {porAno[ano].map(r=>(
+            <div key={r.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <div>
+                  <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}</div>
+                  <div style={{color:MUTED,fontSize:11}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,fontWeight:600}}>{r.viewed_at?"👁 Visto":"Não visto"}</div>
+                  {r.comment_count>0&&<div style={{color:GOLD,fontSize:11,marginTop:2}}>💬 {r.comment_count}</div>}
+                </div>
+              </div>
+              <Btn sm outline onClick={()=>copiarLink(r)}>{copiadoId===r.id?"Link copiado!":"Copiar link"}</Btn>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -4733,6 +4799,7 @@ function GoogleAdsAdmin(){
       {screen==="palavras"&&<GAPalavrasChave clienteId={clienteId} cliente={cliente} onNav={onNav}/>}
       {screen==="relatorios"&&<GARelatorios cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} tipoRelatorio={tipoRelatorio} setTipoRelatorio={setTipoRelatorio} onGerar={()=>setScreen("relatoriogerado")}/>}
       {screen==="relatoriogerado"&&<GARelatorioGerado clienteId={clienteId} cliente={cliente} presetDias={presetDias} tipoRelatorio={tipoRelatorio}/>}
+      {screen==="historico"&&<GAHistorico clienteId={clienteId} cliente={cliente}/>}
       {screen==="integracao"&&<GAIntegracao clienteId={clienteId} cliente={cliente} onUpdated={carregarClientes}/>}
     </div>
   );

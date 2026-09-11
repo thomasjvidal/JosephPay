@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Relatório — Joseph Pay</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background:#131312; color:#F2EFEA;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    min-height:100vh; min-height:100dvh;
+    padding:20px 14px 60px;
+  }
+  .wrap { max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
+  .card { background:#1C1C1A; border:1px solid rgba(255,255,255,0.06); border-radius:20px; padding:18px; }
+  .brand { font-family:Georgia,serif; font-weight:700; font-size:20px; color:#F2EFEA; }
+  .brand sup { font-size:11px; }
+  .tagline { color:#B0A894; font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; margin-top:2px; }
+  .muted { color:#B0A894; }
+  .row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+  .periodo { text-align:right; font-size:11px; color:#B0A894; }
+  .titulo { font-weight:800; font-size:18px; margin-bottom:3px; }
+  .cliente { font-weight:700; font-size:15px; }
+  .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .kpi { background:#1C1C1A; border:1px solid rgba(255,255,255,0.06); border-radius:16px; padding:14px; }
+  .kpi .lbl { color:#B0A894; font-size:10px; margin-bottom:6px; }
+  .kpi .val { font-weight:800; font-size:20px; }
+  .kpi .sub { font-size:10px; margin-top:3px; }
+  .sec-title { font-weight:700; font-size:13px; margin-bottom:10px; }
+  .list-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:13px; }
+  .list-row:last-child { border-bottom:none; }
+  .gold { color:#D4AF37; }
+  .green { color:#22C55E; }
+  .insights ul { margin:0; padding:0 0 0 18px; font-size:13px; line-height:1.8; }
+  .insights .lbl { color:#D4AF37; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:10px; }
+  .comment-box textarea, .comment-box input {
+    width:100%; background:#20201E; border:1px solid rgba(255,255,255,0.08); border-radius:12px;
+    color:#F2EFEA; font-family:inherit; font-size:13px; padding:10px 12px; margin-bottom:8px;
+  }
+  .comment-box textarea { min-height:70px; resize:vertical; }
+  .btn {
+    width:100%; background:#D4AF37; border:none; border-radius:100px; padding:13px;
+    color:#0C0C0C; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .btn:disabled { opacity:0.5; cursor:default; }
+  .comment-item { padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
+  .comment-item:last-child { border-bottom:none; }
+  .comment-autor { font-weight:700; font-size:12px; margin-bottom:2px; }
+  .comment-data { color:#B0A894; font-size:10px; margin-left:6px; font-weight:400; }
+  .comment-texto { font-size:13px; line-height:1.5; }
+  .center { text-align:center; padding:30px 10px; color:#B0A894; font-size:13px; }
+  .footer { text-align:center; padding:8px 4px; color:#B0A894; font-size:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="center">Carregando relatório…</div>
+</div>
+
+<script>
+const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
+const params = new URLSearchParams(location.search);
+const token = params.get("token");
+const app = document.getElementById("app");
+const fmtBRL = v => (v==null?"—":Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}));
+const fmtData = iso => new Date(iso).toLocaleDateString('pt-BR');
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const TIPO_LABEL = {semanal:"Relatório Semanal",quinzenal:"Relatório Quinzenal",mensal:"Relatório Mensal",trimestral:"Relatório Trimestral"};
+
+function renderErro(msg){
+  app.innerHTML = `<div class="center">${esc(msg)}</div>`;
+}
+
+function kpiCard(label, val, sub, accent){
+  return `<div class="kpi"><div class="lbl">${esc(label)}</div><div class="val" style="color:${accent||'#F2EFEA'}">${esc(val)}</div>${sub?`<div class="sub muted">${esc(sub)}</div>`:""}</div>`;
+}
+
+async function carregar(){
+  if(!token){ renderErro("Link inválido."); return; }
+  let resp;
+  try{
+    resp = await fetch(`${JOSEPHPAY_API}/api/public/google-ads-report/${encodeURIComponent(token)}`);
+  }catch(e){ renderErro("Não foi possível carregar o relatório agora. Tente novamente em instantes."); return; }
+  if(!resp.ok){ renderErro("Relatório não encontrado."); return; }
+  const data = await resp.json();
+  if(data.error){ renderErro(data.error); return; }
+  render(data);
+}
+
+function render({producer, tipo, dados: r, comments}){
+  const a = r.atual;
+  const periodoLabel = `${fmtData(r.periodo.from)} — ${fmtData(r.periodo.to)}`;
+  const tipoLabel = TIPO_LABEL[tipo] || "Relatório de Resultados";
+
+  const KPIS = [
+    kpiCard("Contatos", a.contatos, null, "#D4AF37"),
+    kpiCard("Interessados", a.interessados, null, "#22C55E"),
+    kpiCard("Visitas ao site", a.visitas, null, "#5B8DEF"),
+    kpiCard("Conversas no WhatsApp", r.conversasWhatsapp, null, "#F2CA50"),
+  ];
+  if(r.investimento!=null) KPIS.push(kpiCard("Investimento", fmtBRL(r.investimento), null, "#D4AF37"));
+
+  let html = `
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="brand">Joseph Pay<sup>®</sup></div>
+          <div class="tagline">Mais contatos. Mais clientes.</div>
+        </div>
+        <div class="periodo">${esc(periodoLabel)}</div>
+      </div>
+      <div class="titulo">${esc(tipoLabel)}</div>
+      <div class="cliente">${esc(producer?.name || "")}</div>
+    </div>
+
+    <div class="kpi-grid">${KPIS.join("")}</div>
+  `;
+
+  if(r.impressoes!=null || r.cliques!=null){
+    let extra = [];
+    if(r.impressoes!=null) extra.push(kpiCard("Impressões", r.impressoes.toLocaleString('pt-BR'), null, "#5B8DEF"));
+    if(r.cliques!=null) extra.push(kpiCard("Cliques no anúncio", r.cliques.toLocaleString('pt-BR'), null, "#F2CA50"));
+    if(r.ctr!=null) extra.push(kpiCard("CTR", `${r.ctr}%`, null, "#22C55E"));
+    html += `<div class="kpi-grid">${extra.join("")}</div>`;
+  }
+
+  if(r.canaisOrigem?.length){
+    html += `<div class="card"><div class="sec-title">Canais de origem</div>`;
+    html += r.canaisOrigem.map(c => `<div class="list-row"><span>${esc(c.label)}</span><span class="muted">${c.count} · ${c.pct}%</span></div>`).join("");
+    html += `</div>`;
+  }
+
+  if(r.horarios?.length){
+    html += `<div class="card"><div class="sec-title">Horários com mais contatos</div>`;
+    html += r.horarios.map(h => `<div class="list-row"><span>${esc(h.faixa)}</span><span class="muted">${h.contatos}</span></div>`).join("");
+    html += `</div>`;
+  }
+
+  if(r.acoesLocais){
+    const AL = [
+      ["Visitas à loja", r.acoesLocais.visitas_loja],
+      ["Chamadas", r.acoesLocais.chamadas],
+      ["Visualizações de rota", r.acoesLocais.visualizacoes_rota],
+      ["Visitas ao site", r.acoesLocais.visitas_site],
+      ["Pedidos", r.acoesLocais.pedidos],
+      ["Visualizações do menu", r.acoesLocais.visualizacoes_menu],
+    ].filter(([,v]) => v!=null);
+    if(AL.length){
+      html += `<div class="card"><div class="sec-title">Ações locais no Google Ads</div>`;
+      html += AL.map(([l,v]) => `<div class="list-row"><span>${esc(l)}</span><span class="muted">${v}</span></div>`).join("");
+      html += `</div>`;
+    }
+  }
+
+  if(r.termosPesquisa?.length){
+    html += `<div class="card"><div class="sec-title">Termos de pesquisa que mais geraram cliques</div>`;
+    html += r.termosPesquisa.map(t => `<div class="list-row"><span>${esc(t.termo)}</span><span class="muted">${t.cliques!=null?`${t.cliques} cliques`:""} ${t.custo!=null?`<span class="gold">${fmtBRL(t.custo)}</span>`:""}</span></div>`).join("");
+    html += `</div>`;
+  }
+
+  if(r.interesses?.length){
+    html += `<div class="card"><div class="sec-title">O que as pessoas procuraram</div>`;
+    html += r.interesses.map(it => `<div class="list-row"><span>${esc(it.nome)}</span><span class="muted">${it.count} · ${it.pct}%</span></div>`).join("");
+    html += `</div>`;
+  }
+
+  if(r.insights?.length){
+    html += `<div class="card insights"><div class="lbl">O que descobrimos este mês</div><ul>${r.insights.map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>`;
+  }
+
+  html += `
+    <div class="footer">
+      <div class="brand" style="font-size:13px">Joseph Pay<sup>®</sup></div>
+      Tecnologia para o crescimento da sua empresa.
+    </div>
+
+    <div class="card comment-box">
+      <div class="sec-title">Deixar um comentário</div>
+      <input type="text" id="c-autor" placeholder="Seu nome (opcional)" maxlength="120">
+      <textarea id="c-texto" placeholder="Escreva aqui…" maxlength="2000"></textarea>
+      <button class="btn" id="c-enviar">Enviar comentário</button>
+      <div id="c-status" class="muted" style="font-size:11px;margin-top:8px"></div>
+    </div>
+
+    <div class="card" id="comments-card" style="${comments?.length?"":"display:none"}">
+      <div class="sec-title">Comentários</div>
+      <div id="comments-list">${(comments||[]).map(c => `<div class="comment-item"><div class="comment-autor">${esc(c.autor || "Anônimo")}<span class="comment-data">${fmtData(c.created_at)}</span></div><div class="comment-texto">${esc(c.texto)}</div></div>`).join("")}</div>
+    </div>
+  `;
+
+  app.innerHTML = html;
+
+  document.getElementById("c-enviar").addEventListener("click", async () => {
+    const autor = document.getElementById("c-autor").value.trim();
+    const texto = document.getElementById("c-texto").value.trim();
+    const status = document.getElementById("c-status");
+    if(!texto){ status.textContent = "Escreva algo antes de enviar."; return; }
+    const btn = document.getElementById("c-enviar");
+    btn.disabled = true; status.textContent = "Enviando…";
+    try{
+      const res = await fetch(`${JOSEPHPAY_API}/api/public/google-ads-report/${encodeURIComponent(token)}/comment`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({autor, texto}),
+      });
+      const data = await res.json();
+      if(!res.ok || data.error){ status.textContent = data.error || "Não foi possível enviar."; btn.disabled = false; return; }
+      const list = document.getElementById("comments-list");
+      const card = document.getElementById("comments-card");
+      card.style.display = "";
+      const div = document.createElement("div");
+      div.className = "comment-item";
+      div.innerHTML = `<div class="comment-autor">${esc(data.autor || "Anônimo")}<span class="comment-data">${fmtData(data.created_at)}</span></div><div class="comment-texto">${esc(data.texto)}</div>`;
+      list.appendChild(div);
+      document.getElementById("c-texto").value = "";
+      status.textContent = "Comentário enviado!";
+      status.className = "green";
+      btn.disabled = false;
+    }catch(e){
+      status.textContent = "Não foi possível enviar. Tente de novo.";
+      btn.disabled = false;
+    }
+  });
+}
+
+carregar();
+</script>
+</body>
+</html>
