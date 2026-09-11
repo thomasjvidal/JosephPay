@@ -4174,7 +4174,6 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
     {id:"anuncios",label:"Ver anúncios"},
     {id:"palavras",label:"Ver palavras-chave"},
     {id:"relatorios",label:"Gerar relatório"},
-    {id:"integracao",label:"Configurar Google Ads"},
   ];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -4210,10 +4209,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
         </div>
         {!overview.adsConnected&&(
           <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5,display:"flex",flexDirection:"column",gap:10}}>
-            <div>
-              Contatos, clientes e faturamento acima já são reais. Investimento e campanhas aparecem depois de conectar o Google Ads pra esse cliente.{" "}
-              <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora</button>
-            </div>
+            <div>Contatos, clientes e faturamento acima já são reais. O Investimento é inserido manualmente — veja abaixo.</div>
             <GAInvestimentoManualAdmin clienteId={clienteId} presetDias={presetDias} overview={overview} onSalvo={carregarOverview}/>
           </div>
         )}
@@ -4474,153 +4470,17 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
   );
 }
 
-function GAIntegracao({clienteId,cliente,onUpdated}){
-  const [prodStatus,setProdStatus]=useState(null);
-  const [platStatus,setPlatStatus]=useState(null);
-  const [customerId,setCustomerId]=useState(cliente?.google_ads_customer_id||"");
-  const [saving,setSaving]=useState(false);
-  const [msg,setMsg]=useState("");
-  const [conectarMsg,setConectarMsg]=useState("");
-  const [checando,setChecando]=useState(false);
-  const [desconectando,setDesconectando]=useState(false);
-  const [devToken,setDevToken]=useState("");
-  const [savingToken,setSavingToken]=useState(false);
-  const [tokenMsg,setTokenMsg]=useState("");
-  const [editToken,setEditToken]=useState(false);
-  const [editCliente,setEditCliente]=useState(false);
-  const carregarStatus=()=>Promise.all([
-    apiCall(`/api/admin/producers/${clienteId}/google/status`).then(setProdStatus),
-    apiCall('/api/admin/google-ads/status').then(setPlatStatus),
-  ]);
-  useEffect(()=>{if(clienteId)carregarStatus();},[clienteId]);
-  useEffect(()=>{setCustomerId(prodStatus?.customerId||cliente?.google_ads_customer_id||"");},[prodStatus?.customerId,cliente?.id]);
-  const conectar=async()=>{
-    setConectarMsg("");
-    const win=window.open('','_blank');
-    const d=await apiCall(`/api/admin/producers/${clienteId}/google/connect`);
-    if(d?.error||!d?.url){win&&win.close();setConectarMsg(d?.error||"Não consegui abrir a conexão com o Google.");return;}
-    if(win)win.location.href=d.url;else window.location.href=d.url;
-    setChecando(true);
-    let tentativas=0;
-    const iv=setInterval(async()=>{
-      tentativas++;
-      const s=await apiCall(`/api/admin/producers/${clienteId}/google/status`);
-      if(s?.connected){clearInterval(iv);setChecando(false);setProdStatus(s);onUpdated&&onUpdated();}
-      else if(tentativas>40){clearInterval(iv);setChecando(false);}
-    },3000);
-  };
-  const desconectar=async()=>{
-    if(!confirm("Desconectar o Google Ads deste produtor?"))return;
-    setDesconectando(true);
-    await apiCall(`/api/admin/producers/${clienteId}/google/disconnect`,{method:'POST'});
-    setDesconectando(false);
-    await carregarStatus();
-    onUpdated&&onUpdated();
-  };
-  const salvar=async()=>{
-    setSaving(true);setMsg("");
-    const d=await apiCall(`/api/admin/producers/${clienteId}/google-ads`,{method:'POST',body:JSON.stringify({customer_id:customerId.trim()})});
-    setSaving(false);
-    if(d?.error){setMsg(d.error);return;}
-    setMsg("✓ Salvo.");setTimeout(()=>{setMsg("");setEditCliente(false);},2000);
-    onUpdated&&onUpdated();
-  };
-  const salvarToken=async()=>{
-    if(!devToken.trim())return;
-    setSavingToken(true);setTokenMsg("");
-    const d=await apiCall('/api/admin/google-ads/developer-token',{method:'POST',body:JSON.stringify({token:devToken.trim()})});
-    setSavingToken(false);
-    if(d?.error){setTokenMsg(d.error);return;}
-    setDevToken("");setEditToken(false);
-    setTokenMsg("✓ Salvo.");setTimeout(()=>setTokenMsg(""),2500);
-    apiCall('/api/admin/google-ads/status').then(setPlatStatus);
-  };
-  if(!prodStatus||!platStatus)return null;
-  const connected=prodStatus.connected;
-  const effectiveCustomerId=prodStatus.customerId||cliente?.google_ads_customer_id||"";
+function GAIntegracao({clienteId,cliente}){
+  // A conexão automática (OAuth + Developer Token) saiu de circulação a pedido do
+  // Thomas — o Google Ads agora funciona só via inserção manual (Visão geral →
+  // "Inserir investimento manualmente"). O backend de conexão real continua existindo
+  // (não foi apagado, só deixou de aparecer aqui) — se um dia fizer sentido reativar
+  // pra algum produtor específico, dá pra trazer essa tela de volta sem reescrever nada.
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Integração · Google Ads</div>
-
-      {/* Conexão do Google Ads do produtor */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"13px 18px",borderBottom:`1px solid ${BDR}`,background:connected?`${GREEN}08`:`${RED}08`}}>
-          <div style={{color:MUTED,fontSize:10,textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Conta do produtor</div>
-          <div style={{color:TEXT,fontWeight:700,fontSize:13}}>{cliente?.name||"Produtor"}</div>
-        </div>
-        {/* Status da conexão Google */}
-        <div style={{padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:connected?GREEN:RED,flexShrink:0}}/>
-              <div>
-                <div style={{color:connected?TEXT:MUTED,fontSize:13,fontWeight:connected?600:400}}>
-                  {connected?"Google Ads conectado":"Google Ads não conectado"}
-                </div>
-                {connected&&prodStatus.email&&<div style={{color:MUTED,fontSize:11,marginTop:1}}>{prodStatus.email}</div>}
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              {connected&&<button onClick={desconectar} disabled={desconectando} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>{desconectando?"…":"Desconectar"}</button>}
-              <button onClick={conectar} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0}}>
-                {checando?"Verificando…":connected?"Reconectar":"Conectar"}
-              </button>
-            </div>
-          </div>
-          {!connected&&<div style={{color:MUTED,fontSize:11,marginTop:10,lineHeight:1.5,background:`${RED}10`,borderRadius:10,padding:"10px 12px"}}>
-            Clique em <b style={{color:TEXT}}>Conectar</b> e faça login com a conta Google Ads de <b style={{color:TEXT}}>{cliente?.name}</b>. O ID da conta é descoberto automaticamente.
-          </div>}
-          {conectarMsg&&<div style={{color:RED,fontSize:11,marginTop:8}}>{conectarMsg}</div>}
-          {checando&&<div style={{color:MUTED,fontSize:11,marginTop:8}}>Autorize na aba do Google que abriu, a tela atualiza sozinha.</div>}
-        </div>
-        {/* ID da conta */}
-        <div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:effectiveCustomerId?GREEN:"rgba(255,255,255,0.2)",flexShrink:0}}/>
-              <div>
-                <div style={{color:effectiveCustomerId?TEXT:MUTED,fontSize:13,fontWeight:effectiveCustomerId?600:400}}>
-                  {effectiveCustomerId?`ID: ${effectiveCustomerId}`:"ID da conta · não configurado"}
-                </div>
-                {effectiveCustomerId&&connected&&<div style={{color:MUTED,fontSize:11,marginTop:1}}>Auto-descoberto ou configurado</div>}
-              </div>
-            </div>
-            <button onClick={()=>setEditCliente(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0}}>{effectiveCustomerId?(editCliente?"Cancelar":"Alterar"):"Configurar"}</button>
-          </div>
-          {(!effectiveCustomerId||editCliente)&&(
-            <div style={{padding:"0 18px 14px"}}>
-              {!effectiveCustomerId&&<div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Normalmente preenchido automaticamente após conectar o Google. Se não aparecer, cole o ID manualmente (formato 123-456-7890).</div>}
-              <input value={customerId} onChange={e=>setCustomerId(e.target.value)} placeholder="123-456-7890" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-              <Btn sm outline onClick={salvar}>{saving?"Salvando…":"Salvar"}</Btn>
-              {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{msg}</div>}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Configuração da plataforma (Developer Token) */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
-        <div style={{padding:"13px 18px",borderBottom:`1px solid ${BDR}`}}>
-          <div style={{color:MUTED,fontSize:10,textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Plataforma · vale para todos os produtores</div>
-          <div style={{color:TEXT,fontWeight:700,fontSize:13}}>JosephPay</div>
-        </div>
-        <div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:platStatus?.developerTokenConfigured?GREEN:"rgba(255,255,255,0.2)",flexShrink:0}}/>
-              <span style={{color:platStatus?.developerTokenConfigured?TEXT:MUTED,fontSize:13,fontWeight:platStatus?.developerTokenConfigured?600:400}}>Developer Token{platStatus?.developerTokenConfigured?" configurado":" pendente"}</span>
-            </div>
-            <button onClick={()=>setEditToken(t=>!t)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0}}>{platStatus?.developerTokenConfigured?(editToken?"Cancelar":"Alterar"):"Configurar"}</button>
-          </div>
-          {(!platStatus?.developerTokenConfigured||editToken)&&(
-            <div style={{padding:"0 18px 14px"}}>
-              {!platStatus?.developerTokenConfigured&&<div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Ferramentas → Central de API no Google Ads. Vale pra toda a plataforma.</div>}
-              <input value={devToken} onChange={e=>setDevToken(e.target.value)} placeholder="Cole o token aqui" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-              <Btn sm outline onClick={salvarToken}>{savingToken?"Salvando…":"Salvar"}</Btn>
-              {tokenMsg&&<div style={{color:tokenMsg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:8}}>{tokenMsg}</div>}
-            </div>
-          )}
-        </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px",color:MUTED,fontSize:13,lineHeight:1.6}}>
+        O Google Ads de <b style={{color:TEXT}}>{cliente?.name||"esse produtor"}</b> funciona só por inserção manual agora — sem conexão automática. Volte pra "Visão geral" e use "🖊️ Inserir investimento manualmente".
       </div>
     </div>
   );
