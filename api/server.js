@@ -3140,6 +3140,22 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       }
     }
 
+    // Sem Investimento real (não conectado, ou a busca acima falhou): usa a snapshot
+    // manual mais recente pra esse período (colada pelo admin a partir de prints do
+    // app do Google Ads) em vez de deixar "—" pra sempre. Nunca sobrescreve um número
+    // real — só entra quando `investimento` continua null.
+    let investimentoManual = false, investimentoManualAt = null;
+    const periodoDias = Number(req.query.periodo_dias) || null;
+    if (investimento == null && periodoDias) {
+      const { atual: snapAtual, anterior: snapAnterior } = await getManualSnapshots(id, periodoDias);
+      if (snapAtual) {
+        investimento = Number(snapAtual.investimento_total);
+        investimentoManual = true;
+        investimentoManualAt = snapAtual.created_at;
+        if (snapAnterior) anterior.investimento = Number(snapAnterior.investimento_total);
+      }
+    }
+
     res.json({
       cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
       adsConnected,
@@ -3148,6 +3164,8 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       googleAdsCustomerId: profile.google_ads_customer_id || null,
       periodo: { from: from.toISOString(), to: to.toISOString() },
       investimento,
+      investimentoManual,
+      investimentoManualAt,
       atual,
       anterior,
     });
@@ -3205,9 +3223,38 @@ function adsDateRange(req) {
   return { fromStr: from.toISOString().slice(0, 10), toStr: to.toISOString().slice(0, 10) };
 }
 
+// Busca as duas snapshots manuais mais recentes (atual + anterior) pra um produtor +
+// período — usadas como substituto do Investimento/campanhas reais quando o Google Ads
+// ainda não está conectado. `periodo_dias` precisa bater exatamente (7/14/30/90): uma
+// snapshot colada pra "30 dias" não vale pra outra janela, pra nunca misturar números
+// de períodos diferentes sem o admin saber.
+async function getManualSnapshots(ownerId, periodoDias) {
+  if (!periodoDias) return { atual: null, anterior: null };
+  const { data } = await supabase
+    .from("google_ads_manual_snapshots")
+    .select("id,investimento_total,campanhas,created_at")
+    .eq("owner_id", ownerId)
+    .eq("periodo_dias", periodoDias)
+    .order("created_at", { ascending: false })
+    .limit(2);
+  const rows = data || [];
+  return { atual: rows[0] || null, anterior: rows[1] || null };
+}
+
+
 app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
-  if (!(await requireAdsConnection(profile))) return res.json({ connected: false, campaigns: [] });
+  if (!(await requireAdsConnection(profile))) {
+    // Sem conexão real: mostra a lista de campanhas da snapshot manual mais recente
+    // (colada a partir de prints do app do Google Ads) em vez do card de "pendente".
+    const periodoDias = Number(req.query.periodo_dias) || null;
+    const { atual: snap } = await getManualSnapshots(req.params.id, periodoDias);
+    if (snap && Array.isArray(snap.campanhas) && snap.campanhas.length) {
+      const campaigns = snap.campanhas.map(c => ({ name: c.nome, cost: Number(c.investimento) || 0, clicks: c.cliques ?? null }));
+      return res.json({ connected: false, manual: true, manualAt: snap.created_at, campaigns });
+    }
+    return res.json({ connected: false, campaigns: [] });
+  }
   try {
     const { fromStr, toStr } = adsDateRange(req);
     const adsToken = await getAdsAccessToken(profile);
@@ -3229,6 +3276,39 @@ app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdm
     res.json({ connected: true, campaigns: [], error: describeGoogleAdsError(err) });
   }
 });
+
+// Salva um "snapshot" manual do Google Ads (investimento total + campanhas) colado
+// pelo admin a partir da resposta de uma IA externa que leu prints do app do Google
+// Ads — ponte enquanto a conta desse produtor não está com a integração real
+// conectada. Sempre INSERT (nunca sobrescreve o anterior), pra manter histórico e
+// permitir comparar com a última vez que o admin atualizou.
+app.post("/api/admin/producers/:id/google-ads/manual-snapshot", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { periodo_dias, investimento_total, campanhas, raw_gpt_text } = req.body;
+    if (![7, 14, 30, 90].includes(Number(periodo_dias))) return res.status(400).json({ error: "Período inválido" });
+    const investimento = Number(investimento_total);
+    if (!Number.isFinite(investimento) || investimento < 0) return res.status(400).json({ error: "Investimento total inválido" });
+    const campanhasLimpas = Array.isArray(campanhas)
+      ? campanhas
+          .map(c => ({ nome: String(c?.nome || "").trim(), investimento: Number(c?.investimento), cliques: c?.cliques != null ? Number(c.cliques) : null }))
+          .filter(c => c.nome && Number.isFinite(c.investimento))
+      : [];
+    const { data, error } = await supabase.from("google_ads_manual_snapshots").insert({
+      owner_id: id,
+      periodo_dias: Number(periodo_dias),
+      investimento_total: investimento,
+      campanhas: campanhasLimpas,
+      raw_gpt_text: raw_gpt_text ? String(raw_gpt_text).slice(0, 20000) : null,
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    console.error("[google-ads/manual-snapshot]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
   const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, ads: [] });

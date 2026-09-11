@@ -4064,13 +4064,106 @@ function GAPendente({titulo,texto,onNav}){
   );
 }
 
+// Ponte enquanto o Google Ads real não está conectado (ou o admin não quer forçar a
+// integração agora): copia um prompt fixo pro ChatGPT, cola de volta a resposta JSON
+// (com o investimento total + campanhas extraídos de prints do app do Google Ads) e
+// isso alimenta o "Investimento"/"Ver campanhas" no lugar do "—". Mesmo padrão de
+// "copiar prompt / colar resposta do GPT" já usado no editor de Perguntas do Mini
+// Chat (PerguntasMinichatAdmin) — só que salvando um snapshot histórico em vez de
+// perguntas, pra permitir comparar com a última vez que o admin atualizou.
+function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
+  const [open,setOpen]=useState(false);
+  const [showImport,setShowImport]=useState(false);
+  const [jsonInput,setJsonInput]=useState("");
+  const [erro,setErro]=useState("");
+  const [preview,setPreview]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const pill={background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F};
+  const periodoLabel=`${presetDias} dias`;
+  const copiarPrompt=()=>{
+    const prompt=`Você vai receber uma ou mais capturas de tela do Google Ads (app ou site), do período de ${periodoLabel}. Extraia os dados reais visíveis e devolva SOMENTE um JSON puro, sem markdown, neste formato exato:\n\n{\n  "investimento_total": <número em reais, só dígitos e ponto>,\n  "campanhas": [\n    {"nome": "nome da campanha", "investimento": <número>, "cliques": <número ou null>}\n  ]\n}\n\nNão invente nenhum valor — se não conseguir ler algum número com certeza, use null nesse campo. Não escreva nada além do JSON.`;
+    navigator.clipboard.writeText(prompt).catch(()=>{});
+    alert('Prompt copiado! Cole no ChatGPT junto com os prints do Google Ads, copie a resposta (o JSON) e clique em "Colar resposta do ChatGPT" abaixo.');
+  };
+  const importar=()=>{
+    try{
+      let raw=jsonInput.trim();
+      raw=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
+      raw=raw.replace(/[“”]/g,'"').replace(/[‘’]/g,"'");
+      const parsed=JSON.parse(raw);
+      const investimento_total=Number(parsed.investimento_total);
+      if(!Number.isFinite(investimento_total)||investimento_total<0)throw new Error("investimento_total ausente ou inválido");
+      const campanhas=Array.isArray(parsed.campanhas)?parsed.campanhas.map(c=>({nome:String(c?.nome||""),investimento:Number(c?.investimento)||0,cliques:c?.cliques!=null?Number(c.cliques):null})).filter(c=>c.nome):[];
+      setPreview({investimento_total,campanhas});
+      setErro("");
+    }catch(e){
+      setPreview(null);
+      setErro("Não consegui ler esse JSON — confirme que colou só a resposta do ChatGPT, sem texto antes ou depois.");
+    }
+  };
+  const salvar=async()=>{
+    if(!preview)return;
+    setSaving(true);
+    const d=await apiCall(`/api/admin/producers/${clienteId}/google-ads/manual-snapshot`,{method:'POST',body:JSON.stringify({periodo_dias:presetDias,investimento_total:preview.investimento_total,campanhas:preview.campanhas,raw_gpt_text:jsonInput})});
+    setSaving(false);
+    if(d.error){setErro(d.error);return;}
+    setPreview(null);setJsonInput("");setShowImport(false);setOpen(false);
+    onSalvo&&onSalvo();
+  };
+  if(!open)return(
+    <button onClick={()=>setOpen(true)} style={{background:"none",border:"none",color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>
+      {overview?.investimentoManual?"🖊️ Atualizar investimento manualmente":"🖊️ Inserir investimento manualmente"}
+    </button>
+  );
+  return(
+    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{color:MUTED,fontSize:11,lineHeight:1.4}}>Tire print do Google Ads no celular, cole no ChatGPT com o prompt abaixo, e cole a resposta aqui. Vale só pro período de <b style={{color:TEXT}}>{periodoLabel}</b> — pra outro período, repita.</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={copiarPrompt} style={pill}>Copiar prompt pro ChatGPT</button>
+        <button onClick={()=>setShowImport(s=>!s)} style={pill}>{showImport?"▲ Fechar":"Colar resposta do ChatGPT"}</button>
+        <button onClick={()=>setOpen(false)} style={{...pill,background:"none"}}>Cancelar</button>
+      </div>
+      {showImport&&(<div>
+        <textarea value={jsonInput} onChange={e=>{setJsonInput(e.target.value);setErro("");setPreview(null);}} rows={6} placeholder={'{\n  "investimento_total": 850,\n  "campanhas": [{"nome":"Campanha X","investimento":400,"cliques":32}]\n}'} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${erro?RED:BDR}`,borderRadius:10,padding:"10px 12px",color:TEXT,fontSize:12,outline:"none",fontFamily:"monospace",resize:"vertical",marginBottom:6,boxSizing:"border-box"}}/>
+        {erro&&<div style={{color:RED,fontSize:11,marginBottom:6}}>{erro}</div>}
+        <button onClick={importar} style={pill}>Importar</button>
+      </div>)}
+      {preview&&(
+        <div style={{background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+          <div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Investimento total (R$)</div>
+            <input type="number" value={preview.investimento_total} onChange={e=>setPreview(p=>({...p,investimento_total:Number(e.target.value)}))} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"7px 10px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"}}/>
+          </div>
+          {preview.campanhas.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Campanhas</div>
+              {preview.campanhas.map((c,i)=>(
+                <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input value={c.nome} onChange={e=>setPreview(p=>{const cs=[...p.campanhas];cs[i]={...cs[i],nome:e.target.value};return{...p,campanhas:cs};})} style={{flex:2,background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 8px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,minWidth:0}}/>
+                  <input type="number" value={c.investimento} onChange={e=>setPreview(p=>{const cs=[...p.campanhas];cs[i]={...cs[i],investimento:Number(e.target.value)};return{...p,campanhas:cs};})} style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 8px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,minWidth:0}}/>
+                  <button onClick={()=>setPreview(p=>({...p,campanhas:p.campanhas.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:RED,fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={salvar} disabled={saving} style={{background:GREEN,border:"none",borderRadius:10,padding:"10px",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":"Salvar"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPresetDias,onNav}){
   const [overview,setOverview]=useState(null);
+  const carregarOverview=()=>{
+    if(!clienteId)return;
+    const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setOverview);
+  };
   useEffect(()=>{
     if(!clienteId)return;
     setOverview(null);
-    const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+    carregarOverview();
   },[clienteId,presetDias]);
   const a=overview?.atual;
   const custoContato=(overview?.investimento!=null&&a?.contatos)?fmtBRL(overview.investimento/a.contatos):"—";
@@ -4094,7 +4187,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
       {overview&&(<>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD},
+            {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD,sub:overview.investimentoManual?`🖊️ manual, ${new Date(overview.investimentoManualAt).toLocaleDateString('pt-BR')}`:null},
             {label:"Contatos",v:String(a.contatos),c:GOLD},
             {label:"Interessados",v:String(a.interessados),c:GOLD},
             {label:"Clientes",v:String(a.clientes),c:GREEN},
@@ -4102,7 +4195,10 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           ].map(r=>(
             <div key={r.label} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{r.label}</span>
-              <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:16}}>{r.v}</span>
+              <span style={{textAlign:"right"}}>
+                <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:16}}>{r.v}</span>
+                {r.sub&&<div style={{color:MUTED,fontSize:9,fontWeight:600,marginTop:1}}>{r.sub}</div>}
+              </span>
             </div>
           ))}
         </div>
@@ -4113,9 +4209,12 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
           <KPICard label="Visitas de anúncio" value={String(a.visitasAnuncio)} sub="clique pago" icon="⊕"/>
         </div>
         {!overview.adsConnected&&(
-          <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>
-            Contatos, clientes e faturamento acima já são reais. Investimento e campanhas aparecem depois de conectar o Google Ads pra esse cliente.{" "}
-            <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora</button>
+          <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5,display:"flex",flexDirection:"column",gap:10}}>
+            <div>
+              Contatos, clientes e faturamento acima já são reais. Investimento e campanhas aparecem depois de conectar o Google Ads pra esse cliente.{" "}
+              <button onClick={()=>onNav("integracao")} style={{background:"none",border:"none",color:GOLD,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>Configurar agora</button>
+            </div>
+            <GAInvestimentoManualAdmin clienteId={clienteId} presetDias={presetDias} overview={overview} onSalvo={carregarOverview}/>
           </div>
         )}
         {overview.adsConnected&&overview.adsError&&(
@@ -4152,7 +4251,7 @@ function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
     if(!clienteId)return;
     setOverview(null);
     const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setOverview);
   },[clienteId,presetDias]);
   if(!overview)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
   const a=overview.atual,p=overview.anterior;
@@ -4187,6 +4286,7 @@ function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
         <KPICard label="Clientes" value={pctChange(a.clientes,p.clientes)} accent={a.clientes>=p.clientes?GREEN:RED} icon="◎"/>
         <KPICard label="Faturamento" value={pctChange(a.faturamento,p.faturamento)} accent={a.faturamento>=p.faturamento?GREEN:RED} icon="⊕"/>
         <KPICard label="Visitas" value={pctChange(a.visitas,p.visitas)} accent={a.visitas>=p.visitas?GREEN:RED} icon="👁"/>
+        {overview.investimento!=null&&p.investimento!=null&&<KPICard label="Investimento" value={pctChange(overview.investimento,p.investimento)} accent={overview.investimento<=p.investimento?GREEN:RED} icon="🖊️"/>}
       </div>
       <div style={{background:CARD2,borderRadius:14,padding:"14px 16px",color:TEXT,fontSize:12,lineHeight:1.7}}>
         {a.contatos>=p.contatos?"Estamos trazendo mais pessoas que no período anterior.":"Menos pessoas chegaram do que no período anterior."}<br/>
@@ -4196,21 +4296,28 @@ function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
   );
 }
 
-function GACampanhas({clienteId,cliente,onNav,onSelect}){
+function GACampanhas({clienteId,cliente,presetDias,onNav,onSelect}){
   const [data,setData]=useState(null);
-  useEffect(()=>{if(!clienteId)return;setData(null);apiCall(`/api/admin/producers/${clienteId}/google-ads/campaigns`).then(setData);},[clienteId]);
+  useEffect(()=>{if(!clienteId)return;setData(null);apiCall(`/api/admin/producers/${clienteId}/google-ads/campaigns?periodo_dias=${presetDias||30}`).then(setData);},[clienteId,presetDias]);
   if(!data)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
-  if(!data.connected)return <GAPendente titulo={`Campanhas · ${cliente?.name||""}`} texto="Conecte o Google Ads desse cliente pra ver as campanhas reais aqui — nome, status, investimento, contatos e clientes de cada uma." onNav={onNav}/>;
+  if(!data.connected&&!data.manual)return <GAPendente titulo={`Campanhas · ${cliente?.name||""}`} texto="Conecte o Google Ads desse cliente pra ver as campanhas reais aqui — nome, status, investimento, contatos e clientes de cada uma. Ou insira manualmente na Visão geral." onNav={onNav}/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Campanhas · {cliente?.name}</div>
+      {data.manual&&<div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"10px 14px",color:MUTED,fontSize:12,lineHeight:1.4}}>🖊️ Dados inseridos manualmente em {new Date(data.manualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado.</div>}
       {data.campaigns.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma campanha encontrada ainda.</div>}
-      {data.campaigns.map(camp=>(
-        <div key={camp.id} onClick={()=>onSelect(camp)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,cursor:"pointer"}}>
+      {data.campaigns.map((camp,i)=>(
+        <div key={camp.id||i} onClick={()=>data.manual?null:onSelect(camp)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,cursor:data.manual?"default":"pointer"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{camp.name}</span>
-            <Tag status={camp.status==="ENABLED"?"ativo":"inativo"}/>
+            {!data.manual&&<Tag status={camp.status==="ENABLED"?"ativo":"inativo"}/>}
           </div>
+          {data.manual&&(
+            <div style={{display:"flex",gap:14,fontSize:12,color:MUTED}}>
+              <span>Investimento: <b style={{color:TEXT}}>{fmtBRL(camp.cost||0)}</b></span>
+              {camp.clicks!=null&&<span>Cliques: <b style={{color:TEXT}}>{camp.clicks}</b></span>}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -4309,7 +4416,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
     if(!clienteId)return;
     setOverview(null);
     const to=new Date(),from=new Date(to.getTime()-presetDias*86400000);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}`).then(setOverview);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/overview?from=${from.toISOString()}&to=${to.toISOString()}&periodo_dias=${presetDias}`).then(setOverview);
   },[clienteId,presetDias]);
   if(!overview)return <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>;
   const a=overview.atual,p=overview.anterior;
@@ -4356,7 +4463,8 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         <ul style={{margin:"0 0 16px",padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.8}}>
           {conclusoes.map((c,i)=>(<li key={i}>{c}</li>))}
         </ul>
-        {!overview.adsConnected&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>Investimento em anúncios aparece aqui depois que o Google Ads for conectado pra esse cliente.</div>}
+        {!overview.adsConnected&&overview.investimento==null&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>Investimento em anúncios aparece aqui depois que o Google Ads for conectado pra esse cliente.</div>}
+        {overview.investimentoManual&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>🖊️ Investimento inserido manualmente em {new Date(overview.investimentoManualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado pra esse cliente.</div>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Btn sm outline onClick={()=>window.print()}>Exportar PDF</Btn>
@@ -4551,7 +4659,7 @@ function GoogleAdsAdmin(){
         <button onClick={()=>setScreen("visaogeral")} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar pra Visão geral</button>
       )}
       {screen==="visaogeral"&&<GAVisaoGeral clientes={clientes} clienteId={clienteId} setClienteId={selecionarCliente} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias} onNav={onNav}/>}
-      {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
+      {screen==="campanhas"&&<GACampanhas clienteId={clienteId} cliente={cliente} presetDias={presetDias} onNav={onNav} onSelect={(camp)=>{setCampanhaSel(camp);setScreen("campanha");}}/>}
       {screen==="campanha"&&<GACampanhaDetalhe campanha={campanhaSel} onNav={onNav}/>}
       {screen==="desempenho"&&<GADesempenho clienteId={clienteId} cliente={cliente} presetDias={presetDias} setPresetDias={setPresetDias}/>}
       {screen==="anuncios"&&<GAAnuncios clienteId={clienteId} cliente={cliente} onNav={onNav}/>}
