@@ -2346,9 +2346,12 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
     // silenciosamente (nenhum contato reconhecido, botão de salvar ficava desabilitado
     // sem explicar por quê).
     if(!name&&!phone&&!email)return null;
-    return{name:name||phone||email,phone,email};
+    return{name,phone,email};
   };
-  const parsed=text.split("\n").map(parseLine).filter(Boolean);
+  // Sem nome de verdade: numera em vez de deixar em branco — "Contato Google N" quando
+  // marcado como vindo do Google Ads (mesmo padrão que já existia pra esse tipo de lead),
+  // "Contato N" nos outros casos.
+  const parsed=text.split("\n").map(parseLine).filter(Boolean).map((c,i)=>({...c,name:c.name||`Contato${origemGoogleAds?" Google":""} ${i+1}`}));
   const salvar=async()=>{
     if(!parsed.length)return;
     setSaving(true);setError("");
