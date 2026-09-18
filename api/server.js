@@ -3434,19 +3434,25 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
 // "Relatórios" em Clientes (lista antes de abrir o detalhe de cada produtor).
 app.get("/api/admin/google-ads/reports/summary", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { data: reports, error } = await supabase.from("google_ads_reports").select("id,owner_id,ano,mes,viewed_at");
+    const { data: reports, error } = await supabase.from("google_ads_reports").select("id,owner_id,ano,mes");
     if (error) return res.status(500).json({ error: error.message });
     if (!reports?.length) return res.json({ produtores: [] });
     const reportIds = reports.map(r => r.id);
     const { data: comments } = await supabase.from("google_ads_report_comments").select("report_id").in("report_id", reportIds);
     const comentariosPorReport = {};
     (comments || []).forEach(c => { comentariosPorReport[c.report_id] = (comentariosPorReport[c.report_id] || 0) + 1; });
+    // total_vistos conta PESSOAS que viram (uma linha por nome distinto em cada
+    // relatório), não relatórios — senão um relatório visto por 3 pessoas aparecia
+    // como "1 visto" só porque é um relatório só.
+    const { data: views } = await supabase.from("google_ads_report_views").select("report_id").in("report_id", reportIds);
+    const vistosPorReport = {};
+    (views || []).forEach(v => { vistosPorReport[v.report_id] = (vistosPorReport[v.report_id] || 0) + 1; });
     const porOwner = {};
     reports.forEach(r => {
       if (!porOwner[r.owner_id]) porOwner[r.owner_id] = { owner_id: r.owner_id, total_relatorios: 0, total_vistos: 0, total_comentarios: 0, ultimo: null };
       const p = porOwner[r.owner_id];
       p.total_relatorios++;
-      if (r.viewed_at) p.total_vistos++;
+      p.total_vistos += vistosPorReport[r.id] || 0;
       p.total_comentarios += comentariosPorReport[r.id] || 0;
       if (!p.ultimo || r.ano > p.ultimo.ano || (r.ano === p.ultimo.ano && r.mes > p.ultimo.mes)) p.ultimo = { ano: r.ano, mes: r.mes };
     });
