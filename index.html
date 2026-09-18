@@ -4205,8 +4205,13 @@ function pctChange(atual,anterior){
   return `${pct>=0?"+":""}${pct.toFixed(0)}%`;
 }
 
+// "Tudo" não é literalmente infinito — usa um período bem maior que qualquer conta
+// existente (100 anos) pra cobrir "desde o início" sem precisar mudar o cálculo de
+// datas (que hoje é sempre `hoje - presetDias dias`) em cada tela que usa esse filtro.
+const PERIODO_TUDO_DIAS=36500;
+const labelPeriodoDias=dias=>dias>=PERIODO_TUDO_DIAS?"todo o período":dias===365?"1 ano":`${dias} dias`;
 function GAPeriodoChips({presetDias,setPresetDias}){
-  const OPCOES=[{d:7,label:"7 dias"},{d:14,label:"14 dias"},{d:30,label:"30 dias"},{d:90,label:"90 dias"}];
+  const OPCOES=[{d:7,label:"7 dias"},{d:15,label:"15 dias"},{d:30,label:"30 dias"},{d:90,label:"90 dias"},{d:365,label:"1 ano"},{d:PERIODO_TUDO_DIAS,label:"Tudo"}];
   return(
     <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
       {OPCOES.map(o=>(
@@ -4245,7 +4250,7 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
   const [preview,setPreview]=useState(null);
   const [saving,setSaving]=useState(false);
   const pill={background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F};
-  const periodoLabel=`${presetDias} dias`;
+  const periodoLabel=labelPeriodoDias(presetDias);
   const copiarPrompt=()=>{
     const prompt=`Você vai receber várias capturas de tela do app do Google Ads (Visão geral, Impressões, Cliques, Ações locais, Chamadas, Termos de pesquisa), todas do período de ${periodoLabel}. Junte tudo num JSON SÓ, sem markdown, neste formato exato:\n\n{\n  "investimento_total": <número em reais>,\n  "impressoes": <número ou null>,\n  "cliques": <número ou null>,\n  "acoes_locais": {\n    "visitas_loja": <número ou null>,\n    "visitas_site": <número ou null>,\n    "visualizacoes_rota": <número ou null>,\n    "chamadas": <número ou null>,\n    "pedidos": <número ou null>,\n    "visualizacoes_menu": <número ou null>\n  },\n  "termos_pesquisa": [\n    {"termo": "texto pesquisado", "cliques": <número ou null>, "custo": <número ou null>}\n  ],\n  "campanhas": [\n    {"nome": "nome da campanha", "investimento": <número>, "cliques": <número ou null>}\n  ]\n}\n\nNão invente nenhum valor — se um número não aparecer em NENHUMA das capturas, use null nesse campo (nunca zero). Não escreva nada além do JSON.`;
     navigator.clipboard.writeText(prompt).catch(()=>{});
