@@ -3604,6 +3604,20 @@ app.post("/api/public/google-ads-report/:token/comment", async (req, res) => {
   }
 });
 
+// Admin apaga um comentário do relatório (ex: comentário de teste, spam) — o admin
+// confirma antes na tela, nunca apaga automático.
+app.delete("/api/admin/google-ads/report-comments/:commentId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { error } = await supabase.from("google_ads_report_comments").delete().eq("id", commentId);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[google-ads/report-comments delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Status do Google Ads por produtor
 app.get("/api/admin/producers/:id/google/status", requireAuth, requireAdmin, async (req, res) => {
   try {
