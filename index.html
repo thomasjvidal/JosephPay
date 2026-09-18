@@ -3581,7 +3581,7 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {views.map(v=>(
                     <div key={v.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
-                      <span style={{color:TEXT,fontWeight:700}}>👁 {v.nome}{v.times_seen>1?` (${v.times_seen}x)`:""}</span>
+                      <span style={{color:TEXT,fontWeight:700}}>👁 {v.nome}</span>
                       <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(v.last_viewed_at)}</span>
                     </div>
                   ))}

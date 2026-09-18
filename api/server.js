@@ -3522,23 +3522,17 @@ app.options("/api/public/google-ads-report/:token", (req, res) => {
   res.header("Access-Control-Allow-Headers", "Content-Type");
   res.sendStatus(204);
 });
-// Registra UMA visualização — nunca sobrescreve quem viu antes, só soma/atualiza a
-// linha dessa pessoa (mesmo padrão de dedup por nome do times_seen de customers).
-// google_ads_reports.viewed_at/viewed_by continuam existindo só como "visto mais
-// recente" (atalho pra Histórico/GARelatorioGerado), a lista completa de quem viu
-// vem de google_ads_report_views.
+// Registra UMA visualização — sempre cria uma linha nova, nunca funde com uma
+// visualização anterior do "mesmo" nome. Nome não identifica a pessoa (duas pessoas
+// diferentes podem se chamar igual) — juntar pelo nome ia esconder visitas de gente
+// diferente como se fosse uma só. google_ads_reports.viewed_at/viewed_by continuam
+// existindo só como "visto mais recente" (atalho pra Histórico/GARelatorioGerado), a
+// lista completa (uma linha por visita) vem de google_ads_report_views.
 async function registrarVisualizacaoRelatorio(reportId, nome) {
   try {
-    const { data: existente, error: erroSelect } = await supabase.from("google_ads_report_views").select("id,times_seen").eq("report_id", reportId).ilike("nome", nome).maybeSingle();
-    if (erroSelect) { console.error("[registrarVisualizacaoRelatorio] select:", erroSelect.message); return; }
     const agora = new Date().toISOString();
-    if (existente) {
-      const { error: erroUpdate } = await supabase.from("google_ads_report_views").update({ last_viewed_at: agora, times_seen: (existente.times_seen || 1) + 1 }).eq("id", existente.id);
-      if (erroUpdate) console.error("[registrarVisualizacaoRelatorio] update:", erroUpdate.message);
-    } else {
-      const { error: erroInsert } = await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
-      if (erroInsert) console.error("[registrarVisualizacaoRelatorio] insert:", erroInsert.message);
-    }
+    const { error: erroInsert } = await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
+    if (erroInsert) console.error("[registrarVisualizacaoRelatorio] insert:", erroInsert.message);
     await supabase.from("google_ads_reports").update({ viewed_at: agora, viewed_by: nome }).eq("id", reportId);
   } catch (e) {
     console.error("[registrarVisualizacaoRelatorio]", e.message);
