@@ -3259,6 +3259,7 @@ function ClientesAdmin(){
   const [subTab,setSubTab]=useState("produtores");
   const [sel,setSel]=useState(null);
   const [selSubTab,setSelSubTab]=useState(null);
+  const [selRelatorio,setSelRelatorio]=useState(null);
   const [clients,setClients]=useState(null);
   const [showCriar,setShowCriar]=useState(false);
   const [showAudit,setShowAudit]=useState(false);
@@ -3286,6 +3287,16 @@ function ClientesAdmin(){
       <MinichatOverviewAdmin clients={clients} onConfigurar={id=>{setSel(id);setSelSubTab("ativacao");}}/>
     </div>
   );
+  if(subTab==="relatorios"){
+    if(selRelatorio)return <RelatoriosDetalheAdmin ownerId={selRelatorio.id} nome={selRelatorio.nome} onBack={()=>setSelRelatorio(null)}/>;
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{color:TEXT,fontWeight:800,fontSize:15,marginBottom:2}}>Clientes</div>
+        <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
+        <RelatoriosOverviewAdmin onAbrir={(id,nome)=>setSelRelatorio({id,nome})}/>
+      </div>
+    );
+  }
   const ORDENS=[{id:"volume",label:"Mais venderam"},{id:"recentes",label:"Recentes"}];
   const isAtivo=c=>!c.disabled_at;
   const FILTROS=[{id:"todos",label:"Todos"},{id:"ativos",label:"Ativos"},{id:"inativos",label:"Inativos"}];
@@ -3366,7 +3377,7 @@ function ClientesAdmin(){
 }
 
 function ClientesSubTabs({subTab,setSubTab}){
-  const TABS=[{id:"produtores",label:"Produtores"},{id:"minichat",label:"Mini Chat"}];
+  const TABS=[{id:"produtores",label:"Produtores"},{id:"minichat",label:"Mini Chat"},{id:"relatorios",label:"Relatórios"}];
   return(
     <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
       {TABS.map(t=>(
@@ -3483,6 +3494,87 @@ function MinichatDetalheAdmin({ownerId,nome,onBack}){
           })}
         </>
       )}
+    </div>
+  );
+}
+
+function RelatoriosOverviewAdmin({onAbrir}){
+  const [produtores,setProdutores]=useState(null);
+  useEffect(()=>{
+    apiCall('/api/admin/google-ads/reports/summary').then(d=>{if(d?.produtores)setProdutores(d.produtores);else setProdutores([]);});
+  },[]);
+  const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  if(produtores===null)return <div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum relatório gerado ainda. Gere um em Google Ads → escolha o produtor → "Gerar relatório".</div>}
+      {produtores.map(p=>(
+        <div key={p.owner_id} onClick={()=>onAbrir(p.owner_id,p.producer_name)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <Avatar url={p.avatar_url} name={p.producer_name} size={40} radius={12} fontSize={16}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{p.producer_name||"—"}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>Último: {MESES[p.ultimo.mes-1]}/{p.ultimo.ano}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,fontSize:10.5,flexWrap:"wrap"}}>
+            <span style={{background:CARD2,color:TEXT,padding:"4px 10px",borderRadius:20,fontWeight:700}}>{p.total_relatorios} relatório(s)</span>
+            <span style={{background:`${GREEN}14`,color:GREEN,padding:"4px 10px",borderRadius:20,fontWeight:700}}>{p.total_vistos} visto(s)</span>
+            {p.total_comentarios>0&&<span style={{background:`${GOLD}14`,color:GOLD,padding:"4px 10px",borderRadius:20,fontWeight:700}}>💬 {p.total_comentarios}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
+  const [reports,setReports]=useState(null);
+  const [aberto,setAberto]=useState(null);
+  useEffect(()=>{
+    apiCall(`/api/admin/producers/${ownerId}/google-ads/reports`).then(d=>setReports(d?.reports||[]));
+  },[ownerId]);
+  const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const TIPO_LABEL={semanal:"Semanal",quinzenal:"Quinzenal",mensal:"Mensal",trimestral:"Trimestral"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer",padding:0}}>←</button>
+        <div style={{color:TEXT,fontWeight:800,fontSize:16}}>Relatórios · {nome}</div>
+      </div>
+      {reports===null&&<div style={{color:MUTED,fontSize:12}}>Carregando…</div>}
+      {reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
+      {reports?.map(r=>{
+        const aAberto=aberto===r.id;
+        return(
+          <div key={r.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 16px"}}>
+            <div onClick={()=>setAberto(aAberto?null:r.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,cursor:"pointer"}}>
+              <div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}/{r.ano}</div>
+                <div style={{color:MUTED,fontSize:11,marginTop:2}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
+                <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,marginTop:4,fontWeight:600}}>
+                  {r.viewed_at?`👁 Visto${r.viewed_by?` por ${r.viewed_by}`:""} em ${new Date(r.viewed_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:"Ainda não visto"}
+                </div>
+              </div>
+              <span style={{color:MUTED,fontSize:11,flexShrink:0}}>{r.comment_count>0?`💬 ${r.comment_count} ▾`:""}</span>
+            </div>
+            {aAberto&&(
+              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8,borderTop:`1px solid ${BDR}`,paddingTop:10}}>
+                {(r.comments||[]).length===0&&<div style={{color:MUTED,fontSize:11}}>Sem comentários nesse relatório.</div>}
+                {(r.comments||[]).map(c=>(
+                  <div key={c.id} style={{background:CARD2,borderRadius:10,padding:"8px 10px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:3}}>
+                      <span style={{color:TEXT,fontWeight:700,fontSize:12}}>{c.autor||"Anônimo"}</span>
+                      <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{new Date(c.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                    </div>
+                    <div style={{color:TEXT,fontSize:12,lineHeight:1.4}}>{c.texto}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

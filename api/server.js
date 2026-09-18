@@ -3405,7 +3405,9 @@ app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, require
   }
 });
 
-// Histórico de relatórios salvos desse produtor — alimenta a tela "Histórico".
+// Histórico de relatórios salvos desse produtor — alimenta a tela "Histórico" e o
+// detalhe da aba "Relatórios" (Clientes) — por isso já vem com os comentários
+// completos (quem, quando, o texto), não só a contagem.
 app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -3414,14 +3416,50 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
       .eq("owner_id", id).order("ano", { ascending: false }).order("mes", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     const ids = (reports || []).map(r => r.id);
-    let contagem = {};
+    let comentariosPorReport = {};
     if (ids.length) {
-      const { data: comentarios } = await supabase.from("google_ads_report_comments").select("report_id").in("report_id", ids);
-      (comentarios || []).forEach(c => { contagem[c.report_id] = (contagem[c.report_id] || 0) + 1; });
+      const { data: comentarios } = await supabase.from("google_ads_report_comments").select("id,report_id,autor,texto,created_at").in("report_id", ids).order("created_at", { ascending: true });
+      (comentarios || []).forEach(c => { (comentariosPorReport[c.report_id] = comentariosPorReport[c.report_id] || []).push(c); });
     }
-    res.json({ reports: (reports || []).map(r => ({ ...r, comment_count: contagem[r.id] || 0 })) });
+    res.json({ reports: (reports || []).map(r => ({ ...r, comments: comentariosPorReport[r.id] || [], comment_count: (comentariosPorReport[r.id] || []).length })) });
   } catch (err) {
     console.error("[google-ads/reports]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resumo por produtor — só quem já gerou pelo menos um relatório — alimenta a aba
+// "Relatórios" em Clientes (lista antes de abrir o detalhe de cada produtor).
+app.get("/api/admin/google-ads/reports/summary", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: reports, error } = await supabase.from("google_ads_reports").select("id,owner_id,ano,mes,viewed_at");
+    if (error) return res.status(500).json({ error: error.message });
+    if (!reports?.length) return res.json({ produtores: [] });
+    const reportIds = reports.map(r => r.id);
+    const { data: comments } = await supabase.from("google_ads_report_comments").select("report_id").in("report_id", reportIds);
+    const comentariosPorReport = {};
+    (comments || []).forEach(c => { comentariosPorReport[c.report_id] = (comentariosPorReport[c.report_id] || 0) + 1; });
+    const porOwner = {};
+    reports.forEach(r => {
+      if (!porOwner[r.owner_id]) porOwner[r.owner_id] = { owner_id: r.owner_id, total_relatorios: 0, total_vistos: 0, total_comentarios: 0, ultimo: null };
+      const p = porOwner[r.owner_id];
+      p.total_relatorios++;
+      if (r.viewed_at) p.total_vistos++;
+      p.total_comentarios += comentariosPorReport[r.id] || 0;
+      if (!p.ultimo || r.ano > p.ultimo.ano || (r.ano === p.ultimo.ano && r.mes > p.ultimo.mes)) p.ultimo = { ano: r.ano, mes: r.mes };
+    });
+    const ownerIds = Object.keys(porOwner);
+    const { data: profiles } = await supabase.from("profiles").select("id,name,company_name,avatar_url").in("id", ownerIds);
+    const profileMap = {};
+    (profiles || []).forEach(p => { profileMap[p.id] = p; });
+    const produtores = Object.values(porOwner).map(p => ({
+      ...p,
+      producer_name: profileMap[p.owner_id]?.company_name || profileMap[p.owner_id]?.name || null,
+      avatar_url: profileMap[p.owner_id]?.avatar_url || null,
+    })).sort((a, b) => (b.ultimo.ano * 12 + b.ultimo.mes) - (a.ultimo.ano * 12 + a.ultimo.mes));
+    res.json({ produtores });
+  } catch (err) {
+    console.error("[google-ads/reports/summary]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
