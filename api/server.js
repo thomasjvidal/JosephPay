@@ -3416,12 +3416,14 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
       .eq("owner_id", id).order("ano", { ascending: false }).order("mes", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     const ids = (reports || []).map(r => r.id);
-    let comentariosPorReport = {};
+    let comentariosPorReport = {}, viewsPorReport = {};
     if (ids.length) {
       const { data: comentarios } = await supabase.from("google_ads_report_comments").select("id,report_id,autor,texto,created_at").in("report_id", ids).order("created_at", { ascending: true });
       (comentarios || []).forEach(c => { (comentariosPorReport[c.report_id] = comentariosPorReport[c.report_id] || []).push(c); });
+      const { data: views } = await supabase.from("google_ads_report_views").select("id,report_id,nome,times_seen,first_viewed_at,last_viewed_at").in("report_id", ids).order("last_viewed_at", { ascending: false });
+      (views || []).forEach(v => { (viewsPorReport[v.report_id] = viewsPorReport[v.report_id] || []).push(v); });
     }
-    res.json({ reports: (reports || []).map(r => ({ ...r, comments: comentariosPorReport[r.id] || [], comment_count: (comentariosPorReport[r.id] || []).length })) });
+    res.json({ reports: (reports || []).map(r => ({ ...r, comments: comentariosPorReport[r.id] || [], comment_count: (comentariosPorReport[r.id] || []).length, views: viewsPorReport[r.id] || [] })) });
   } catch (err) {
     console.error("[google-ads/reports]", err.message);
     res.status(500).json({ error: err.message });
@@ -3512,6 +3514,26 @@ app.options("/api/public/google-ads-report/:token", (req, res) => {
   res.header("Access-Control-Allow-Headers", "Content-Type");
   res.sendStatus(204);
 });
+// Registra UMA visualização — nunca sobrescreve quem viu antes, só soma/atualiza a
+// linha dessa pessoa (mesmo padrão de dedup por nome do times_seen de customers).
+// google_ads_reports.viewed_at/viewed_by continuam existindo só como "visto mais
+// recente" (atalho pra Histórico/GARelatorioGerado), a lista completa de quem viu
+// vem de google_ads_report_views.
+async function registrarVisualizacaoRelatorio(reportId, nome) {
+  try {
+    const { data: existente } = await supabase.from("google_ads_report_views").select("id,times_seen").eq("report_id", reportId).ilike("nome", nome).maybeSingle();
+    const agora = new Date().toISOString();
+    if (existente) {
+      await supabase.from("google_ads_report_views").update({ last_viewed_at: agora, times_seen: (existente.times_seen || 1) + 1 }).eq("id", existente.id);
+    } else {
+      await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
+    }
+    await supabase.from("google_ads_reports").update({ viewed_at: agora, viewed_by: nome }).eq("id", reportId);
+  } catch (e) {
+    console.error("[registrarVisualizacaoRelatorio]", e.message);
+  }
+}
+
 app.get("/api/public/google-ads-report/:token", async (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   try {
@@ -3522,7 +3544,7 @@ app.get("/api/public/google-ads-report/:token", async (req, res) => {
     const { data: report } = await supabase.from("google_ads_reports").select("id,tipo,dados,owner_id,viewed_at").eq("share_token", token).maybeSingle();
     if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
     if (nome) {
-      supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString(), viewed_by: nome }).eq("id", report.id).then(null, () => {});
+      registrarVisualizacaoRelatorio(report.id, nome);
     } else if (!report.viewed_at) {
       supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString() }).eq("id", report.id).then(null, () => {});
     }
