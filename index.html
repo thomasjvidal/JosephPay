@@ -3500,14 +3500,20 @@ function MinichatDetalheAdmin({ownerId,nome,onBack}){
 
 function RelatoriosOverviewAdmin({onAbrir}){
   const [produtores,setProdutores]=useState(null);
+  const [erro,setErro]=useState(null);
   useEffect(()=>{
-    apiCall('/api/admin/google-ads/reports/summary').then(d=>{if(d?.produtores)setProdutores(d.produtores);else setProdutores([]);});
+    setErro(null);
+    apiCall('/api/admin/google-ads/reports/summary').then(d=>{
+      if(d?.produtores)setProdutores(d.produtores);
+      else{setErro(d?.error||"Não consegui carregar os relatórios agora.");setProdutores([]);}
+    });
   },[]);
   const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   if(produtores===null)return <div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum relatório gerado ainda. Gere um em Google Ads → escolha o produtor → "Gerar relatório".</div>}
+      {erro&&<div style={{padding:"14px 16px",color:RED,fontSize:12,textAlign:"center",background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:16}}>{erro}</div>}
+      {!erro&&produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum relatório gerado ainda. Gere um em Google Ads → escolha o produtor → "Gerar relatório".</div>}
       {produtores.map(p=>(
         <div key={p.owner_id} onClick={()=>onAbrir(p.owner_id,p.producer_name)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px",cursor:"pointer"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -3530,9 +3536,14 @@ function RelatoriosOverviewAdmin({onAbrir}){
 
 function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
   const [reports,setReports]=useState(null);
+  const [erro,setErro]=useState(null);
   const [aberto,setAberto]=useState(null);
   useEffect(()=>{
-    apiCall(`/api/admin/producers/${ownerId}/google-ads/reports`).then(d=>setReports(d?.reports||[]));
+    setErro(null);
+    apiCall(`/api/admin/producers/${ownerId}/google-ads/reports`).then(d=>{
+      if(d?.reports)setReports(d.reports);
+      else{setErro(d?.error||"Não consegui carregar os relatórios agora.");setReports([]);}
+    });
   },[ownerId]);
   const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   const TIPO_LABEL={semanal:"Semanal",quinzenal:"Quinzenal",mensal:"Mensal",trimestral:"Trimestral"};
@@ -3542,8 +3553,9 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
         <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer",padding:0}}>←</button>
         <div style={{color:TEXT,fontWeight:800,fontSize:16}}>Relatórios · {nome}</div>
       </div>
+      {erro&&<div style={{padding:"14px 16px",color:RED,fontSize:12,textAlign:"center",background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:16}}>{erro}</div>}
       {reports===null&&<div style={{color:MUTED,fontSize:12}}>Carregando…</div>}
-      {reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
+      {!erro&&reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
       {reports?.map(r=>{
         const aAberto=aberto===r.id;
         const views=r.views||[];
@@ -4878,11 +4890,16 @@ function GAIntegracao({clienteId,cliente}){
 
 function GAHistorico({clienteId,cliente}){
   const [reports,setReports]=useState(null);
+  const [erro,setErro]=useState(null);
   const [copiadoId,setCopiadoId]=useState(null);
   const carregar=()=>{
     if(!clienteId)return;
     setReports(null);
-    apiCall(`/api/admin/producers/${clienteId}/google-ads/reports`).then(d=>setReports(d?.reports||[]));
+    setErro(null);
+    apiCall(`/api/admin/producers/${clienteId}/google-ads/reports`).then(d=>{
+      if(d?.reports)setReports(d.reports);
+      else{setErro(d?.error||"Não consegui carregar os relatórios agora.");setReports([]);}
+    });
   };
   useEffect(carregar,[clienteId]);
   const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -4900,7 +4917,8 @@ function GAHistorico({clienteId,cliente}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Histórico de relatórios · {cliente?.name}</div>
       {reports===null&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Carregando…</div>}
-      {reports!==null&&reports.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum relatório salvo ainda — gere um em "Gerar relatório".</div>}
+      {erro&&<div style={{padding:"14px 16px",color:RED,fontSize:12,textAlign:"center",background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:16}}>{erro}</div>}
+      {!erro&&reports!==null&&reports.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum relatório salvo ainda — gere um em "Gerar relatório".</div>}
       {anos.map(ano=>(
         <div key={ano} style={{display:"flex",flexDirection:"column",gap:8}}>
           <div style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginTop:4}}>{ano}</div>

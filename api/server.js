@@ -3420,7 +3420,8 @@ app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin
     if (ids.length) {
       const { data: comentarios } = await supabase.from("google_ads_report_comments").select("id,report_id,autor,texto,created_at").in("report_id", ids).order("created_at", { ascending: true });
       (comentarios || []).forEach(c => { (comentariosPorReport[c.report_id] = comentariosPorReport[c.report_id] || []).push(c); });
-      const { data: views } = await supabase.from("google_ads_report_views").select("id,report_id,nome,times_seen,first_viewed_at,last_viewed_at").in("report_id", ids).order("last_viewed_at", { ascending: false });
+      const { data: views, error: erroViews } = await supabase.from("google_ads_report_views").select("id,report_id,nome,times_seen,first_viewed_at,last_viewed_at").in("report_id", ids).order("last_viewed_at", { ascending: false });
+      if (erroViews) return res.status(500).json({ error: `Tabela de visualizações: ${erroViews.message}` });
       (views || []).forEach(v => { (viewsPorReport[v.report_id] = viewsPorReport[v.report_id] || []).push(v); });
     }
     res.json({ reports: (reports || []).map(r => ({ ...r, comments: comentariosPorReport[r.id] || [], comment_count: (comentariosPorReport[r.id] || []).length, views: viewsPorReport[r.id] || [] })) });
@@ -3444,7 +3445,8 @@ app.get("/api/admin/google-ads/reports/summary", requireAuth, requireAdmin, asyn
     // total_vistos conta PESSOAS que viram (uma linha por nome distinto em cada
     // relatório), não relatórios — senão um relatório visto por 3 pessoas aparecia
     // como "1 visto" só porque é um relatório só.
-    const { data: views } = await supabase.from("google_ads_report_views").select("report_id").in("report_id", reportIds);
+    const { data: views, error: erroViews } = await supabase.from("google_ads_report_views").select("report_id").in("report_id", reportIds);
+    if (erroViews) return res.status(500).json({ error: `Tabela de visualizações: ${erroViews.message}` });
     const vistosPorReport = {};
     (views || []).forEach(v => { vistosPorReport[v.report_id] = (vistosPorReport[v.report_id] || 0) + 1; });
     const porOwner = {};
@@ -3527,12 +3529,15 @@ app.options("/api/public/google-ads-report/:token", (req, res) => {
 // vem de google_ads_report_views.
 async function registrarVisualizacaoRelatorio(reportId, nome) {
   try {
-    const { data: existente } = await supabase.from("google_ads_report_views").select("id,times_seen").eq("report_id", reportId).ilike("nome", nome).maybeSingle();
+    const { data: existente, error: erroSelect } = await supabase.from("google_ads_report_views").select("id,times_seen").eq("report_id", reportId).ilike("nome", nome).maybeSingle();
+    if (erroSelect) { console.error("[registrarVisualizacaoRelatorio] select:", erroSelect.message); return; }
     const agora = new Date().toISOString();
     if (existente) {
-      await supabase.from("google_ads_report_views").update({ last_viewed_at: agora, times_seen: (existente.times_seen || 1) + 1 }).eq("id", existente.id);
+      const { error: erroUpdate } = await supabase.from("google_ads_report_views").update({ last_viewed_at: agora, times_seen: (existente.times_seen || 1) + 1 }).eq("id", existente.id);
+      if (erroUpdate) console.error("[registrarVisualizacaoRelatorio] update:", erroUpdate.message);
     } else {
-      await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
+      const { error: erroInsert } = await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
+      if (erroInsert) console.error("[registrarVisualizacaoRelatorio] insert:", erroInsert.message);
     }
     await supabase.from("google_ads_reports").update({ viewed_at: agora, viewed_by: nome }).eq("id", reportId);
   } catch (e) {
