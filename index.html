@@ -3537,7 +3537,6 @@ function RelatoriosOverviewAdmin({onAbrir}){
 function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
   const [reports,setReports]=useState(null);
   const [erro,setErro]=useState(null);
-  const [aberto,setAberto]=useState(null);
   useEffect(()=>{
     setErro(null);
     apiCall(`/api/admin/producers/${ownerId}/google-ads/reports`).then(d=>{
@@ -3557,55 +3556,46 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
       {reports===null&&<div style={{color:MUTED,fontSize:12}}>Carregando…</div>}
       {!erro&&reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
       {reports?.map(r=>{
-        const aAberto=aberto===r.id;
         const views=r.views||[];
         const fmtDataHora=iso=>new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
         return(
           <div key={r.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 16px"}}>
-            <div onClick={()=>setAberto(aAberto?null:r.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,cursor:"pointer"}}>
-              <div>
-                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}/{r.ano}</div>
-                <div style={{color:MUTED,fontSize:11,marginTop:2}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
-                <div style={{color:views.length?GREEN:MUTED,fontSize:11,marginTop:4,fontWeight:600}}>
-                  {views.length?`👁 Visto por ${views.length===1?views[0].nome:`${views.length} pessoas`}`:"Ainda não visto"}
-                </div>
-              </div>
-              <span style={{color:MUTED,fontSize:11,flexShrink:0}}>{(views.length||r.comment_count>0)?"▾":""}</span>
+            <div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}/{r.ano}</div>
+              <div style={{color:MUTED,fontSize:11,marginTop:2}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
             </div>
             <div style={{marginTop:10}}>
               <Btn sm outline color={GOLD} onClick={()=>window.open(`https://josephpay.com/relatorio.html?token=${r.share_token}`,"_blank")}>Ver relatório →</Btn>
             </div>
-            {aAberto&&(
-              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:12,borderTop:`1px solid ${BDR}`,paddingTop:10}}>
-                <div>
-                  <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:6}}>Visualizações</div>
-                  {views.length===0&&<div style={{color:MUTED,fontSize:11}}>Ninguém viu esse relatório ainda.</div>}
-                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    {views.map(v=>(
-                      <div key={v.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
-                        <span style={{color:TEXT,fontWeight:700}}>👁 {v.nome}{v.times_seen>1?` (${v.times_seen}x)`:""}</span>
-                        <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(v.last_viewed_at)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:6}}>Comentários</div>
-                  {(r.comments||[]).length===0&&<div style={{color:MUTED,fontSize:11}}>Sem comentários nesse relatório.</div>}
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {(r.comments||[]).map(c=>(
-                      <div key={c.id} style={{background:CARD2,borderRadius:10,padding:"8px 10px"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:3}}>
-                          <span style={{color:TEXT,fontWeight:700,fontSize:12}}>{c.autor||"Anônimo"}</span>
-                          <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(c.created_at)}</span>
-                        </div>
-                        <div style={{color:TEXT,fontSize:12,lineHeight:1.4}}>{c.texto}</div>
-                      </div>
-                    ))}
-                  </div>
+            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:12,borderTop:`1px solid ${BDR}`,paddingTop:10}}>
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:6}}>Visualizações</div>
+                {views.length===0&&<div style={{color:MUTED,fontSize:11}}>Ninguém viu esse relatório ainda.</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {views.map(v=>(
+                    <div key={v.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
+                      <span style={{color:TEXT,fontWeight:700}}>👁 {v.nome}{v.times_seen>1?` (${v.times_seen}x)`:""}</span>
+                      <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(v.last_viewed_at)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
+              <div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:6}}>Comentários</div>
+                {(r.comments||[]).length===0&&<div style={{color:MUTED,fontSize:11}}>Sem comentários nesse relatório.</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {(r.comments||[]).map(c=>(
+                    <div key={c.id} style={{background:CARD2,borderRadius:10,padding:"8px 10px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:3}}>
+                        <span style={{color:TEXT,fontWeight:700,fontSize:12}}>{c.autor||"Anônimo"}</span>
+                        <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(c.created_at)}</span>
+                      </div>
+                      <div style={{color:TEXT,fontSize:12,lineHeight:1.4}}>{c.texto}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         );
       })}
