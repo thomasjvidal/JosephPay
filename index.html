@@ -3560,6 +3560,9 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
               </div>
               <span style={{color:MUTED,fontSize:11,flexShrink:0}}>{(views.length||r.comment_count>0)?"▾":""}</span>
             </div>
+            <div style={{marginTop:10}}>
+              <Btn sm outline color={GOLD} onClick={()=>window.open(`https://josephpay.com/relatorio.html?token=${r.share_token}`,"_blank")}>Ver relatório →</Btn>
+            </div>
             {aAberto&&(
               <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:12,borderTop:`1px solid ${BDR}`,paddingTop:10}}>
                 <div>
@@ -4913,7 +4916,10 @@ function GAHistorico({clienteId,cliente}){
                   {r.comment_count>0&&<div style={{color:GOLD,fontSize:11,marginTop:2}}>💬 {r.comment_count}</div>}
                 </div>
               </div>
-              <Btn sm outline onClick={()=>copiarLink(r)}>{copiadoId===r.id?"Link copiado!":"Copiar link"}</Btn>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <Btn sm outline color={GOLD} onClick={()=>window.open(`https://josephpay.com/relatorio.html?token=${r.share_token}`,"_blank")}>Ver relatório →</Btn>
+                <Btn sm outline onClick={()=>copiarLink(r)}>{copiadoId===r.id?"Link copiado!":"Copiar link"}</Btn>
+              </div>
             </div>
           ))}
         </div>
