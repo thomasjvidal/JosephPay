@@ -2642,6 +2642,10 @@ function AtivacaoAdmin({c,initialOpen,done}){
   // site e preenche SÓ o que ainda não foi configurado aqui (nunca troca o que já está
   // salvo). Fica como alteração pendente — vira definitivo ao clicar "Salvar Mini Chat".
   const [preenchidoDoSite,setPreenchidoDoSite]=useState("");
+  // Avisa o card "Perguntas do Mini Chat" na hora que idioma/destino mudam aqui.
+  useEffect(()=>{
+    window.dispatchEvent(new CustomEvent("minichat-config-change",{detail:{id:c.id,language:idioma,destination_type:destinoTipo}}));
+  },[idioma,destinoTipo]);
   const autoLeuSite=useRef(false);
   useEffect(()=>{
     if(!open||autoLeuSite.current||!c.github_repo)return;
@@ -2792,8 +2796,16 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [jsonErr,setJsonErr]=useState("");
   const [importando,setImportando]=useState(false);
   const [importInfo,setImportInfo]=useState("");
-  const idiomaMc=c.minichat_config?.language==="en"?"en":"pt";
-  const destinoMc=c.minichat_config?.destination_type||"whatsapp";
+  // Idioma e destino acompanham AO VIVO o que está escolhido no card "Mini Chat" (mesmo
+  // antes de salvar) — antes liam só o que estava salvo quando a tela abriu, e a caixa
+  // "Sempre incluídas no final" ficava em português com o perfil já em English.
+  const [idiomaMc,setIdiomaMc]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [destinoMc,setDestinoMc]=useState(c.minichat_config?.destination_type||"whatsapp");
+  useEffect(()=>{
+    const h=e=>{if(e.detail?.id!==c.id)return;if(e.detail.language)setIdiomaMc(e.detail.language);if(e.detail.destination_type)setDestinoMc(e.detail.destination_type);};
+    window.addEventListener("minichat-config-change",h);
+    return ()=>window.removeEventListener("minichat-config-change",h);
+  },[c.id]);
   // Lê o mini chat que o cliente JÁ tinha no próprio site (repositório GitHub) e traz
   // as perguntas pra cá — só preenche a tela, vira definitivo ao clicar "Salvar perguntas".
   const importarDoSite=async(auto)=>{
@@ -2951,7 +2963,17 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
               <div style={{background:"white",borderRadius:"12px 12px 12px 3px",padding:"9px 12px",maxWidth:"95%",boxShadow:"0 1px 1px rgba(0,0,0,0.08)"}}>
                 <div style={{color:"#128C7E",fontSize:11,fontWeight:700,marginBottom:3}}>Lead</div>
                 <div style={{color:"#111",fontSize:12,whiteSpace:"pre-wrap",lineHeight:1.5}}>
-{`Olá ${c.minichat_config?.brand_name||c.name||"[nome do produtor]"},
+{idiomaMc==="en"?`Hi ${c.minichat_config?.brand_name||c.name||"[producer name]"},
+
+I just completed the pre-diagnosis on your website.
+
+*My profile:*
+${questions.map((q,i)=>`• ${q.subtext||q.text||`Question ${i+1}`}: [lead's answer]`).join("\n")}
+• What's your full name?: John Smith
+• What's your WhatsApp number?: (555) 123-4567
+• What's your date of birth?: 01/31/1990
+
+`:`Olá ${c.minichat_config?.brand_name||c.name||"[nome do produtor]"},
 
 Acabei de fazer o pré diagnóstico digital.
 
@@ -2966,7 +2988,7 @@ ${questions.map((q,i)=>`• ${q.subtext||q.text||`Pergunta ${i+1}`}: [resposta d
                 <input
                   value={closingMsg}
                   onChange={e=>{setClosingMsg(e.target.value);setSaved(false);}}
-                  placeholder="Podemos conversar?"
+                  placeholder={idiomaMc==="en"?"Can we talk?":"Podemos conversar?"}
                   style={{width:"100%",background:"transparent",border:"none",borderTop:`1px dashed #ccc`,outline:"none",fontFamily:"sans-serif",fontSize:12,color:"#111",padding:"6px 0 2px",lineHeight:1.5}}
                 />
                 <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
