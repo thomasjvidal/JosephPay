@@ -211,3 +211,15 @@ da CAA Renovations virou um genérico de Vite (25/08) — mesmo erro da Lervet (
 - Contatos que já estavam sem o 9: botão "Corrigir agora" em Clientes do produtor
   (`/customers/fix-phones`). Nunca apaga contato; se a mesma pessoa já existe com o 9,
   não mexe em nenhum dos dois e só avisa.
+
+## Aniversário e telefone no Mini Chat / CRM
+
+- O `minichat.html` aceita a data de nascimento em qualquer formato ("09/08/2000",
+  "09082000", "9-8-00", "090800"), mostra já ajustada na bolha (e na mensagem final)
+  e manda pro CRM em `AAAA-MM-DD`. Data impossível pede de novo; depois de 3 tentativas
+  aceita como veio (nunca trava o chat). Telefone igual: aceita parênteses/traço/+55,
+  mostra "(24) 99982-9182" e manda só os dígitos.
+- `/api/leads/create`: quando a pessoa JÁ existe no CRM (ex: veio de lista do Google
+  Ads), completa o que estava faltando (aniversário, e-mail, nome no lugar de
+  "Contato Google N") — nunca sobrescreve dado que já existia. Antes descartava tudo e
+  só contava "veio 2x", o que gerava "aniversário não informado" pra quem respondeu.

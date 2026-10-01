@@ -5850,7 +5850,7 @@ app.post("/api/customers/add", requireAuth, async (req, res) => {
       name: name.trim(),
       phone: telefone,
       email: email?.trim() || null,
-      birthday: birthday || null,
+      birthday: parseBirthdate(birthday || "") || null,
       source: "manual",
       status: "lead",
     })
@@ -5873,7 +5873,8 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
       name:     c.name.trim(),
       phone:    c.phone?.trim() || null,
       email:    c.email?.trim() || null,
-      birthday: c.birthday?.trim() || null,
+      // "09/08/2000" cru no banco virava 8 de setembro (formato americano) — normaliza.
+      birthday: parseBirthdate(c.birthday?.trim() || "") || null,
       source:   "manual",
       status:   "lead",
     }));
@@ -5899,17 +5900,23 @@ function parseBirthdate(raw) {
   if (m) return s;
   // Qualquer separador entre os três números — "/", "-", ".", espaço — cobre o formato
   // sugerido (DD/MM/AAAA) e variações que a pessoa acaba digitando no celular.
-  m = s.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4})$/);
+  // Ano com 2 dígitos também ("09/08/00") — vira 19xx/20xx pelo que faz sentido.
+  m = s.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4}|\d{2})$/);
   if (!m) {
     // Só dígitos, sem separador nenhum — o mais comum no teclado numérico do celular
-    // (ex: "09082000") — sem isso a resposta era descartada e o campo ficava "não
-    // informado" mesmo com a pessoa tendo respondido certinho.
+    // (ex: "09082000" ou "090800") — sem isso a resposta era descartada e o campo ficava
+    // "não informado" mesmo com a pessoa tendo respondido certinho.
     const digits = s.replace(/\D/g, "");
     if (digits.length === 8) m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)];
+    else if (digits.length === 6) m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 6)];
   }
   if (!m) return null;
-  const [, d, mo, y] = m;
+  let [, d, mo, y] = m;
+  const hoje = new Date();
+  if (String(y).length === 2) y = Number(y) <= hoje.getFullYear() % 100 ? 2000 + Number(y) : 1900 + Number(y);
   const date = new Date(Number(y), Number(mo) - 1, Number(d));
+  // Data que não existe (31/02), no futuro ou de mais de 120 anos atrás não é aniversário.
+  if (date > hoje || Number(y) < hoje.getFullYear() - 120) return null;
   if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
     return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
@@ -5952,17 +5959,45 @@ app.post("/api/leads/create", (req, res, next) => {
   const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
 
-  const telefone = phone?.trim() || null;
+  let telefone = phone?.trim() || null;
   const emailLead = email?.trim() || null;
+  const nascimento = parseBirthdate(birthday);
+  const br = await ownerUsesBrPhones(ownerKey);
+  // Grava só os dígitos (com o 9 do celular, se faltava) — "(24) 99982-9182" e
+  // "24999829182" são o mesmo número e não podem virar dois contatos.
+  if (telefone) {
+    const digitos = telefone.replace(/\D/g, "");
+    if (digitos.length >= 8) telefone = (br && addMissingNinthDigit(digitos)) || digitos;
+  }
   // Mesma pessoa conversando de novo no Mini Chat não pode virar uma segunda linha no
   // CRM — só atualiza a contagem de quantas vezes voltou na linha que já existe.
   // Sem telefone (Mini Chat no modo e-mail pode não pedir), o e-mail faz esse papel.
   if (telefone || emailLead) {
-    let q = supabase.from("customers").select("id,times_seen").eq("owner_id", ownerKey).is("deleted_at", null);
-    q = telefone ? q.eq("phone", telefone) : q.ilike("email", emailLead.replace(/[\\%_]/g, m => "\\" + m));
-    const { data: existente } = await q.limit(1).maybeSingle();
+    let existente = null;
+    const campos = "id,name,phone,email,birthday,times_seen";
+    if (telefone) {
+      // Busca pelos últimos 8 dígitos e confirma pela chave normalizada (ignora
+      // formatação, 55 e o 9 faltando) — um .eq exato não pegava "(24) 9..." x "249...".
+      const fim = telefone.replace(/\D/g, "").slice(-8);
+      const { data: candidatos } = await supabase.from("customers").select(campos).eq("owner_id", ownerKey).is("deleted_at", null).like("phone", `%${fim.slice(0, 4)}%${fim.slice(4)}%`).limit(50);
+      const chave = phoneMatchKey(telefone, { br });
+      existente = (candidatos || []).find(c => phoneMatchKey(c.phone, { br }) === chave) || null;
+    } else {
+      const { data } = await supabase.from("customers").select(campos).eq("owner_id", ownerKey).is("deleted_at", null).ilike("email", emailLead.replace(/[\\%_]/g, m => "\\" + m)).limit(1).maybeSingle();
+      existente = data || null;
+    }
     if (existente) {
-      const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
+      // A pessoa já estava no CRM (ex: veio de uma lista do Google Ads, ou já tinha feito
+      // o Mini Chat antes sem responder tudo). Antes só contava "veio 2x" e JOGAVA FORA o
+      // que ela acabou de responder — era por isso que aparecia "aniversário não
+      // informado" pra quem respondeu. Agora completa o que estava faltando, sem nunca
+      // sobrescrever um dado que já existia.
+      const completar = {};
+      if (!existente.birthday && nascimento) completar.birthday = nascimento;
+      if (!existente.email && emailLead) completar.email = emailLead;
+      const nomeGenerico = !existente.name || /^(Contato( Google)? \d+|Lead Mini Chat \(.*\))$/i.test(existente.name.trim());
+      if (nomeGenerico && name.trim() && !/^Lead Mini Chat \(/i.test(name.trim())) completar.name = name.trim();
+      const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ ...completar, times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
       if (errUpd) return res.status(500).json({ error: errUpd.message });
       return res.json(atualizado);
     }
@@ -5975,7 +6010,7 @@ app.post("/api/leads/create", (req, res, next) => {
       name: name.trim(),
       phone: telefone,
       email: emailLead,
-      birthday: parseBirthdate(birthday),
+      birthday: nascimento,
       source: "minichat",
       status: "lead",
       times_seen: 1,

@@ -481,6 +481,9 @@
             emailSent: '✓ Enviado!', emailSentAmbos: '✓ Também enviado por e-mail', emailSentStatus: name => `Recebemos suas respostas. ${name} vai entrar em contato em breve.`,
             emailSubject: name => `Pré-diagnóstico digital — ${name}`,
             invalidEmail: 'Hmm, esse e-mail não parece válido. Pode conferir e digitar de novo?',
+            invalidDate: 'Não entendi a data 🙂 Pode digitar assim: 09/08/2000',
+            invalidPhone: 'Esse número parece incompleto. Pode digitar com DDD? Ex: (21) 99999-9999',
+            dateOrder: 'dmy',
             defaultQ: {
                 produtoText: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.", produtoSub: "O que você está buscando hoje?", produtoLabel: "Interesse principal",
                 objetivoText: "Perfeito.", objetivoSub: "Qual seu objetivo?", objetivoLabel: "Objetivo",
@@ -518,6 +521,9 @@
             emailSent: '✓ Sent!', emailSentAmbos: '✓ Also sent by e-mail', emailSentStatus: name => `We got your answers. ${name} will get back to you shortly.`,
             emailSubject: name => `Pre-diagnosis — ${name}`,
             invalidEmail: "Hmm, that e-mail doesn't look right. Could you check and type it again?",
+            invalidDate: "I didn't get that date 🙂 Could you type it like this: 08/09/2000",
+            invalidPhone: "That number looks incomplete. Could you type it with the area code?",
+            dateOrder: 'mdy',
             defaultQ: {
                 produtoText: "Hi! 👋 Let's do a quick pre-diagnosis so we can help you better.", produtoSub: "What are you looking for today?", produtoLabel: "Main interest",
                 objetivoText: "Perfect.", objetivoSub: "What's your goal?", objetivoLabel: "Goal",
@@ -751,6 +757,62 @@
         }
     }
 
+    // ── Data de nascimento e telefone: aceita do jeito que a pessoa digitar ──────────
+    // "09/08/2000", "09082000", "9-8-00", "090800"... tudo vira 09/08/2000 na bolha da
+    // conversa (e na mensagem final), e o CRM recebe a data já certa (AAAA-MM-DD). Antes,
+    // dependendo do jeito, o aniversário podia não entrar e aparecer "não informado".
+    function parseBirthInput(raw) {
+        const s = String(raw || '').trim();
+        let a, b, y;
+        let m = s.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4}|\d{2})$/);
+        if (m) { [, a, b, y] = m; }
+        else {
+            const d = s.replace(/\D/g, '');
+            if (d.length === 8) { a = d.slice(0, 2); b = d.slice(2, 4); y = d.slice(4); }
+            else if (d.length === 6) { a = d.slice(0, 2); b = d.slice(2, 4); y = d.slice(4); }
+            else return null;
+        }
+        const hoje = new Date();
+        y = Number(y);
+        if (y < 100) y = y <= hoje.getFullYear() % 100 ? 2000 + y : 1900 + y;
+        const mdy = T().dateOrder === 'mdy';
+        const dia = Number(mdy ? b : a), mes = Number(mdy ? a : b);
+        const dt = new Date(y, mes - 1, dia);
+        if (dt.getFullYear() !== y || dt.getMonth() !== mes - 1 || dt.getDate() !== dia) return null;
+        if (dt > hoje || y < hoje.getFullYear() - 120) return null;
+        const p2 = n => String(n).padStart(2, '0');
+        return { display: mdy ? `${p2(mes)}/${p2(dia)}/${y}` : `${p2(dia)}/${p2(mes)}/${y}`, iso: `${y}-${p2(mes)}-${p2(dia)}` };
+    }
+
+    // Telefone: aceita com parênteses, traço, espaço, +55... Em português mostra
+    // formatado "(24) 99982-9182" e completa o 9 de celular antigo sem ele.
+    function parsePhoneInput(raw) {
+        let d = String(raw || '').replace(/\D/g, '');
+        if (LANG !== 'pt') return d.length >= 7 ? { display: String(raw).trim(), digits: d } : null;
+        let ddi = '';
+        if ((d.length === 12 || d.length === 13) && d.startsWith('55')) { ddi = '55'; d = d.slice(2); }
+        if (d.length === 10 && /[6-9]/.test(d[2])) d = d.slice(0, 2) + '9' + d.slice(2);
+        if (d.length !== 10 && d.length !== 11) return null;
+        const display = d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+        return { display, digits: ddi + d };
+    }
+
+    // Se a pessoa errar 2 vezes, aceita como ela escreveu — melhor um dado torto do
+    // que travar o Mini Chat e perder o contato.
+    const tentativasInvalidas = {};
+    function normalizeContactAnswer(question, val) {
+        const id = question.id;
+        if (id !== 'nascimento' && id !== 'telefone') return { ok: true, value: val };
+        const r = id === 'nascimento' ? parseBirthInput(val) : parsePhoneInput(val);
+        if (r) {
+            if (id === 'nascimento') userData.nascimentoISO = r.iso; else userData.telefoneDigits = r.digits;
+            return { ok: true, value: r.display };
+        }
+        tentativasInvalidas[id] = (tentativasInvalidas[id] || 0) + 1;
+        if (tentativasInvalidas[id] >= 3) return { ok: true, value: val };
+        return { ok: false, msg: id === 'nascimento' ? T().invalidDate : T().invalidPhone };
+    }
+
     // Só uma vez por visita: no modo e-mail o contato já é salvo sozinho ao terminar o
     // diagnóstico; sem essa trava, clicar no botão depois contaria a pessoa duas vezes.
     let leadSavedToCRM = false;
@@ -765,9 +827,9 @@
             headers: { "Content-Type": "application/json", "X-Owner-Key": uid },
             body: JSON.stringify({
                 name: userData.nome ? userData.nome : `Lead Mini Chat (${nomeLead})`,
-                phone: userData.telefone || null,
+                phone: userData.telefoneDigits || userData.telefone || null,
                 email: userData.email || null,
-                birthday: userData.nascimento || null,
+                birthday: userData.nascimentoISO || userData.nascimento || null,
             }),
         }).catch(() => {});
     }
@@ -887,8 +949,15 @@
                 textInput.focus();
                 return;
             }
+            const norm = normalizeContactAnswer(question, val);
+            if (!norm.ok) {
+                addMessage(norm.msg);
+                textInput.value = '';
+                textInput.focus();
+                return;
+            }
             textInput.removeEventListener('keydown', onKey);
-            selectAnswer(val, question.id);
+            selectAnswer(norm.value, question.id);
         };
         const onKey = (e) => { if (e.key === 'Enter') submit(); };
         textInput.addEventListener('keydown', onKey);
