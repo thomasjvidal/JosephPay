@@ -223,3 +223,15 @@ da CAA Renovations virou um genérico de Vite (25/08) — mesmo erro da Lervet (
   Ads), completa o que estava faltando (aniversário, e-mail, nome no lugar de
   "Contato Google N") — nunca sobrescreve dado que já existia. Antes descartava tudo e
   só contava "veio 2x", o que gerava "aniversário não informado" pra quem respondeu.
+
+## Mini Chat PRÓPRIO do site conta como conectado
+
+Se o nosso Mini Chat não está no ar mas o repositório do cliente já tem um mini chat
+próprio (`detectOwnMinichat()`: caminho com cara de chat/quiz + lista de
+perguntas/opções no conteúdo — ex: `public/minichat/index.html` da CAA),
+`verifyMinichatLive()` devolve `status: "proprio"` e o card "Mini Chat no site" /
+checklist ficam verdes, sem pedir instalação (pedido do Thomas). Sempre com aviso
+claro quando esse chat NÃO manda o contato pro JosephPay (só o `sensor.js` não conta).
+Link interno pro chat próprio deixa de ser pendência em "Botões do site"; o job
+automático nunca reinstala o nosso por cima de um próprio. wa.me continua pendência
+(regra 3).

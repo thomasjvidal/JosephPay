@@ -4361,9 +4361,14 @@ function isInternalLink(href) {
 // Um link "pendente" é um wa.me/api.whatsapp.com que ainda não aponta pro Mini Chat,
 // OU um link interno com cara de chat/atendimento rival — nos dois casos o botão de
 // verdade do site continua levando o cliente final pra outro lugar que não o nosso.
-function pendingChatLinks(links, minichatLink) {
+// ownPaths: caminhos do mini chat PRÓPRIO do site (detectOwnMinichat), quando ele é
+// aceito como "conectado" — link interno apontando pra ele não é pendência.
+function pendingChatLinks(links, minichatLink, ownPaths = []) {
+  const norm = h => String(h || "").replace(/^\.?\/+/, "").replace(/[?#].*$/, "");
+  const proprios = new Set((ownPaths || []).map(norm));
   return (links || []).filter(l => {
     if (l.href === minichatLink) return false;
+    if (proprios.size && proprios.has(norm(l.href))) return false;
     if (/wa\.me|api\.whatsapp\.com/i.test(l.href)) return true;
     return isInternalLink(l.href) && RIVAL_CHAT_LINK_RE.test(l.href);
   });
@@ -5018,6 +5023,41 @@ async function verifyMinichatPath(base, servedPath, id, diagnosticoCatchAll) {
   }
 }
 
+// Procura no repositório do cliente um mini chat PRÓPRIO que ele já tinha (ex: o
+// public/minichat/index.html da CAA Renovations) — arquivo com cara de chat/quiz pelo
+// caminho E com uma lista de perguntas/opções dentro (só o nome não basta: um
+// "ChatIcon.tsx" não é mini chat). Devolve o arquivo, os caminhos em que ele é servido
+// no site e pra onde ele manda o contato (JosephPay, WhatsApp, e-mail).
+async function detectOwnMinichat(repo, headers, token) {
+  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+  const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
+  const candidatos = (treeResp.data.tree || [])
+    .filter(i => i.type === "blob" && i.size < 200000
+      && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro)$/i.test(i.path)
+      && !/(^|\/)(node_modules|dist|build|\.next|components\/ui)\//i.test(i.path)
+      && /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard)/i.test(i.path))
+    // Pasta/arquivo "minichat" primeiro — é o nome mais óbvio.
+    .sort((a, b) => /mini-?_?chat/i.test(b.path) - /mini-?_?chat/i.test(a.path))
+    .slice(0, 6);
+  for (const item of candidatos) {
+    let conteudo = "";
+    try { conteudo = await readGithubFile(repo, item.path, headers, token); } catch { continue; }
+    if (!/options\s*:\s*\[|questions\s*[=:]\s*\[|perguntas\s*[=:]\s*\[/i.test(conteudo)) continue;
+    const destinos = [];
+    // Só o sensor de visitas (sensor.js) não conta — precisa mandar o CONTATO pro
+    // JosephPay (criar lead) ou abrir o nosso Mini Chat.
+    if (/\/api\/leads\/create|\/api\/minichat\/lead-email|josephpay\.com\/minichat/i.test(conteudo)) destinos.push("josephpay");
+    if (/wa\.me|api\.whatsapp\.com/i.test(conteudo)) destinos.push("whatsapp");
+    if (/mailto:/i.test(conteudo)) destinos.push("email");
+    // Caminho em que o arquivo aparece no site: public/minichat/index.html → /minichat/index.html e /minichat/
+    const servido = item.path.replace(/^public\//, "");
+    const caminhos = [servido];
+    if (/(^|\/)index\.html?$/i.test(servido)) caminhos.push(servido.replace(/index\.html?$/i, ""), servido.replace(/\/index\.html?$/i, ""));
+    return { path: item.path, servedPaths: [...new Set(caminhos.filter(Boolean))], destinos };
+  }
+  return null;
+}
+
 async function verifyMinichatLive(id) {
   const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
   if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
@@ -5043,11 +5083,32 @@ async function verifyMinichatLive(id) {
     if (resultado.status === "ok") { ultimoResultado = resultado; break; }
     ultimoResultado = resultado;
   }
+  // O nosso não está no ar — mas o site pode já ter um mini chat PRÓPRIO (caso da CAA).
+  // Nesse caso conta como conectado (pedido do Thomas: não precisar instalar por cima
+  // de um que já existe), avisando com clareza pra onde vão os contatos dele — o caso
+  // da Lervet foi justamente um chat antigo que não falava com a JosephPay.
+  if (ultimoResultado?.status !== "ok" && headers && profile.github_repo) {
+    try {
+      const proprio = await detectOwnMinichat(profile.github_repo, headers, token);
+      if (proprio) {
+        const falaComJosephPay = proprio.destinos.includes("josephpay");
+        const pra = proprio.destinos.filter(d => d !== "josephpay").map(d => d === "email" ? "pro e-mail" : "pro WhatsApp").join(" e ");
+        ultimoResultado = {
+          status: "proprio",
+          path: proprio.path,
+          servedPaths: proprio.servedPaths,
+          destinos: proprio.destinos,
+          message: `O site já tem um Mini Chat próprio (${proprio.path}) — conectado.`,
+          aviso: falaComJosephPay ? null : `Os contatos desse chat vão direto ${pra || "pra fora"} e NÃO entram no CRM do JosephPay. Se quiser que entrem (e chegar por e-mail automático), use "Trocar pelo Mini Chat do JosephPay".`,
+        };
+      }
+    } catch (e) { console.warn("[verifyMinichatLive] detectOwnMinichat:", e.message); }
+  }
   // Guarda o resultado — é isso que o card do produtor na lista de Clientes usa pra
   // mostrar a MESMA verdade que aparece dentro do perfil, em vez de um sinal fraco
   // (visita histórica numa página com "minichat" no nome, que nunca desliga sozinho).
   await supabase.from("profiles").update({
-    github_minichat_verified_ok: ultimoResultado?.status === "ok",
+    github_minichat_verified_ok: ultimoResultado?.status === "ok" || ultimoResultado?.status === "proprio",
     github_minichat_verified_at: new Date().toISOString(),
   }).eq("id", id).then(null, () => {});
   return ultimoResultado;
@@ -5125,19 +5186,20 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
         }
         const avisoVercel = await genericViteConfigOnUnknownFramework(p.github_repo, headers, detected);
         if (avisoVercel) issues.push(avisoVercel);
-        const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
-        const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-        const pendentes = pendingChatLinks(links, minichatLink);
-        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) ainda não apontam pro Mini Chat (WhatsApp direto ou outro chat/atendimento).`, count: pendentes.length });
-
         // Não basta o commit ter dado certo — confere se o site publicado de verdade
         // responde com o Mini Chat nesse endereço. Foi exatamente isso que enganou o
         // Thomas com a Lervet: o checklist mostrava verde porque um arquivo nosso foi
         // commitado, mas o caminho real do botão do site já tinha outro mini chat.
+        // (Roda antes dos botões pra saber se existe um mini chat próprio aceito.)
         const live = await verifyMinichatLive(p.id);
-        if (live.status !== "ok" && live.status !== "sem_site") {
+        if (live.status !== "ok" && live.status !== "sem_site" && live.status !== "proprio") {
           issues.push({ tipo: "minichat_nao_confirmado", detalhe: live.message });
         }
+        if (live.status === "proprio" && live.aviso) issues.push({ tipo: "minichat_proprio_fora_do_crm", detalhe: `${live.message} ${live.aviso}` });
+        const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
+        const links = await scanRepoJsxLinks(p.github_repo, headers, token);
+        const pendentes = pendingChatLinks(links, minichatLink, live.status === "proprio" ? live.servedPaths : []);
+        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) ainda não apontam pro Mini Chat (WhatsApp direto ou outro chat/atendimento).`, count: pendentes.length });
       } catch (e) {
         issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
       }
@@ -5201,7 +5263,9 @@ async function autofixSiteIssues(onProgress) {
 
       const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
       const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-      const pendentes = pendingChatLinks(links, minichatLink);
+      // Site com mini chat próprio aceito como conectado: link pra ele não é pendência.
+      const live = p.github_minichat_path ? await verifyMinichatLive(p.id) : null;
+      const pendentes = pendingChatLinks(links, minichatLink, live?.status === "proprio" ? live.servedPaths : []);
       // NUNCA aplica troca de link sozinho, nem um wa.me "inequívoco" — a Lervet provou
       // que um wa.me também pode ser o passo final de um fluxo de pré-atendimento que o
       // próprio cliente já construiu (o sendToWhatsApp do mini chat dele), e trocar isso
@@ -5220,9 +5284,10 @@ async function autofixSiteIssues(onProgress) {
       // reinstala por cima automaticamente. Não pede confirmação porque é automático
       // (ninguém pra confirmar em segundo plano) e o Thomas foi explícito: todo
       // produtor sem o nosso Mini Chat de verdade tem que ser atualizado sozinho.
-      if (p.github_minichat_path) {
-        const live = await verifyMinichatLive(p.id);
-        if (live.status !== "ok" && live.status !== "sem_site") {
+      // Mini chat PRÓPRIO do site (status "proprio") nunca é reinstalado por cima
+      // sozinho — o Thomas pediu pra ele contar como conectado.
+      if (p.github_minichat_path && live) {
+        if (live.status !== "ok" && live.status !== "sem_site" && live.status !== "proprio") {
           try {
             await reinstalarMinichatFile(p.id);
             fixed.push({ tipo: "minichat_nao_confirmado", detalhe: `Reinstalado por cima (estava: ${live.message}). Confirmação final roda no próximo diagnóstico, depois do deploy.` });
