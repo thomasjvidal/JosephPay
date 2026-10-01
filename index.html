@@ -2187,6 +2187,21 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
   const [erroLista,setErroLista]=useState(false);
   const MO=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const todayMid=(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate());})();
+  // Celulares que já estão no CRM sem o 9 — o servidor conta e corrige (só o telefone).
+  const [semNove,setSemNove]=useState(null);
+  const [corrigindoNove,setCorrigindoNove]=useState(false);
+  const [msgNove,setMsgNove]=useState("");
+  const checarNove=()=>apiCall(`/api/admin/producers/${ownerId}/customers/fix-phones`,{method:'POST',body:JSON.stringify({apply:false})}).then(d=>{if(!d?.error)setSemNove(d);});
+  const corrigirNove=async()=>{
+    if(!semNove?.candidates)return;
+    if(!window.confirm(`Colocar o 9 na frente de ${semNove.candidates} celular(es) de ${nome||"este produtor"}? Só o telefone muda — nome, status e histórico ficam iguais.`))return;
+    setCorrigindoNove(true);setMsgNove("");
+    const d=await apiCall(`/api/admin/producers/${ownerId}/customers/fix-phones`,{method:'POST',body:JSON.stringify({apply:true})});
+    setCorrigindoNove(false);
+    if(d?.error){setMsgNove(d.error);return;}
+    setMsgNove(`✓ ${d.fixed} número(s) corrigido(s).`);
+    carregarLista();checarNove();
+  };
   const carregarLista=()=>{
     if(!ownerId)return;
     apiCall(`/api/admin/producers/${ownerId}/customers`).then(d=>{
@@ -2194,6 +2209,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
       else setErroLista(true);
     });
   };
+  useEffect(()=>{ if(open&&ownerId&&semNove===null)checarNove(); },[open,ownerId]);
   useEffect(()=>{
     if(!ownerId||!open||lista!==null||erroLista)return;
     carregarLista();
@@ -2326,6 +2342,17 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
               </div>
               <Btn sm outline color={GOLD} onClick={exportar}>Exportar CSV</Btn>
             </div>
+            {(semNove?.candidates>0||semNove?.duplicates?.length>0||msgNove)&&(
+              <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}35`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+                {semNove?.candidates>0&&(<>
+                  <div style={{color:TEXT,fontSize:12,fontWeight:700,marginBottom:4}}>📱 {semNove.candidates} celular(es) sem o 9 na frente</div>
+                  <div style={{color:MUTED,fontSize:11,lineHeight:1.4,marginBottom:8}}>Número antigo (ex: 21 8494-1200) pode falhar nos disparos de WhatsApp. Fixos não são alterados.</div>
+                  <button onClick={corrigirNove} disabled={corrigindoNove} style={{background:GOLD,border:"none",borderRadius:100,padding:"7px 14px",color:"#0C0C0C",fontWeight:700,fontSize:12,cursor:corrigindoNove?"default":"pointer",fontFamily:F}}>{corrigindoNove?"Corrigindo…":"Corrigir agora"}</button>
+                </>)}
+                {semNove?.duplicates?.length>0&&<div style={{color:MUTED,fontSize:11,lineHeight:1.4,marginTop:semNove?.candidates>0?8:0}}>⚠️ {semNove.duplicates.length} contato(s) sem o 9 já existem com o 9 em outro cadastro — não mexi neles. Confira: {semNove.duplicates.slice(0,3).map(x=>`${x.name} (${x.phone}) = ${x.other}`).join("; ")}{semNove.duplicates.length>3?"…":""}</div>}
+                {msgNove&&<div style={{color:msgNove.startsWith("✓")?GREEN:RED,fontSize:11,fontWeight:700,marginTop:6}}>{msgNove}</div>}
+              </div>
+            )}
             {filtrada.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum contato aqui ainda.</div>}
             <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
               {filtrada.map(c=>{
@@ -2429,7 +2456,8 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
             <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:6}}>Adicionar contatos</div>
             <div style={{color:MUTED,fontSize:12,marginBottom:12,lineHeight:1.5}}>Cole a lista — um contato por linha. O sistema separa nome, telefone e e-mail sozinho. Depois só marca quem é interessado ou já é cliente. Quem já existir (mesmo telefone) não duplica — só conta quantas vezes voltou.</div>
             <button onClick={copiarPrompt} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:12}}>Copiar prompt pro ChatGPT</button>
-            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"João Silva, 21999998888, joao@email.com\nMaria Souza, 21988887777"} rows={5} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:14,resize:"vertical"}}/>
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder={"João Silva, 21999998888, joao@email.com\nMaria Souza, 21988887777"} rows={5} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4,resize:"vertical"}}/>
+            <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Celular antigo sem o 9 (ex: 21 8494-1200) é corrigido sozinho ao salvar, e número que já existe (com ou sem 55 na frente) não duplica.</div>
             <label style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${origemGoogleAds?GOLD+"55":BDR}`,borderRadius:12,padding:"11px 14px",marginBottom:14,cursor:"pointer"}}>
               <input type="checkbox" checked={origemGoogleAds} onChange={e=>setOrigemGoogleAds(e.target.checked)} style={{width:16,height:16,flexShrink:0}}/>
               <div>
@@ -2475,6 +2503,14 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Entendido.",subtext:"Qual sua maior dificuldade hoje?",options:["Perguntam preço e somem","Explico tudo no WhatsApp","Não pareço profissional","Não tenho autoridade digital"]},
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
+// Mesmas 4 perguntas padrão, em inglês — usadas como ponto de partida quando o Mini
+// Chat do produtor está em English e ele ainda não tem perguntas próprias.
+const DEFAULT_MINICHAT_QUESTIONS_EN=[
+  {text:"Hi! Let's do a quick diagnosis of your online presence.\n\nIt takes less than a minute.",subtext:"What's your main goal today?",options:["Get more clients","Look more trustworthy","Have a professional link","Get more bookings"]},
+  {text:"Perfect.",subtext:"What's your current situation?",options:["I don't have a website","Only Instagram","Outdated website","Website doesn't convert"]},
+  {text:"Got it.",subtext:"What's your biggest challenge today?",options:["People ask the price and vanish","I explain everything by text","I don't look professional","No online authority"]},
+  {text:"Last question.",subtext:"If you had a website today, the top priority would be?",options:["Show my services clearly","Get more contacts","Have a professional link","Booking system"]},
+];
 function AtivacaoAdmin({c,initialOpen,done}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||c.phone||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
@@ -2492,6 +2528,14 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [corFundo,setCorFundo]=useState(c.minichat_config?.bg_color||"#0f1a3a");
   const [corDestaque,setCorDestaque]=useState(c.minichat_config?.accent_color||"#c91d2a");
   const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
+  const [testeEmail,setTesteEmail]=useState("");
+  const [enviandoTeste,setEnviandoTeste]=useState(false);
+  const enviarEmailTeste=async()=>{
+    setEnviandoTeste(true);setTesteEmail("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/test-email`,{method:'POST'});
+    setEnviandoTeste(false);
+    setTesteEmail(d?.ok?`✓ Enviado pra ${d.to}. Confira a caixa de entrada (e o spam).`:(d?.error||"Não consegui enviar o teste."));
+  };
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
   const [maisOpcoes,setMaisOpcoes]=useState(false);
@@ -2572,6 +2616,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {destinoTipo!=="whatsapp"&&(<>
       <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Assim que a pessoa termina o Mini Chat, o diagnóstico (respostas + nome, e-mail e telefone dela) chega <b style={{color:TEXT}}>sozinho</b> neste endereço — enviado pelo JosephPay, sem a pessoa precisar ter app de e-mail. O contato também entra em "Clientes do produtor" (filtro "Mini Chat"). Dica: confira a caixa de spam no primeiro teste.</div>
+      {miniSaved&&emailDestino.trim()&&<button onClick={enviarEmailTeste} disabled={enviandoTeste} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:enviandoTeste?"default":"pointer",fontFamily:F,marginBottom:testeEmail?6:12}}>{enviandoTeste?"Enviando…":"✉️ Enviar e-mail de teste"}</button>}
+      {testeEmail&&<div style={{color:testeEmail.startsWith("✓")?GREEN:RED,fontSize:11,marginBottom:12,lineHeight:1.4}}>{testeEmail}</div>}
       </>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Idioma do Mini Chat</div>
       <div style={{display:"flex",gap:6,marginBottom:4}}>
@@ -2663,7 +2709,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
 
 function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [open,setOpen]=useState(false);
-  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:DEFAULT_MINICHAT_QUESTIONS.map(q=>({...q,options:[...q.options]})));
+  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:(c.minichat_config?.language==="en"?DEFAULT_MINICHAT_QUESTIONS_EN:DEFAULT_MINICHAT_QUESTIONS).map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(!!c.minichat_config?.questions?.length);
@@ -2819,8 +2865,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             ))}
           </div>
         </div>
+        {destinoMc==="email"&&<div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 14px",marginBottom:16,color:MUTED,fontSize:11,lineHeight:1.5}}>Destino deste cliente é <b style={{color:TEXT}}>E-mail</b>: as respostas chegam por e-mail, não pelo WhatsApp. Pra ver como fica, use "✉️ Enviar e-mail de teste" no card Mini Chat.</div>}
         {/* Preview da mensagem WhatsApp */}
-        <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"14px",marginBottom:16}}>
+        {destinoMc!=="email"&&<div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"14px",marginBottom:16}}>
           <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Preview da mensagem no WhatsApp do produtor</div>
           <div style={{background:"#E5DDD5",borderRadius:12,padding:"14px 12px",fontFamily:"sans-serif"}}>
             <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-start"}}>
@@ -2850,7 +2897,7 @@ ${questions.map((q,i)=>`• ${q.subtext||q.text||`Pergunta ${i+1}`}: [resposta d
             </div>
           </div>
           <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Edite a frase acima (última linha da mensagem). Vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b> quando o lead clica no botão verde. Clique em "Salvar perguntas" pra confirmar.</div>
-        </div>
+        </div>}
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
       </div>)}
@@ -3220,6 +3267,7 @@ function QuickStats({c}){
 const AUDIT_LABELS={
   minichat_fora_de_public:"Mini Chat instalado fora de public/",
   vercel_json_desatualizado:"vercel.json desatualizado",
+  vercel_json_generico_em_framework_desconhecido:"vercel.json genérico de Vite num site de outro tipo (deploy pode estar quebrado)",
   botoes_whatsapp_pendentes:"Botões do site ainda não apontavam pro Mini Chat",
   minichat_nao_confirmado:"Mini Chat não confirmado no site publicado",
   erro_ao_verificar:"Não consegui verificar esse repositório",

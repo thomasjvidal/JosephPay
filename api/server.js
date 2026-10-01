@@ -1987,13 +1987,41 @@ app.patch("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (re
 // gravado do jeito que veio. Ignora formatação e o código do país 55 na frente: a mesma
 // pessoa subida uma vez como "5521999015805" (lista do Google Ads) e outra como
 // "21999015805" (lista colada à mão) virava dois contatos separados no CRM.
-function phoneMatchKey(raw) {
+function phoneMatchKey(raw, { br = true } = {}) {
   let d = String(raw || "").replace(/\D/g, "");
   if (d.startsWith("55") && (d.length === 12 || d.length === 13)) d = d.slice(2);
+  // Celular sem o 9 e com o 9 é a mesma pessoa (21 8494-1200 = 21 98494-1200).
+  if (br) { const fixed = addMissingNinthDigit(d); if (fixed) d = fixed; }
   return d;
 }
 
+// DDDs que existem no Brasil — só número com um desses na frente é tratado como
+// brasileiro pela regra do 9 (protege número estrangeiro de 10 dígitos).
+const BR_DDDS = new Set("11 12 13 14 15 16 17 18 19 21 22 24 27 28 31 32 33 34 35 37 38 41 42 43 44 45 46 47 48 49 51 53 54 55 61 62 63 64 65 66 67 68 69 71 73 74 75 77 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99".split(" "));
+// Celular brasileiro antigo, sem o 9 na frente (ex: "2184941200" → "21984941200").
+// Só mexe quando tem CERTEZA de que é celular: DDD válido + 8 dígitos começando com
+// 6, 7, 8 ou 9 (faixa de celular). Fixo (começa com 2–5) fica como está. Mantém o 55
+// se já tinha. Devolve null quando não precisa (ou não deve) mudar nada.
+function addMissingNinthDigit(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  let prefixo = "";
+  if (d.length === 12 && d.startsWith("55")) { prefixo = "55"; d = d.slice(2); }
+  if (d.length !== 10) return null;
+  if (!BR_DDDS.has(d.slice(0, 2)) || !/[6-9]/.test(d[2])) return null;
+  return prefixo + d.slice(0, 2) + "9" + d.slice(2);
+}
+
+// Produtor com Mini Chat em inglês (ex: CAA, clientes nos EUA) tem número estrangeiro
+// de 10 dígitos que pode parecer um celular brasileiro sem o 9 — nesses, a regra do
+// 9 nunca roda.
+async function ownerUsesBrPhones(ownerId) {
+  const { data } = await supabase.from("profiles").select("minichat_config").eq("id", ownerId).maybeSingle();
+  return data?.minichat_config?.language !== "en";
+}
+
 async function upsertCustomersByPhone(ownerId, rows) {
+  const br = await ownerUsesBrPhones(ownerId);
+  if (br) rows = rows.map(r => { const fixed = r.phone ? addMissingNinthDigit(r.phone) : null; return fixed ? { ...r, phone: fixed } : r; });
   const comTelefone = rows.filter(r => r.phone);
   const semTelefone = rows.filter(r => !r.phone);
   let inserted = 0, duplicated = 0;
@@ -2009,9 +2037,9 @@ async function upsertCustomersByPhone(ownerId, rows) {
       if (!page || page.length < 1000) break;
     }
     const porTelefone = {};
-    existentes.forEach(e => { const k = phoneMatchKey(e.phone); if (k && !porTelefone[k]) porTelefone[k] = e; });
+    existentes.forEach(e => { const k = phoneMatchKey(e.phone, { br }); if (k && !porTelefone[k]) porTelefone[k] = e; });
     for (const row of comTelefone) {
-      const k = phoneMatchKey(row.phone);
+      const k = phoneMatchKey(row.phone, { br });
       const existente = porTelefone[k];
       if (existente?.pending) {
         duplicated++;
@@ -2065,6 +2093,42 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
     res.json({ ok: true, count: inserted + duplicated, inserted, duplicated });
   } catch (err) {
     console.error("[admin/producers customers bulk]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Corrige os celulares que já estão no CRM sem o 9 (ex: lista colada antes dessa regra
+// existir). Só mexe no telefone desses contatos — nome, status, histórico, nada mais.
+// apply=false só conta (pra tela mostrar "X números sem o 9"); apply=true corrige.
+// Se a mesma pessoa já está cadastrada COM o 9 em outro contato, não mexe em nenhum
+// dos dois (não apaga nada) — só avisa, pra decidir à mão qual manter.
+app.post("/api/admin/producers/:id/customers/fix-phones", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const apply = req.body?.apply === true;
+    if (!(await ownerUsesBrPhones(id))) return res.json({ candidates: 0, fixed: 0, duplicates: [], skippedReason: "Mini Chat em inglês — números estrangeiros não são alterados." });
+    const todos = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error } = await supabase.from("customers").select("id,name,phone").eq("owner_id", id).not("phone", "is", null).is("deleted_at", null).order("id", { ascending: true }).range(from, from + 999);
+      if (error) return res.status(500).json({ error: error.message });
+      todos.push(...(page || []));
+      if (!page || page.length < 1000) break;
+    }
+    const porChave = {};
+    todos.forEach(c => { const k = phoneMatchKey(c.phone); (porChave[k] = porChave[k] || []).push(c); });
+    const candidatos = todos.map(c => ({ ...c, novo: addMissingNinthDigit(c.phone) })).filter(c => c.novo);
+    const duplicates = [];
+    let fixed = 0;
+    for (const c of candidatos) {
+      const outros = (porChave[phoneMatchKey(c.phone)] || []).filter(o => o.id !== c.id);
+      if (outros.length) { duplicates.push({ name: c.name, phone: c.phone, other: outros.map(o => `${o.name} (${o.phone})`).join(", ") }); continue; }
+      if (!apply) continue;
+      const { error } = await supabase.from("customers").update({ phone: c.novo }).eq("id", c.id).eq("owner_id", id);
+      if (!error) fixed++;
+    }
+    res.json({ candidates: candidatos.length - duplicates.length, fixed, duplicates });
+  } catch (err) {
+    console.error("[admin/producers customers fix-phones]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -5007,6 +5071,23 @@ app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireA
 // Existe porque o Thomas pediu que esses erros nunca mais aconteçam com nenhum
 // produtor — não só o que motivou a reclamação — e sem isso não tem como saber quais
 // dos outros clientes têm o mesmo problema sem abrir um por um.
+// Framework que NÃO sabemos montar (TanStack Start do Lovable, Astro...) mas com o
+// vercel.json genérico de Vite que a JosephPay escrevia antes da detecção certa (caso
+// da CAA Renovations, 25/08) — provável deploy quebrado/desatualizado. Só AVISA:
+// corrigir exige olhar o projeto, nunca é automático (regra 6 do CLAUDE.md).
+async function genericViteConfigOnUnknownFramework(repo, headers, detected) {
+  if (!detected.unknownFramework) return null;
+  try {
+    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    let cfgAtual = {};
+    try { cfgAtual = JSON.parse(Buffer.from(existing.data.content, "base64").toString("utf8") || "{}"); } catch { return null; }
+    if (cfgAtual.framework === "vite" && cfgAtual.outputDirectory === "dist") {
+      return { tipo: "vercel_json_generico_em_framework_desconhecido", detalhe: "vercel.json está com a configuração genérica de Vite (framework \"vite\" + pasta \"dist\"), mas o site é de outro tipo (ex: TanStack Start/Lovable). O deploy na Vercel pode estar quebrado ou parado numa versão antiga — revisar o vercel.json à mão." };
+    }
+  } catch (e) { if (e.response?.status !== 404) throw e; }
+  return null;
+}
+
 app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req, res) => {
   try {
     const token = await getGithubToken();
@@ -5042,6 +5123,8 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
           // admin revisar manualmente; a correção de verdade sempre passa por ele.
           if (atual === null || !atual.includes(desired.trim())) issues.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json ausente ou parece diferente do esperado pra esse tipo de projeto — revisar." });
         }
+        const avisoVercel = await genericViteConfigOnUnknownFramework(p.github_repo, headers, detected);
+        if (avisoVercel) issues.push(avisoVercel);
         const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
         const links = await scanRepoJsxLinks(p.github_repo, headers, token);
         const pendentes = pendingChatLinks(links, minichatLink);
@@ -5109,7 +5192,8 @@ async function autofixSiteIssues(onProgress) {
           await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", p.id);
           fixed.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json corrigido." });
         } else if (skipped === "framework_desconhecido") {
-          issues.push({ tipo: "vercel_json_desatualizado", detalhe: "Framework que não sei montar vercel.json de cor — não mexi, precisa revisar manualmente." });
+          const avisoVercel = await genericViteConfigOnUnknownFramework(p.github_repo, headers, detected);
+          issues.push(avisoVercel || { tipo: "vercel_json_desatualizado", detalhe: "Framework que não sei montar vercel.json de cor — não mexi, precisa revisar manualmente." });
         } else if (skipped === "vercel_json_customizado") {
           issues.push({ tipo: "vercel_json_desatualizado", detalhe: "Já existe um vercel.json customizado (não fui eu que escrevi) — não sobrescrevi." });
         }
@@ -5757,12 +5841,14 @@ app.get("/api/health", (req, res) => {
 app.post("/api/customers/add", requireAuth, async (req, res) => {
   const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
+  let telefone = phone?.trim() || null;
+  if (telefone && await ownerUsesBrPhones(req.user.id)) telefone = addMissingNinthDigit(telefone) || telefone;
   const { data, error } = await supabase
     .from("customers")
     .insert({
       owner_id: req.user.id,
       name: name.trim(),
-      phone: phone?.trim() || null,
+      phone: telefone,
       email: email?.trim() || null,
       birthday: birthday || null,
       source: "manual",
@@ -5939,6 +6025,35 @@ ${bloco(t.answers, respostas)}
 <tr><td style="padding:20px 32px 28px;text-align:center;color:#666;font-size:12px;">${lead.email ? escHtml(t.reply) : ""}</td></tr>
 </table></td></tr></table></body></html>`;
 }
+// Botão "Enviar e-mail de teste" do Admin — manda um lead de exemplo pro e-mail de
+// destino SALVO desse produtor, pra conferir se chega (e se não cai no spam) antes
+// de um visitante de verdade usar. Mesmo visual do e-mail real, marcado como teste.
+app.post("/api/admin/producers/:id/minichat/test-email", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: profile } = await supabase.from("profiles").select("name,minichat_config").eq("id", req.params.id).maybeSingle();
+    const cfg = profile?.minichat_config || {};
+    const destino = String(cfg.email_destino || "").trim();
+    if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "Salve um e-mail de destino válido primeiro." });
+    if (!resend) return res.status(503).json({ error: "Envio de e-mail não configurado no servidor (RESEND_API_KEY)." });
+    const lang = cfg.language === "en" ? "en" : "pt";
+    const brand = String(cfg.brand_name || profile?.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
+    const exemplo = lang === "en"
+      ? { lead: { name: "Test Lead", email: "test@example.com", phone: "(555) 123-4567" }, answers: [{ question: "Example question", answer: "Example answer" }], subject: `[TEST] New lead from your website — Test Lead` }
+      : { lead: { name: "Contato de Teste", email: "teste@exemplo.com", phone: "(21) 99999-9999" }, answers: [{ question: "Pergunta de exemplo", answer: "Resposta de exemplo" }], subject: `[TESTE] Novo contato pelo site — Contato de Teste` };
+    const { error } = await resend.emails.send({
+      from: `${brand} via JosephPay <noreply@josephpay.com>`,
+      to: destino,
+      subject: exemplo.subject,
+      html: minichatLeadEmailHtml({ brand, lang, lead: exemplo.lead, answers: exemplo.answers }),
+    });
+    if (error) return res.status(502).json({ error: `O serviço de e-mail recusou: ${error.message || "erro desconhecido"}` });
+    res.json({ ok: true, to: destino });
+  } catch (err) {
+    console.error("[admin/producers minichat test-email]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.options("/api/minichat/lead-email", (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Headers", "Content-Type");

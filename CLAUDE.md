@@ -198,3 +198,16 @@ A versão nova do TanStack Start (a do Lovable) NÃO tem `app.config.ts` — tem
 que é SPA Vite. `detectRepoFramework()` reconhece o Start por: rotas TanStack + (sem
 `index.html` na raiz OU `src/start|server|client.ts`). Foi assim que o `vercel.json`
 da CAA Renovations virou um genérico de Vite (25/08) — mesmo erro da Lervet (regra 6).
+
+## Telefones do CRM: 9 do celular e repetidos
+
+- Ao salvar contatos (lista colada no Admin, importação/adição do produtor), celular
+  brasileiro antigo sem o 9 ganha o 9 (`addMissingNinthDigit()`): só com DDD válido +
+  8 dígitos começando com 6–9. Fixo (2–5) nunca muda. Produtor com Mini Chat em
+  inglês (`minichat_config.language === "en"`) nunca passa por essa regra — número
+  estrangeiro de 10 dígitos pode parecer celular brasileiro.
+- Repetido é comparado por `phoneMatchKey()` (ignora formatação, 55 e o 9 faltando)
+  — o número é gravado como veio (já com o 9 corrigido), a chave é só pra comparar.
+- Contatos que já estavam sem o 9: botão "Corrigir agora" em Clientes do produtor
+  (`/customers/fix-phones`). Nunca apaga contato; se a mesma pessoa já existe com o 9,
+  não mexe em nenhum dos dois e só avisa.
