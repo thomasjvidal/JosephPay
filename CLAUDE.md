@@ -244,3 +244,16 @@ card: UM status em linguagem simples no topo (ícone + título + 1 frase), UMA a
 principal conforme o status, ações secundárias como links pequenos, e tudo que é
 técnico/raro escondido em "Detalhes" — sem nunca remover função (regra do Admin).
 Primeiro card nesse padrão: "Mini Chat no site" (`MinichatRepoAdmin`).
+
+## Ler o mini chat que já existe no site do cliente (padrão)
+
+Ao abrir os cards "Mini Chat" e "Perguntas do Mini Chat", o Admin chama sozinho
+`/minichat/import-questions-from-repo` (`importMinichatFromRepo()`, cache 30 min por
+repo). `findMinichatSources()` acha o mini chat em QUALQUER repositório: primeiro pelo
+nome do arquivo (minichat/chat/quiz/diagnóstico…), senão varrendo até 40 arquivos de
+código atrás de uma lista de perguntas com opções. Perguntas vêm pela IA (texto exato,
+sem traduzir); e-mail, WhatsApp, nome, cores e idioma vêm de `extractMinichatSettings()`
+(sem IA). Só PREENCHE a tela — vira definitivo ao clicar Salvar. Perguntas só são
+puxadas se o cliente não tem perguntas próprias salvas; destino, idioma, visual, e-mail e
+WhatsApp só são preenchidos em Mini Chat nunca configurado (sem WhatsApp nem e-mail
+salvos) — produtor que já usa nunca tem isso trocado.

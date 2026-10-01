@@ -2537,6 +2537,14 @@ const DEFAULT_MINICHAT_QUESTIONS=[
   {text:"Entendido.",subtext:"Qual sua maior dificuldade hoje?",options:["Perguntam preço e somem","Explico tudo no WhatsApp","Não pareço profissional","Não tenho autoridade digital"]},
   {text:"Última pergunta.",subtext:"Se tivesse um site hoje, prioridade máxima seria?",options:["Mostrar serviços claros","Receber mais contatos","Ter link profissional","Sistema de agendamento"]},
 ];
+// Lê o mini chat que já existe no repositório do cliente (perguntas + e-mail, idioma,
+// cores, nome...). Os cards "Mini Chat" e "Perguntas" chamam isso sozinhos ao abrir —
+// guardado por cliente pra não ler duas vezes. fresh=true força ler de novo.
+const _minichatImport={};
+function importarMinichatDoSite(id,fresh){
+  if(fresh||!_minichatImport[id])_minichatImport[id]=apiCall(`/api/admin/producers/${id}/minichat/import-questions-from-repo`,{method:'POST',body:JSON.stringify({fresh:!!fresh})}).then(d=>{if(!d?.questions?.length)delete _minichatImport[id];return d;});
+  return _minichatImport[id];
+}
 // Mesmas 4 perguntas padrão, em inglês — usadas como ponto de partida quando o Mini
 // Chat do produtor está em English e ele ainda não tem perguntas próprias.
 const DEFAULT_MINICHAT_QUESTIONS_EN=[
@@ -2630,9 +2638,35 @@ function AtivacaoAdmin({c,initialOpen,done}){
     setPromptText(d?.suggestions||d?.error||"Não consegui gerar sugestões agora.");
   };
   const [open,setOpen]=useState(false);
+  // Padrão pra todo cliente com repositório: ao abrir, lê o mini chat que já existe no
+  // site e preenche SÓ o que ainda não foi configurado aqui (nunca troca o que já está
+  // salvo). Fica como alteração pendente — vira definitivo ao clicar "Salvar Mini Chat".
+  const [preenchidoDoSite,setPreenchidoDoSite]=useState("");
+  const autoLeuSite=useRef(false);
+  useEffect(()=>{
+    if(!open||autoLeuSite.current||!c.github_repo)return;
+    autoLeuSite.current=true;
+    const mc=c.minichat_config||{};
+    importarMinichatDoSite(c.id).then(d=>{
+      const st=d?.settings||{};if(!d?.found)return;
+      const feitos=[];
+      // Destino, idioma e visual só pra Mini Chat que nunca foi configurado — produtor
+      // que já usa (WhatsApp/e-mail salvo) nunca tem isso trocado sem querer.
+      const novo=!mc.whatsapp_number&&!mc.email_destino;
+      if(novo&&st.email_destino&&!emailDestino.trim()){setEmailDestino(st.email_destino);feitos.push("e-mail de destino");}
+      if(novo&&st.whatsapp_number&&!wapNum.trim()){setWapNum(st.whatsapp_number);feitos.push("WhatsApp");}
+      if(novo&&st.destination_type&&!mc.destination_type){setDestinoTipo(st.destination_type);feitos.push(st.destination_type==="email"?"destino E-mail":"destino WhatsApp");}
+      if(novo&&st.language&&!mc.language){setIdioma(st.language);feitos.push(st.language==="en"?"idioma English":"idioma Português");}
+      if(novo&&(st.bg_color||st.accent_color)&&!mc.template){setModelo("email");if(st.bg_color)setCorFundo(st.bg_color);if(st.accent_color)setCorDestaque(st.accent_color);feitos.push("visual e cores do site");}
+      if(st.brand_name&&!mc.brand_name&&(!brandName.trim()||brandName===c.name)){setBrandName(st.brand_name);feitos.push("nome");}
+      if(st.business_context&&!mc.business_context&&!businessContext.trim()){setBusinessContext(st.business_context);feitos.push("sobre o negócio");}
+      if(feitos.length)setPreenchidoDoSite(`Preenchi com o que achei no mini chat que já existe no site (${(d.source||[]).join(", ")}): ${feitos.join(", ")}. Confira e toque em "Salvar Mini Chat".`);
+    });
+  },[open]);
   return(
     <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&preenchidoDoSite&&<div style={{...glassInset,marginTop:10,marginBottom:4,color:MUTED,fontSize:12,lineHeight:1.5}}><span style={{color:GOLD,fontWeight:600}}>✨ Lido do site. </span>{preenchidoDoSite}</div>}
       {open&&(<div style={{marginTop:8}}>
       <div style={{marginBottom:14}}>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Destino dos leads</div>
@@ -2762,16 +2796,25 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const destinoMc=c.minichat_config?.destination_type||"whatsapp";
   // Lê o mini chat que o cliente JÁ tinha no próprio site (repositório GitHub) e traz
   // as perguntas pra cá — só preenche a tela, vira definitivo ao clicar "Salvar perguntas".
-  const importarDoSite=async()=>{
+  const importarDoSite=async(auto)=>{
     if(importando)return;
-    setMsg("");setImportInfo("");setImportando(true);
-    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/import-questions-from-repo`,{method:'POST'});
+    setMsg("");if(!auto)setImportInfo("");setImportando(true);
+    const d=await importarMinichatDoSite(c.id,!auto);
     setImportando(false);
-    if(!d?.questions?.length){setMsg(d?.error||"Não consegui importar as perguntas.");return;}
+    if(!d?.questions?.length){if(!auto)setMsg(d?.error||"Não consegui importar as perguntas.");return;}
     setQuestions(d.questions);setSaved(false);
-    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Elas estão em inglês — escolha "English" em Idioma do Mini Chat (card Mini Chat) pra combinar.':"";
-    setImportInfo(`✓ ${d.questions.length} pergunta(s) importada(s) de ${(d.source||[]).join(", ")}. Revise abaixo e clique "Salvar perguntas".${avisoIdioma}`);
+    if(d.settings?.business_context&&!nicho.trim())setNicho(d.settings.business_context);
+    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':"";
+    setImportInfo(`✓ Puxei ${d.questions.length} pergunta(s) do mini chat que já existe no site (${(d.source||[]).join(", ")}). Revise e toque em "Salvar perguntas".${avisoIdioma}`);
   };
+  // Padrão: cliente com repositório e sem perguntas próprias salvas → ao abrir o card,
+  // já puxa sozinho as perguntas do mini chat que o site tiver (qualquer repositório).
+  const autoImportou=useRef(false);
+  useEffect(()=>{
+    if(!open||autoImportou.current||!c.github_repo||c.minichat_config?.questions?.length)return;
+    autoImportou.current=true;
+    importarDoSite(true);
+  },[open]);
   const gerarTodas=async()=>{
     if(gerandoTudo)return;
     setMsg("");setGerandoTudo(true);
@@ -2813,7 +2856,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
-          {c.github_repo&&<Btn sm outline color={GOLD} onClick={importarDoSite}>{importando?"Lendo o site…":"⬇️ Importar do site do cliente"}</Btn>}
+          {c.github_repo&&<Btn sm outline color={GOLD} onClick={()=>importarDoSite(false)}>{importando?"Lendo o site…":"⬇️ Ler perguntas do site de novo"}</Btn>}
         </div>
         {importInfo&&<div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:8,padding:"7px 12px",marginBottom:8,color:GREEN,fontSize:11,lineHeight:1.4}}>{importInfo}</div>}
         <button onClick={()=>setShowAvancadoPerguntas(a=>!a)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10,display:"flex",alignItems:"center",gap:4}}>Avançado (colar perguntas prontas de outra IA) {showAvancadoPerguntas?"▲":"▼"}</button>

@@ -2438,75 +2438,122 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
-// Puxa as perguntas de um mini chat que o cliente JÁ tinha no próprio site (ex: o
-// public/minichat/index.html da CAA Renovations) pra dentro do nosso Mini Chat — sem
-// ninguém precisar copiar pergunta por pergunta. Só LÊ o repositório (nada é escrito
-// lá) e só devolve as perguntas pra tela; vira definitivo só quando o admin clica
-// "Salvar perguntas" depois de revisar. Usa a IA embutida (regra 5 do CLAUDE.md:
-// nada de "copie e cole no ChatGPT").
+// Lê o mini chat que o cliente JÁ tinha no próprio site (ex: o public/minichat/index.html
+// da CAA Renovations) e devolve TUDO que dá pra aproveitar: perguntas, idioma, e-mail /
+// WhatsApp de destino, nome da marca e cores. Padrão pra qualquer repositório (pedido do
+// Thomas): primeiro procura pelo nome do arquivo (minichat, chat, quiz, diagnóstico...);
+// se não achar, varre os arquivos de código procurando uma lista de perguntas com opções
+// em QUALQUER arquivo (ex: src/data/quiz.ts). Só LÊ o repositório — nunca escreve nada.
+const MINICHAT_SIGNATURE_RE = /options\s*:\s*\[|questions\s*[=:]\s*\[|perguntas\s*[=:]\s*\[|"options"\s*:\s*\[/i;
+async function findMinichatSources(repo, headers, token) {
+  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+  const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
+  const codigo = (treeResp.data.tree || []).filter(i => i.type === "blob" && i.size < 200000
+    && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro|json)$/i.test(i.path)
+    && !/(^|\/)(node_modules|dist|build|\.next|\.vercel|components\/ui)\//i.test(i.path)
+    && !/(package(-lock)?|tsconfig|components|bun\.lock|vercel|eslint|routeTree\.gen)/i.test(i.path.split("/").pop()));
+  const porNome = codigo.filter(i => /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard|funnel|funil)/i.test(i.path))
+    .sort((a, b) => /mini-?_?chat/i.test(b.path) - /mini-?_?chat/i.test(a.path));
+  // Fallback: arquivos de código "normais" (src/, app/, public/, data/), menores primeiro.
+  const resto = codigo.filter(i => !porNome.includes(i) && /^(src|app|public|data|lib|pages|components)\//i.test(i.path))
+    .sort((a, b) => a.size - b.size).slice(0, 40);
+  const achados = [];
+  const ler = async item => { try { return await readGithubFile(repo, item.path, headers, token); } catch { return ""; } };
+  for (const lista of [porNome.slice(0, 8), resto]) {
+    for (let i = 0; i < lista.length && achados.length < 3; i += 8) {
+      const lote = await Promise.all(lista.slice(i, i + 8).map(async item => ({ path: item.path, conteudo: await ler(item) })));
+      for (const f of lote) if (f.conteudo && MINICHAT_SIGNATURE_RE.test(f.conteudo) && achados.length < 3) achados.push(f);
+    }
+    if (achados.length) break;
+  }
+  return achados;
+}
+
+// Configurações que dá pra tirar do código sem IA (determinístico): e-mail de destino,
+// WhatsApp, nome da marca, cores e idioma da página.
+function extractMinichatSettings(conteudo) {
+  const out = {};
+  const emails = [...conteudo.matchAll(/mailto:([^?"'`\s)]+)|["'`]([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})["'`]/gi)]
+    .map(m => (m[1] || m[2] || "").trim()).filter(e => e && !/\$\{|example|exemplo|email\.com|you@|voce@|noreply|no-reply/i.test(e));
+  if (emails.length) out.email_destino = emails[0];
+  const wa = conteudo.match(/wa\.me\/(\d{8,15})|api\.whatsapp\.com\/send\?phone=(\d{8,15})|WHATSAPP[_A-Z]*\s*[=:]\s*["'`](\+?[\d(][\d\s()-]{7,})["'`]/i);
+  if (wa) out.whatsapp_number = (wa[1] || wa[2] || wa[3] || "").replace(/\D/g, "");
+  const marca = conteudo.match(/(?:COMPANY_NAME|BRAND_NAME|brandName|companyName)\s*[=:]\s*["'`]([^"'`]{2,60})["'`]/);
+  if (marca) out.brand_name = marca[1].trim();
+  const cor = nomes => { for (const n of nomes) { const m = conteudo.match(new RegExp(`--${n}\\s*:\\s*(#[0-9a-f]{3,6})\\b`, "i")); if (m) return m[1].toLowerCase(); } return null; };
+  const bg = cor(["bg-primary", "background", "bg", "primary-bg"]);
+  const accent = cor(["accent", "primary", "brand", "cta"]);
+  if (bg) out.bg_color = bg;
+  if (accent) out.accent_color = accent;
+  const lang = conteudo.match(/<html[^>]*\blang=["']([a-z]{2})/i);
+  if (lang) out.language = lang[1].toLowerCase() === "en" ? "en" : "pt";
+  // Só e-mail (mailto) e nenhum WhatsApp → o chat original manda o lead por e-mail.
+  if (out.email_destino && !out.whatsapp_number) out.destination_type = "email";
+  else if (out.whatsapp_number && !out.email_destino) out.destination_type = "whatsapp";
+  return out;
+}
+
+// Cache curto por repositório — o Admin chama isso sozinho ao abrir os cards do Mini
+// Chat (Mini Chat + Perguntas), e não faz sentido chamar a IA duas vezes pra mesma coisa.
+const minichatImportCache = new Map(); // repo -> { ts, data }
+async function importMinichatFromRepo(repo) {
+  const cached = minichatImportCache.get(repo);
+  if (cached && Date.now() - cached.ts < 30 * 60 * 1000) return cached.data;
+  const token = await getGithubToken();
+  if (!token) return { error: "GitHub ainda não conectado" };
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+  const fontes = await findMinichatSources(repo, headers, token);
+  if (!fontes.length) { const data = { found: false, questions: [], settings: {} }; minichatImportCache.set(repo, { ts: Date.now(), data }); return data; }
+
+  const settings = extractMinichatSettings(fontes[0].conteudo);
+  // Só o trecho em volta das perguntas vai pra IA — o arquivo inteiro (CSS, HTML) é grande demais.
+  const trechos = fontes.map(f => {
+    const idx = f.conteudo.search(MINICHAT_SIGNATURE_RE);
+    return `--- ${f.path} ---\n${f.conteudo.slice(Math.max(0, idx - 600), idx + 7000)}`;
+  });
+  const systemPrompt = `Você recebe trechos de código de um mini chat/quiz de diagnóstico que já existe no site de um cliente. Extraia as perguntas EXATAMENTE como estão no código (mesmo idioma, mesmas palavras — não traduza, não reescreva, não invente). Ignore perguntas de contato (nome, telefone, e-mail, data de nascimento) — essas o nosso Mini Chat já faz sozinho.
+Para cada pergunta: "text" é a frase de transição/saudação antes da pergunta (pode ser vazia), "subtext" é a pergunta em si, "options" são as opções de resposta.
+"business" é uma frase curta (máx 25 palavras), no idioma do código, descrevendo o negócio/serviço que dá pra deduzir do conteúdo (ou vazio se não der).
+Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
+{"language":"pt ou en","business":"...","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
+  const userMsg = trechos.join("\n\n").slice(0, 16000);
+  let reply = null, lastErr = null;
+  for (const key of GROQ_KEYS) {
+    try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: userMsg }]); break; }
+    catch (e) { lastErr = e; console.warn("[minichat import] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+  }
+  if (reply === null && process.env.ANTHROPIC_API_KEY) {
+    try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: userMsg }]); }
+    catch (e) { lastErr = e; console.error("[minichat import] anthropic falhou:", e.response?.data || e.message); }
+  }
+  let parsed = null;
+  if (reply !== null) { const m = reply.match(/\{[\s\S]*\}/); try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; } }
+  const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
+    .map(q => ({
+      text: String(q?.text || "").trim(),
+      subtext: String(q?.subtext || "").trim(),
+      options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 8) : [],
+    }))
+    .filter(q => (q.text || q.subtext) && q.options.length >= 2)
+    .slice(0, 10);
+  if (!settings.language && parsed?.language) settings.language = parsed.language === "en" ? "en" : "pt";
+  if (parsed?.business) settings.business_context = String(parsed.business).trim().slice(0, 300);
+  const data = { found: true, source: fontes.map(f => f.path), questions, settings, aiFailed: reply === null || !questions.length };
+  // Falha da IA não fica em cache (tenta de novo na próxima abertura).
+  if (!data.aiFailed) minichatImportCache.set(repo, { ts: Date.now(), data });
+  if (reply === null && lastErr) console.warn("[minichat import] sem IA:", lastErr.message);
+  return data;
+}
+
 app.post("/api/admin/producers/:id/minichat/import-questions-from-repo", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("github_repo,minichat_config").eq("id", id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Esse cliente não tem repositório GitHub vinculado (card \"Site\")." });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const repo = profile.github_repo;
-    const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
-    // Candidatos: arquivo com cara de mini chat/quiz/diagnóstico pelo caminho. Nome de
-    // pasta OU de arquivo vale (public/minichat/index.html, src/components/Quiz.tsx...).
-    const candidatos = (treeResp.data.tree || [])
-      .filter(i => i.type === "blob" && i.size < 200000
-        && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro)$/i.test(i.path)
-        && !/(^|\/)(node_modules|dist|build|\.next|components\/ui)\//i.test(i.path)
-        && /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard)/i.test(i.path))
-      .slice(0, 6);
-    if (!candidatos.length) return res.status(404).json({ error: "Não achei nenhum mini chat/quiz no repositório desse cliente." });
-
-    // Só o trecho que interessa (em volta das perguntas) vai pra IA — o arquivo inteiro
-    // (CSS, HTML) estouraria o limite e deixaria a resposta lenta.
-    const trechos = [];
-    for (const item of candidatos) {
-      let conteudo = "";
-      try { conteudo = await readGithubFile(repo, item.path, headers, token); } catch { continue; }
-      const idx = conteudo.search(/questions\s*[=:]|options\s*:\s*\[|perguntas\s*[=:]/i);
-      if (idx < 0) continue;
-      trechos.push({ path: item.path, texto: conteudo.slice(Math.max(0, idx - 300), idx + 7000) });
-    }
-    if (!trechos.length) return res.status(404).json({ error: `Achei ${candidatos.map(c => c.path).join(", ")}, mas nenhum tem uma lista de perguntas reconhecível.` });
-
-    const systemPrompt = `Você recebe trechos de código de um mini chat/quiz de diagnóstico que já existe no site de um cliente. Extraia as perguntas EXATAMENTE como estão no código (mesmo idioma, mesmas palavras — não traduza, não reescreva, não invente). Ignore perguntas de contato (nome, telefone, e-mail, data de nascimento) — essas o nosso Mini Chat já faz sozinho.
-Para cada pergunta: "text" é a frase de transição/saudação antes da pergunta (pode ser vazia), "subtext" é a pergunta em si, "options" são as opções de resposta.
-Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
-{"language":"pt ou en","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
-    const userMsg = trechos.map(t => `--- ${t.path} ---\n${t.texto}`).join("\n\n").slice(0, 16000);
-
-    let reply = null, lastErr = null;
-    for (const key of GROQ_KEYS) {
-      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: userMsg }]); break; }
-      catch (e) { lastErr = e; console.warn("[minichat import-questions] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
-    }
-    if (reply === null && process.env.ANTHROPIC_API_KEY) {
-      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: userMsg }]); }
-      catch (e) { lastErr = e; console.error("[minichat import-questions] anthropic falhou:", e.response?.data || e.message); }
-    }
-    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
-
-    const match = reply.match(/\{[\s\S]*\}/);
-    let parsed;
-    try { parsed = match ? JSON.parse(match[0]) : null; } catch { parsed = null; }
-    const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
-      .map(q => ({
-        text: String(q?.text || "").trim(),
-        subtext: String(q?.subtext || "").trim(),
-        options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 8) : [],
-      }))
-      .filter(q => (q.text || q.subtext) && q.options.length >= 2)
-      .slice(0, 10);
-    if (!questions.length) return res.status(500).json({ error: "A IA não conseguiu ler as perguntas desse arquivo, tenta de novo." });
-    res.json({ questions, language: parsed?.language === "en" ? "en" : "pt", source: trechos.map(t => t.path) });
+    if (req.body?.fresh) minichatImportCache.delete(profile.github_repo);
+    const d = await importMinichatFromRepo(profile.github_repo);
+    if (d.error) return res.status(400).json({ error: d.error });
+    if (!d.found) return res.json({ found: false, questions: [], settings: {}, error: "Não achei nenhum mini chat/quiz com perguntas no repositório desse cliente." });
+    res.json({ ...d, language: d.settings.language || "pt", ...(d.questions.length ? {} : { error: "Achei o mini chat, mas a IA não conseguiu ler as perguntas agora — tenta de novo." }) });
   } catch (err) {
     console.error("[admin/producers minichat import-questions]", err.message);
     res.status(500).json({ error: "Não consegui ler o repositório agora. Tenta de novo em instantes." });
