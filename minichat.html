@@ -355,6 +355,48 @@
         @media (prefers-reduced-motion: reduce) {
             * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
         }
+
+        /* ── Modelo visual "E-mail" (inspirado no mini chat da CAA Renovations) ──
+           Só entra quando o Admin escolhe o modelo "E-mail" — o modelo WhatsApp de
+           sempre continua exatamente igual. Cores vêm do produtor (--mc-bg/--mc-accent). */
+        body.tpl-email { background: var(--mc-bg-deep); }
+        body.tpl-email .phone-container { background: var(--mc-bg); border: 1px solid rgba(255,255,255,0.12); }
+        body.tpl-email .progress-bar { background: var(--mc-accent); }
+        body.tpl-email .chat-header { background: var(--mc-bg); border-bottom: 0.5px solid rgba(255,255,255,0.14); box-shadow: none; padding: 22px 22px 16px; }
+        body.tpl-email .avatar { background: #ffffff; color: var(--mc-bg); border-radius: 10px; }
+        body.tpl-email .header-info h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        body.tpl-email .header-info p { color: rgba(255,255,255,0.6); }
+        body.tpl-email .chat-messages { background: var(--mc-bg); background-image: none; gap: 16px; padding: 24px 20px; }
+        body.tpl-email .message { border-radius: 20px; font-size: 15px; padding: 14px 18px; box-shadow: none; }
+        body.tpl-email .message.received { background: rgba(255,255,255,0.09); color: #ffffff; border-bottom-left-radius: 6px; }
+        body.tpl-email .message.sent { background: var(--mc-accent); color: #ffffff; border-bottom-right-radius: 6px; }
+        body.tpl-email .message-time { display: none; }
+        body.tpl-email .typing { background: rgba(255,255,255,0.09); box-shadow: none; }
+        body.tpl-email .typing-dot { background: rgba(255,255,255,0.6); }
+        body.tpl-email .option-btn { background: transparent; border: 1.5px solid rgba(255,255,255,0.18); color: #ffffff; border-radius: 14px; padding: 15px 18px; }
+        body.tpl-email .option-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--mc-accent); color: #ffffff; transform: translateX(4px); }
+        body.tpl-email .option-btn.selected { background: var(--mc-accent); border-color: var(--mc-accent); }
+        body.tpl-email .chat-input { background: var(--mc-bg); border-top: 0.5px solid rgba(255,255,255,0.14); }
+        body.tpl-email .input-box { background: rgba(255,255,255,0.09); color: #ffffff; }
+        body.tpl-email .input-box::placeholder { color: rgba(255,255,255,0.5); }
+        body.tpl-email .send-btn { background: var(--mc-accent); }
+        body.tpl-email .send-btn:hover { background: var(--mc-accent); filter: brightness(1.1); }
+        body.tpl-email .send-btn:disabled { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.4); filter: none; }
+        body.tpl-email .result-overlay { background: var(--mc-bg); }
+        body.tpl-email .result-overlay > p { color: rgba(255,255,255,0.6); }
+        body.tpl-email .profile-card { background: rgba(255,255,255,0.07); border: 0.5px solid rgba(255,255,255,0.14); box-shadow: none; }
+        body.tpl-email .profile-card-title { color: rgba(255,255,255,0.55); }
+        body.tpl-email .profile-row { border-bottom-color: rgba(255,255,255,0.12); }
+        body.tpl-email .profile-label { color: rgba(255,255,255,0.6); }
+        body.tpl-email .email-btn-full.primary { background: var(--mc-accent); color: #ffffff; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        body.tpl-email .redirect-status { color: rgba(255,255,255,0.6); }
+        @media (max-width: 480px) {
+            body.tpl-email { background: var(--mc-bg); }
+            body.tpl-email .phone-container { border: none; }
+        }
+        /* Botão de e-mail como ação principal (modo "E-mail"), em qualquer modelo */
+        .email-btn-full.primary { background: #25D366; color: white; border: none; padding: 17px; font-weight: 700; font-size: 16px; margin-top: 0; box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
+        .email-btn-full.done { pointer-events: none; }
     </style>
 </head>
 <body>
@@ -369,7 +411,7 @@
         </div>
         <div class="header-info">
             <h3 id="brandName">vJoseph</h3>
-            <p>Atendimento Online</p>
+            <p id="headerSubtitle">Atendimento Online</p>
         </div>
     </div>
 
@@ -386,8 +428,8 @@
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
         </div>
 
-        <h2>Análise Completa</h2>
-        <p>Seu diagnóstico está pronto. Você está a um passo de falar com a gente.</p>
+        <h2 id="resultTitle">Análise Completa</h2>
+        <p id="resultSubtitle">Seu diagnóstico está pronto. Você está a um passo de falar com a gente.</p>
 
         <div class="profile-card" id="profileCard">
             <div class="profile-card-title">SEU PERFIL</div>
@@ -416,6 +458,90 @@
     let EMAIL_DESTINO = "";
     let DESTINATION_TYPE = "whatsapp";
     let CLOSING_MESSAGE = "Podemos conversar?";
+    // Idioma e modelo visual escolhidos no Admin (perfil do produtor). "pt" + "whatsapp"
+    // são o padrão — produtor que nunca mexeu nisso continua vendo tudo exatamente igual.
+    let LANG = "pt";
+    let TEMPLATE = "whatsapp";
+
+    // Textos fixos do Mini Chat. Os de "pt" são EXATAMENTE os que já existiam antes do
+    // suporte a inglês — não altere sem querer mudar o Mini Chat de todo produtor atual.
+    const I18N = {
+        pt: {
+            locale: 'pt-BR', htmlLang: 'pt-BR',
+            headerSubtitle: 'Atendimento Online', headerSubtitleEmail: 'Diagnóstico rápido', titleSuffix: 'Atendimento Online',
+            placeholder: 'Digite sua resposta...',
+            analysisDone: 'Análise completa. ✓', preparing: 'Preparando seu diagnóstico...',
+            resultTitle: 'Análise Completa', resultSubtitle: 'Seu diagnóstico está pronto. Você está a um passo de falar com a gente.',
+            resultSubtitleEmail: 'Seu diagnóstico está pronto. Estamos enviando suas respostas.',
+            profileTitle: 'SEU PERFIL', questionN: n => `Pergunta ${n}`,
+            whatsappBtn: '📱 Enviar para o WhatsApp', emailBtn: '✉️ Enviar por E-mail',
+            sending: 'Enviando...', ready: '✓ Pronto!', opening: 'Abrindo...', openingWhatsapp: 'Abrindo WhatsApp...',
+            retryClick: 'Se não abrir, clique no botão novamente.', continueBtn: '↗ Continuar', openWhatsappBtn: '📱 Abrir WhatsApp',
+            openingEmail: '✓ Abrindo e-mail…', retryEmail: 'Se não abrir, clique novamente.',
+            emailSent: '✓ Enviado!', emailSentAmbos: '✓ Também enviado por e-mail', emailSentStatus: name => `Recebemos suas respostas. ${name} vai entrar em contato em breve.`,
+            emailSubject: name => `Pré-diagnóstico digital — ${name}`,
+            invalidEmail: 'Hmm, esse e-mail não parece válido. Pode conferir e digitar de novo?',
+            defaultQ: {
+                produtoText: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.", produtoSub: "O que você está buscando hoje?", produtoLabel: "Interesse principal",
+                objetivoText: "Perfeito.", objetivoSub: "Qual seu objetivo?", objetivoLabel: "Objetivo",
+                quandoText: "Entendido.", quandoSub: "Quando pretende realizar?", quandoLabel: "Momento para iniciar",
+                quando: ["Quanto antes", "Este mês", "Próximos meses", "Só estou pesquisando"],
+                produtoFallback: ["Já sei o que quero", "Quero conhecer as opções", "Tenho uma dúvida", "Outro"],
+                objetivoFallback: ["Fechar o quanto antes", "Conhecer melhor antes", "Comparar opções", "Tirar dúvidas"],
+            },
+            contact: [
+                { id: 'nome',       text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?",            label: "Nome",              type: 'text', placeholder: 'Digite seu nome…' },
+                { id: 'telefone',   text: "Perfeito.",                          subtext: "Qual seu telefone com WhatsApp?",    label: "WhatsApp",          type: 'text', placeholder: '(21) 99999-9999' },
+                { id: 'nascimento', text: "Última pergunta.",                    subtext: "Qual sua data de nascimento?",       label: "Data de nascimento", type: 'text', placeholder: 'DD/MM/AAAA' },
+            ],
+            contactEmail: [
+                { id: 'nome',     text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?",  label: "Nome",     type: 'text', placeholder: 'Digite seu nome…' },
+                { id: 'email',    text: "Perfeito.",                          subtext: "Qual seu melhor e-mail?",  label: "E-mail",   type: 'email', placeholder: 'voce@email.com' },
+                { id: 'telefone', text: "Última pergunta.",                    subtext: "E qual seu telefone?",     label: "Telefone", type: 'text', placeholder: '(21) 99999-9999' },
+            ],
+            defaultMessage: d => `Olá, tudo bem? Segue meu diagnóstico para avaliação:\n\nNome: ${d.nome||''}\nTelefone: ${d.telefone||''}\nData de nascimento: ${d.nascimento||''}\nProcedimento de interesse: ${d.produto||''}\nObjetivo: ${d.objetivo||''}\nMomento para iniciar: ${d.quando||''}\n\nAguardo orientações 🤍`,
+            customMessage: (name, linhas, closing) => `Olá ${name},\n\nAcabei de fazer o pré diagnóstico digital.\n\n*Meu perfil:*\n${linhas}\n\n${closing}`,
+            defaultClosing: "Podemos conversar?",
+        },
+        en: {
+            locale: 'en-US', htmlLang: 'en',
+            headerSubtitle: 'Online support', headerSubtitleEmail: 'Project Pre-Diagnosis', titleSuffix: 'Online support',
+            placeholder: 'Type your answer...',
+            analysisDone: 'Analysis complete. ✓', preparing: 'Preparing your pre-diagnosis...',
+            resultTitle: 'Pre-Diagnosis Complete', resultSubtitle: "Your profile is ready. You're one step away from talking to us.",
+            resultSubtitleEmail: "Your profile is ready. We're sending your answers now.",
+            profileTitle: 'YOUR PROFILE', questionN: n => `Question ${n}`,
+            whatsappBtn: '📱 Send via WhatsApp', emailBtn: '✉️ Send by e-mail',
+            sending: 'Sending...', ready: '✓ Done!', opening: 'Opening...', openingWhatsapp: 'Opening WhatsApp...',
+            retryClick: "Didn't open? Tap the button again.", continueBtn: '↗ Continue', openWhatsappBtn: '📱 Open WhatsApp',
+            openingEmail: '✓ Opening e-mail…', retryEmail: "Didn't open? Tap again.",
+            emailSent: '✓ Sent!', emailSentAmbos: '✓ Also sent by e-mail', emailSentStatus: name => `We got your answers. ${name} will get back to you shortly.`,
+            emailSubject: name => `Pre-diagnosis — ${name}`,
+            invalidEmail: "Hmm, that e-mail doesn't look right. Could you check and type it again?",
+            defaultQ: {
+                produtoText: "Hi! 👋 Let's do a quick pre-diagnosis so we can help you better.", produtoSub: "What are you looking for today?", produtoLabel: "Main interest",
+                objetivoText: "Perfect.", objetivoSub: "What's your goal?", objetivoLabel: "Goal",
+                quandoText: "Got it.", quandoSub: "When are you planning to start?", quandoLabel: "Timeline",
+                quando: ["As soon as possible", "This month", "In the next few months", "Just researching"],
+                produtoFallback: ["I know what I want", "I'd like to see the options", "I have a question", "Other"],
+                objetivoFallback: ["Get started soon", "Learn more first", "Compare options", "Ask some questions"],
+            },
+            contact: [
+                { id: 'nome',       text: "Great, we're almost done.", subtext: "What's your full name?",        label: "Name",          type: 'text', placeholder: 'Type your name…' },
+                { id: 'telefone',   text: "Perfect.",                  subtext: "What's your WhatsApp number?",  label: "WhatsApp",      type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Last question.",            subtext: "What's your date of birth?",    label: "Date of birth", type: 'text', placeholder: 'MM/DD/YYYY' },
+            ],
+            contactEmail: [
+                { id: 'nome',     text: "Great, we're almost done.", subtext: "What's your full name?",     label: "Name",   type: 'text', placeholder: 'Type your name…' },
+                { id: 'email',    text: "Perfect.",                  subtext: "What's your best e-mail?",   label: "E-mail", type: 'email', placeholder: 'you@email.com' },
+                { id: 'telefone', text: "Last question.",            subtext: "And your phone number?",     label: "Phone",  type: 'text', placeholder: '(555) 123-4567' },
+            ],
+            defaultMessage: d => `Hi! Here is my pre-diagnosis:\n\nName: ${d.nome||''}\nPhone: ${d.telefone||''}\nDate of birth: ${d.nascimento||''}\nInterest: ${d.produto||''}\nGoal: ${d.objetivo||''}\nTimeline: ${d.quando||''}\n\nLooking forward to hearing from you.`,
+            customMessage: (name, linhas, closing) => `Hi ${name},\n\nI just completed the pre-diagnosis on your website.\n\n*My profile:*\n${linhas}\n\n${closing}`,
+            defaultClosing: "Can we talk?",
+        },
+    };
+    const T = () => I18N[LANG] || I18N.pt;
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
     // Número salvo com formatação (espaço, traço, parênteses) ou sem o código do país
     // quebra o link do WhatsApp — o app não reconhece como telefone e mostra "nome de
@@ -468,51 +594,49 @@
     let userData = {};
     let usingDefaultFlow = true;
 
-    const QUANDO_OPTIONS = ["Quanto antes", "Este mês", "Próximos meses", "Só estou pesquisando"];
-    // Só aparece se o cliente não tiver nenhum produto cadastrado E a busca de produtos
-    // reais falhar — neutro de propósito (não é só clínica estética) pra nunca soar
-    // gritantemente errado pra outros tipos de negócio (loja, restaurante etc.).
-    const PRODUTO_FALLBACK_OPTIONS = ["Já sei o que quero", "Quero conhecer as opções", "Tenho uma dúvida", "Outro"];
-    const OBJETIVO_FALLBACK_OPTIONS = ["Fechar o quanto antes", "Conhecer melhor antes", "Comparar opções", "Tirar dúvidas"];
-
+    // Opções padrão (textos em I18N) — as de "Só aparece se o cliente não tiver nenhum
+    // produto cadastrado E a busca de produtos reais falhar" são neutras de propósito (não
+    // é só clínica estética) pra nunca soar errado pra outros tipos de negócio.
     function buildDefaultQuestions(products, objetivoOptions) {
+        const d = T().defaultQ;
         const steps = [];
         steps.push({
             id: 'produto',
-            text: "Olá! 👋 Vamos fazer um diagnóstico rápido para te atender melhor.",
-            subtext: "O que você está buscando hoje?",
-            label: "Interesse principal",
+            text: d.produtoText,
+            subtext: d.produtoSub,
+            label: d.produtoLabel,
             type: 'options',
-            options: (products && products.length) ? products : PRODUTO_FALLBACK_OPTIONS,
+            options: (products && products.length) ? products : d.produtoFallback,
         });
         steps.push({
             id: 'objetivo',
-            text: "Perfeito.",
-            subtext: "Qual seu objetivo?",
-            label: "Objetivo",
+            text: d.objetivoText,
+            subtext: d.objetivoSub,
+            label: d.objetivoLabel,
             type: 'options',
-            options: (objetivoOptions && objetivoOptions.length) ? objetivoOptions : OBJETIVO_FALLBACK_OPTIONS,
+            options: (objetivoOptions && objetivoOptions.length) ? objetivoOptions : d.objetivoFallback,
         });
         steps.push({
             id: 'quando',
-            text: "Entendido.",
-            subtext: "Quando pretende realizar?",
-            label: "Momento para iniciar",
+            text: d.quandoText,
+            subtext: d.quandoSub,
+            label: d.quandoLabel,
             type: 'options',
-            options: QUANDO_OPTIONS,
+            options: d.quando,
         });
         return steps;
     }
 
-    const CONTACT_QUESTIONS = [
-        { id: 'nome',       text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?",            label: "Nome",              type: 'text', placeholder: 'Digite seu nome…' },
-        { id: 'telefone',   text: "Perfeito.",                          subtext: "Qual seu telefone com WhatsApp?",    label: "WhatsApp",          type: 'text', placeholder: '(21) 99999-9999' },
-        { id: 'nascimento', text: "Última pergunta.",                    subtext: "Qual sua data de nascimento?",       label: "Data de nascimento", type: 'text', placeholder: 'DD/MM/AAAA' },
-    ];
+    // Modo "E-mail": o lead é respondido por e-mail, então pede o E-MAIL da pessoa (e
+    // telefone) em vez de "telefone com WhatsApp" + nascimento. WhatsApp e "Ambos"
+    // continuam com as mesmas 3 perguntas de sempre.
+    function contactQuestions() {
+        return DESTINATION_TYPE === "email" ? T().contactEmail : T().contact;
+    }
 
     function withContactQuestions(steps) {
-        const semDuplicata = (steps || []).filter(q => !['nome', 'telefone', 'nascimento'].includes(q.id));
-        return [...semDuplicata, ...CONTACT_QUESTIONS];
+        const semDuplicata = (steps || []).filter(q => !['nome', 'telefone', 'nascimento', 'email'].includes(q.id));
+        return [...semDuplicata, ...contactQuestions()];
     }
 
     let questions = withContactQuestions(buildDefaultQuestions([], null));
@@ -534,12 +658,15 @@
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
                 if (cfg?.destination_type) DESTINATION_TYPE = cfg.destination_type;
+                if (cfg?.language === "en") LANG = "en";
+                if (cfg?.template === "email") TEMPLATE = "email";
+                applyLanguageAndTemplate(cfg);
                 {
                     const _wBtn = document.getElementById("whatsappBtn");
                     const _eBtn = document.getElementById("emailBtn");
                     if (DESTINATION_TYPE === "email") {
                         if (_wBtn) _wBtn.style.display = "none";
-                        if (_eBtn) _eBtn.style.display = "flex";
+                        if (_eBtn) { _eBtn.style.display = "flex"; _eBtn.classList.add("primary"); }
                     } else if (EMAIL_DESTINO && !REDIRECT_LINK) {
                         if (_eBtn) _eBtn.style.display = "flex";
                     }
@@ -550,7 +677,7 @@
                             id: `q${i}`,
                             text: q.text || "",
                             subtext: q.subtext || "",
-                            label: q.subtext || q.text || `Pergunta ${i+1}`,
+                            label: q.subtext || q.text || T().questionN(i+1),
                             type: 'options',
                             options: (q.options || []).filter(Boolean),
                         }))
@@ -565,7 +692,7 @@
                 if (letter) letter.textContent = BRAND_NAME[0] || "v";
                 if (name) name.textContent = BRAND_NAME;
                 applyAvatar();
-                document.title = `${BRAND_NAME} — Atendimento Online`;
+                document.title = `${BRAND_NAME} — ${T().titleSuffix}`;
             }
             if (usingDefaultFlow) {
                 // Os produtos já vêm junto na resposta de /api/minichat/config (evita um segundo
@@ -599,9 +726,39 @@
         }).catch(() => {});
     }
 
+    // Aplica idioma e modelo visual nos textos/estilos fixos do HTML. Com "pt" +
+    // "whatsapp" (padrão) não muda nada do que a página já mostrava.
+    function applyLanguageAndTemplate(cfg) {
+        const t = T();
+        document.documentElement.lang = t.htmlLang;
+        const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        set("headerSubtitle", TEMPLATE === "email" ? t.headerSubtitleEmail : t.headerSubtitle);
+        set("resultTitle", t.resultTitle);
+        set("resultSubtitle", DESTINATION_TYPE === "email" ? t.resultSubtitleEmail : t.resultSubtitle);
+        set("whatsappBtn", t.whatsappBtn);
+        set("emailBtn", t.emailBtn);
+        const input = document.getElementById("textInput");
+        if (input) input.placeholder = t.placeholder;
+        if (LANG !== "pt" && CLOSING_MESSAGE === I18N.pt.defaultClosing) CLOSING_MESSAGE = t.defaultClosing;
+        if (TEMPLATE === "email") {
+            const isHex = c => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || "");
+            const bg = isHex(cfg?.bg_color) ? cfg.bg_color : "#0f1a3a";
+            const accent = isHex(cfg?.accent_color) ? cfg.accent_color : "#c91d2a";
+            document.body.style.setProperty("--mc-bg", bg);
+            document.body.style.setProperty("--mc-bg-deep", `color-mix(in srgb, ${bg} 60%, #000)`);
+            document.body.style.setProperty("--mc-accent", accent);
+            document.body.classList.add("tpl-email");
+        }
+    }
+
+    // Só uma vez por visita: no modo e-mail o contato já é salvo sozinho ao terminar o
+    // diagnóstico; sem essa trava, clicar no botão depois contaria a pessoa duas vezes.
+    let leadSavedToCRM = false;
     function sendLeadToCRM() {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
+        if (leadSavedToCRM) return;
+        leadSavedToCRM = true;
         const nomeLead = userData.nome || userData[questions[0]?.id] || "diagnóstico";
         fetch(`${JOSEPHPAY_API}/api/leads/create`, {
             method: "POST",
@@ -609,9 +766,48 @@
             body: JSON.stringify({
                 name: userData.nome ? userData.nome : `Lead Mini Chat (${nomeLead})`,
                 phone: userData.telefone || null,
+                email: userData.email || null,
                 birthday: userData.nascimento || null,
             }),
         }).catch(() => {});
+    }
+
+    // Envia o diagnóstico direto pro e-mail de destino do produtor, pelo servidor —
+    // não depende do visitante ter (ou apertar "enviar" no) app de e-mail. Resolve
+    // true se enviou; false se o servidor pediu pra cair no jeito antigo (mailto).
+    let leadEmailPromise = null;
+    function sendLeadEmail() {
+        const uid = new URLSearchParams(location.search).get("uid");
+        if (!uid || !EMAIL_DESTINO) return Promise.resolve(false);
+        if (leadEmailPromise) return leadEmailPromise;
+        const contato = ['nome', 'telefone', 'nascimento', 'email'];
+        const answers = questions
+            .filter(q => !contato.includes(q.id))
+            .map(q => ({ question: q.label || q.subtext || q.text || "", answer: userData[q.id] || "" }));
+        if (userData.nascimento) answers.push({ question: (T().contact.find(q => q.id === 'nascimento') || {}).label || "", answer: userData.nascimento });
+        leadEmailPromise = fetch(`${JOSEPHPAY_API}/api/minichat/lead-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                owner_id: uid, visitor_id: getVisitorId(),
+                lead: { name: userData.nome || "", email: userData.email || "", phone: userData.telefone || "" },
+                answers,
+            }),
+        }).then(r => r.json().then(d => r.ok && d?.ok)).catch(() => false)
+          .then(ok => { if (!ok) leadEmailPromise = null; return !!ok; });
+        return leadEmailPromise;
+    }
+
+    function markEmailSent() {
+        emailBtn.innerHTML = DESTINATION_TYPE === "ambos" ? T().emailSentAmbos : T().emailSent;
+        emailBtn.classList.add("done");
+        emailBtn.style.pointerEvents = 'none';
+        // Em "Ambos" o botão do WhatsApp continua ali embaixo — a frase de "vamos entrar
+        // em contato" só faz sentido quando o e-mail é o único caminho.
+        if (DESTINATION_TYPE !== "ambos") {
+            redirectStatus.textContent = T().emailSentStatus(BRAND_NAME);
+            redirectStatus.style.opacity = '1';
+        }
     }
 
     // DOM refs
@@ -631,7 +827,7 @@
     }
 
     function getTime() {
-        return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        return new Date().toLocaleTimeString(T().locale, { hour: '2-digit', minute: '2-digit' });
     }
 
     function addMessage(text, isUser = false, subtext = null) {
@@ -677,7 +873,8 @@
 
     function showFreeTextInput(question) {
         textInput.disabled = false;
-        textInput.placeholder = question.placeholder || 'Digite sua resposta...';
+        textInput.placeholder = question.placeholder || T().placeholder;
+        textInput.type = question.type === 'email' ? 'email' : 'text';
         textInput.value = '';
         textInput.focus();
         sendBtn.disabled = false;
@@ -685,6 +882,11 @@
         const submit = () => {
             const val = textInput.value.trim();
             if (!val) return;
+            if (question.type === 'email' && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(val)) {
+                addMessage(T().invalidEmail);
+                textInput.focus();
+                return;
+            }
             textInput.removeEventListener('keydown', onKey);
             selectAnswer(val, question.id);
         };
@@ -696,7 +898,8 @@
     function disableFreeTextInput() {
         textInput.disabled = true;
         textInput.value = '';
-        textInput.placeholder = 'Digite sua resposta...';
+        textInput.placeholder = T().placeholder;
+        textInput.type = 'text';
         sendBtn.disabled = true;
         sendBtn.onclick = null;
     }
@@ -732,7 +935,7 @@
         setTimeout(() => {
             hideTyping();
             addMessage(q.text, false, q.subtext);
-            if (q.type === 'text') {
+            if (q.type === 'text' || q.type === 'email') {
                 showFreeTextInput(q);
             } else {
                 showOptions(q);
@@ -745,7 +948,7 @@
         showTyping();
         setTimeout(() => {
             hideTyping();
-            addMessage("Análise completa. ✓", false, "Preparando seu diagnóstico...");
+            addMessage(T().analysisDone, false, T().preparing);
             setTimeout(() => showResultOverlay(), 1200);
         }, 1200);
     }
@@ -760,20 +963,40 @@
                 <span class="profile-value">${value}</span>
             </div>`;
         }).join('');
-        profileCard.innerHTML = `<div class="profile-card-title">SEU PERFIL</div>${rows}`;
+        profileCard.innerHTML = `<div class="profile-card-title">${T().profileTitle}</div>${rows}`;
         resultOverlay.style.display = 'flex';
+
+        // Destino "E-mail" ou "Ambos": manda o diagnóstico pro e-mail do produtor assim
+        // que a pessoa termina — sem depender de ela clicar em nada. No modo só-WhatsApp
+        // nada disso roda (o fluxo de WhatsApp continua igual).
+        if ((DESTINATION_TYPE === "email" || DESTINATION_TYPE === "ambos") && EMAIL_DESTINO) {
+            // Contato vai pro CRM na hora (uma vez só — o botão do WhatsApp em "Ambos" não
+            // conta de novo), pra nunca perder quem termina e fecha sem clicar em nada.
+            sendLeadToCRM();
+            if (DESTINATION_TYPE === "email") {
+                trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
+                emailBtn.textContent = T().sending;
+                emailBtn.style.pointerEvents = 'none';
+            }
+            sendLeadEmail().then(ok => {
+                if (ok) { markEmailSent(); return; }
+                // Falhou no servidor: volta o botão pro jeito antigo (abre o e-mail do visitante).
+                emailBtn.innerHTML = T().emailBtn;
+                emailBtn.style.pointerEvents = 'auto';
+            });
+        }
     }
 
     function buildMessage() {
         if (usingDefaultFlow) {
-            return `Olá, tudo bem? Segue meu diagnóstico para avaliação:\n\nNome: ${userData.nome||''}\nTelefone: ${userData.telefone||''}\nData de nascimento: ${userData.nascimento||''}\nProcedimento de interesse: ${userData.produto||''}\nObjetivo: ${userData.objetivo||''}\nMomento para iniciar: ${userData.quando||''}\n\nAguardo orientações 🤍`;
+            return T().defaultMessage(userData);
         }
         const linhas = questions.map(q => `• ${q.subtext || q.text}: ${userData[q.id] || ''}`).join('\n');
-        return `Olá ${GREETING_NAME},\n\nAcabei de fazer o pré diagnóstico digital.\n\n*Meu perfil:*\n${linhas}\n\n${CLOSING_MESSAGE}`;
+        return T().customMessage(GREETING_NAME, linhas, CLOSING_MESSAGE);
     }
 
     function sendToWhatsApp() {
-        whatsappBtn.textContent = 'Enviando...';
+        whatsappBtn.textContent = T().sending;
         whatsappBtn.style.opacity = '0.8';
         whatsappBtn.style.pointerEvents = 'none';
 
@@ -782,18 +1005,18 @@
 
         const useRedirect = REDIRECT_LINK && DESTINATION_TYPE !== "whatsapp";
         const targetUrl = useRedirect ? REDIRECT_LINK : `https://wa.me/${normalizeWhatsappNumber(WHATSAPP_NUMBER)}?text=${encodeURIComponent(buildMessage())}`;
-        const btnFinalHtml = useRedirect ? '↗ Continuar' : '📱 Abrir WhatsApp';
+        const btnFinalHtml = useRedirect ? T().continueBtn : T().openWhatsappBtn;
 
         setTimeout(() => {
-            whatsappBtn.innerHTML = '✓ Pronto!';
+            whatsappBtn.innerHTML = T().ready;
             whatsappBtn.style.background = '#1DA851';
             whatsappBtn.style.opacity = '1';
-            redirectStatus.textContent = useRedirect ? 'Abrindo...' : 'Abrindo WhatsApp...';
+            redirectStatus.textContent = useRedirect ? T().opening : T().openingWhatsapp;
 
             setTimeout(() => {
                 window.open(targetUrl, '_blank');
                 setTimeout(() => {
-                    redirectStatus.textContent = 'Se não abrir, clique no botão novamente.';
+                    redirectStatus.textContent = T().retryClick;
                     whatsappBtn.innerHTML = btnFinalHtml;
                     whatsappBtn.style.pointerEvents = 'auto';
                     whatsappBtn.onclick = () => window.open(targetUrl, '_blank');
@@ -802,20 +1025,30 @@
         }, 600);
     }
 
+    // Botão de e-mail: primeiro tenta mandar direto pelo servidor (chega no produtor
+    // sem depender do visitante); só se o servidor não conseguir, cai no jeito antigo
+    // de abrir o app de e-mail do visitante com a mensagem pronta (mailto).
     function sendToEmail() {
-        emailBtn.textContent = 'Enviando...';
+        emailBtn.textContent = T().sending;
         emailBtn.style.pointerEvents = 'none';
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
-        const subject = `Pré-diagnóstico digital — ${GREETING_NAME}`;
+        sendLeadEmail().then(ok => {
+            if (ok) { markEmailSent(); return; }
+            openMailtoFallback();
+        });
+    }
+
+    function openMailtoFallback() {
+        const subject = T().emailSubject(GREETING_NAME);
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage())}`;
         setTimeout(() => {
-            emailBtn.innerHTML = '✓ Abrindo e-mail…';
-            redirectStatus.textContent = 'Se não abrir, clique novamente.';
+            emailBtn.innerHTML = T().openingEmail;
+            redirectStatus.textContent = T().retryEmail;
             redirectStatus.style.opacity = '1';
             window.location.href = mailtoUrl;
             setTimeout(() => {
-                emailBtn.innerHTML = '✉️ Enviar por E-mail';
+                emailBtn.innerHTML = T().emailBtn;
                 emailBtn.style.pointerEvents = 'auto';
                 emailBtn.onclick = () => { window.location.href = mailtoUrl; };
             }, 1500);

@@ -2170,7 +2170,7 @@ function ProdutosDoCliente({ownerId,nome}){
   );
 }
 
-function ClientesDoProdutorAdmin({ownerId,nome}){
+function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
   const [open,setOpen]=useState(false);
   const [lista,setLista]=useState(null);
   const [filtro,setFiltro]=useState("todos");
@@ -2198,10 +2198,17 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
     if(!ownerId||!open||lista!==null||erroLista)return;
     carregarLista();
   },[ownerId,open]);
+  // Contatos novos adicionados (refreshKey mudou): se a lista já tinha sido carregada,
+  // busca de novo; se ainda não, ela carrega sozinha quando abrir.
+  const refreshMounted=useRef(false);
+  useEffect(()=>{
+    if(!refreshMounted.current){refreshMounted.current=true;return;}
+    if(lista!==null)carregarLista();
+  },[refreshKey]);
   const stLabel=s=>s==='lead'?'Interessado':s==='assinante'?'Assinante':'Cliente';
   const srcLabel=s=>s==='minichat'?'Site':s==='google_ads'?'Google Ads':s==='manual'?'Manual':'Compra';
-  const cnts={todos:(lista||[]).length,lead:(lista||[]).filter(c=>c.status==='lead').length,cliente:(lista||[]).filter(c=>(c.status||'cliente')==='cliente').length,assinante:(lista||[]).filter(c=>c.status==='assinante').length,google_ads:(lista||[]).filter(c=>c.source==='google_ads').length};
-  const filtrada=(lista||[]).filter(c=>filtro==='todos'||(filtro==='google_ads'?c.source==='google_ads':(c.status||'cliente')===filtro));
+  const cnts={todos:(lista||[]).length,lead:(lista||[]).filter(c=>c.status==='lead').length,cliente:(lista||[]).filter(c=>(c.status||'cliente')==='cliente').length,assinante:(lista||[]).filter(c=>c.status==='assinante').length,minichat:(lista||[]).filter(c=>c.source==='minichat').length,google_ads:(lista||[]).filter(c=>c.source==='google_ads').length};
+  const filtrada=(lista||[]).filter(c=>filtro==='todos'||(filtro==='google_ads'?c.source==='google_ads':filtro==='minichat'?c.source==='minichat':(c.status||'cliente')===filtro));
   const exportar=()=>{
     if(!lista||!lista.length)return;
     const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
@@ -2313,7 +2320,7 @@ function ClientesDoProdutorAdmin({ownerId,nome}){
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {[["todos","Todos"],["lead","Interessados"],["cliente","Clientes"],["assinante","Assinantes"],["google_ads","Google Ads"]].map(([id,label])=>(
+                {[["todos","Todos"],["lead","Interessados"],["cliente","Clientes"],["assinante","Assinantes"],["minichat","Mini Chat"],["google_ads","Google Ads"]].map(([id,label])=>(
                   <button key={id} onClick={()=>setFiltro(id)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${filtro===id?GOLD+"55":BDR}`,background:filtro===id?`${GOLD}14`:"transparent",color:filtro===id?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap"}}>{label} <span style={{opacity:0.7}}>{cnts[id]}</span></button>
                 ))}
               </div>
@@ -2479,6 +2486,11 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
+  // Idioma só do Mini Chat (pt/en) e modelo visual (whatsapp/email) — padrão é o de sempre.
+  const [idioma,setIdioma]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [modelo,setModelo]=useState(c.minichat_config?.template==="email"?"email":"whatsapp");
+  const [corFundo,setCorFundo]=useState(c.minichat_config?.bg_color||"#0f1a3a");
+  const [corDestaque,setCorDestaque]=useState(c.minichat_config?.accent_color||"#c91d2a");
   const [miniSaved,setMiniSaved]=useState(!!c.minichat_config);
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
@@ -2490,7 +2502,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   useEffect(()=>{
     if(!minichatMounted.current){minichatMounted.current=true;return;}
     setMiniSaved(false);
-  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,emailDestino,destinoTipo,objetivoOptions,businessContext]);
+  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,emailDestino,destinoTipo,objetivoOptions,businessContext,idioma,modelo,corFundo,corDestaque]);
   const enviarFoto=async(e)=>{
     const file=e.target.files[0];if(!file)return;
     e.target.value="";
@@ -2517,6 +2529,10 @@ function AtivacaoAdmin({c,initialOpen,done}){
       objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
       business_context:businessContext.trim(),
       closing_message:closingMsg.trim(),
+      language:idioma,
+      template:modelo,
+      bg_color:corFundo,
+      accent_color:corDestaque,
     })});
     if(!d.error)setMiniSaved(true);
   };
@@ -2555,8 +2571,34 @@ function AtivacaoAdmin({c,initialOpen,done}){
       </>)}
       {destinoTipo!=="whatsapp"&&(<>
       <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
-      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>O diagnóstico do lead chega por e-mail neste endereço.</div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Assim que a pessoa termina o Mini Chat, o diagnóstico (respostas + nome, e-mail e telefone dela) chega <b style={{color:TEXT}}>sozinho</b> neste endereço — enviado pelo JosephPay, sem a pessoa precisar ter app de e-mail. O contato também entra em "Clientes do produtor" (filtro "Mini Chat"). Dica: confira a caixa de spam no primeiro teste.</div>
       </>)}
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Idioma do Mini Chat</div>
+      <div style={{display:"flex",gap:6,marginBottom:4}}>
+        {[["pt","🇧🇷 Português"],["en","🇺🇸 English"]].map(([v,label])=>(
+          <button key={v} onClick={()=>setIdioma(v)} style={{flex:1,background:idioma===v?GOLD:"none",border:`1px solid ${idioma===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:idioma===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
+        ))}
+      </div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Muda só o Mini Chat (botões, perguntas de contato e o e-mail que chega). As perguntas personalizadas ficam como você escrever — a IA de "Perguntas do Mini Chat" passa a gerar no idioma escolhido depois de salvar.</div>
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Visual do Mini Chat</div>
+      <div style={{display:"flex",gap:6,marginBottom:modelo==="email"?10:14}}>
+        {[["whatsapp","💬 Estilo WhatsApp"],["email","✉️ Estilo E-mail"]].map(([v,label])=>(
+          <button key={v} onClick={()=>setModelo(v)} style={{flex:1,background:modelo===v?GOLD:"none",border:`1px solid ${modelo===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:modelo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
+        ))}
+      </div>
+      {modelo==="email"&&(
+        <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"stretch"}}>
+          {[["Cor de fundo",corFundo,setCorFundo],["Cor dos botões",corDestaque,setCorDestaque]].map(([label,val,setter])=>(
+            <label key={label} style={{flex:1,display:"flex",alignItems:"center",gap:8,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"8px 10px",cursor:"pointer"}}>
+              <input type="color" value={val} onChange={e=>setter(e.target.value)} style={{width:28,height:28,border:"none",background:"none",padding:0,cursor:"pointer"}}/>
+              <span style={{color:MUTED,fontSize:11,fontWeight:600}}>{label}</span>
+            </label>
+          ))}
+          <div style={{width:54,borderRadius:12,background:corFundo,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{width:30,height:14,borderRadius:6,background:corDestaque}}/>
+          </div>
+        </div>
+      )}
       <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome usado na saudação" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
         <Avatar url={avatarUrl} name={brandName||"M"} size={44} radius={12} fontSize={16}/>
@@ -2634,10 +2676,26 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [showAvancadoPerguntas,setShowAvancadoPerguntas]=useState(false);
   const [jsonInput,setJsonInput]=useState("");
   const [jsonErr,setJsonErr]=useState("");
+  const [importando,setImportando]=useState(false);
+  const [importInfo,setImportInfo]=useState("");
+  const idiomaMc=c.minichat_config?.language==="en"?"en":"pt";
+  const destinoMc=c.minichat_config?.destination_type||"whatsapp";
+  // Lê o mini chat que o cliente JÁ tinha no próprio site (repositório GitHub) e traz
+  // as perguntas pra cá — só preenche a tela, vira definitivo ao clicar "Salvar perguntas".
+  const importarDoSite=async()=>{
+    if(importando)return;
+    setMsg("");setImportInfo("");setImportando(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/import-questions-from-repo`,{method:'POST'});
+    setImportando(false);
+    if(!d?.questions?.length){setMsg(d?.error||"Não consegui importar as perguntas.");return;}
+    setQuestions(d.questions);setSaved(false);
+    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Elas estão em inglês — escolha "English" em Idioma do Mini Chat (card Mini Chat) pra combinar.':"";
+    setImportInfo(`✓ ${d.questions.length} pergunta(s) importada(s) de ${(d.source||[]).join(", ")}. Revise abaixo e clique "Salvar perguntas".${avisoIdioma}`);
+  };
   const gerarTodas=async()=>{
     if(gerandoTudo)return;
     setMsg("");setGerandoTudo(true);
-    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/generate-all-questions`,{method:'POST',body:JSON.stringify({count:questions.length||4,business_context:nicho.trim()})});
+    const d=await apiCall(`/api/admin/producers/${c.id}/minichat/generate-all-questions`,{method:'POST',body:JSON.stringify({count:questions.length||4,business_context:nicho.trim(),language:idiomaMc})});
     setGerandoTudo(false);
     if(d?.questions?.length)setQuestions(d.questions);
     else if(d?.error)setMsg(d.error);
@@ -2675,7 +2733,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
+          {c.github_repo&&<Btn sm outline color={GOLD} onClick={importarDoSite}>{importando?"Lendo o site…":"⬇️ Importar do site do cliente"}</Btn>}
         </div>
+        {importInfo&&<div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:8,padding:"7px 12px",marginBottom:8,color:GREEN,fontSize:11,lineHeight:1.4}}>{importInfo}</div>}
         <button onClick={()=>setShowAvancadoPerguntas(a=>!a)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10,display:"flex",alignItems:"center",gap:4}}>Avançado (colar perguntas prontas de outra IA) {showAvancadoPerguntas?"▲":"▼"}</button>
         {showAvancadoPerguntas&&(<>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
@@ -2749,9 +2809,12 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             <span style={{color:GREEN,fontSize:13}}>✓</span>
             <span style={{color:GREEN,fontSize:12,fontWeight:700}}>Sempre incluídas no final, automaticamente</span>
           </div>
-          <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta mais 3 coisas antes de liberar o botão do WhatsApp — pra garantir que todo interessado que aparece no CRM já venha com nome e telefone reais. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.</div>
+          <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta mais 3 coisas antes de liberar o botão final — pra garantir que todo interessado que aparece no CRM já venha com contato real. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.{destinoMc==="email"?" Como o destino deste cliente é E-mail, pergunta o e-mail da pessoa no lugar da data de nascimento.":""}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"].map((q,i)=>(
+            {(destinoMc==="email"
+              ?(idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?"])
+              :(idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
+            ).map((q,i)=>(
               <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>
             ))}
           </div>
@@ -2856,7 +2919,10 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado no site",done:minichatInstOk,cardKeys:["minichat_repo"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
-    {id:"email",label:"E-mail conectado",done:emailOk,cardKeys:["email"]},
+    // É o e-mail (SMTP) do produtor pros DISPAROS em massa — não tem nada a ver com o
+    // destino dos leads do Mini Chat (esse vai sozinho pelo JosephPay). O nome antigo,
+    // "E-mail conectado", dava a entender que sem isso o Mini Chat por e-mail não funcionava.
+    {id:"email",label:"E-mail pra disparos conectado",done:emailOk,cardKeys:["email"]},
   ];
   const currentStep=steps.find(s=>!s.done);
   const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||(minichatInstOk&&!!c.github_vercel_ready_at));
@@ -2917,6 +2983,10 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [saveErr,setSaveErr]=useState("");
   const [subTab,setSubTab]=useState(initialSubTab||"geral");
   const [showContatos,setShowContatos]=useState(false);
+  // Muda toda vez que contatos são adicionados — a lista "Clientes do produtor" usa isso
+  // pra buscar de novo. Antes ela guardava a cópia da primeira abertura e ficava atrás
+  // do painel (ex: painel 153 x lista 107 logo depois de subir 46 números).
+  const [contatosVersao,setContatosVersao]=useState(0);
   const [avatarPreview,setAvatarPreview]=useState("");
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
   const [isDisabled,setIsDisabled]=useState(!!c?.disabled_at);
@@ -3046,7 +3116,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
           </div>
         </div>
       </div>
-      {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={onUpdated}/>}
+      {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={()=>{setContatosVersao(v=>v+1);onUpdated&&onUpdated();}}/>}
       <Btn sm outline color={GOLD} onClick={()=>setShowContatos(true)}>+ Adicionar contatos</Btn>
       <div style={{display:"flex",gap:6}}>
         {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"}].map(t=>(
@@ -3074,7 +3144,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
           <FunilClienteAdmin ownerId={c.id}/>
           <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
           <ProdutosDoCliente ownerId={c.id} nome={nome}/>
-          <ClientesDoProdutorAdmin ownerId={c.id} nome={nome}/>
+          <ClientesDoProdutorAdmin ownerId={c.id} nome={nome} refreshKey={contatosVersao}/>
           <DisparosClienteAdmin ownerId={c.id}/>
           <NotaProdutorAdmin ownerId={c.id}/>
           <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>

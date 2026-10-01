@@ -172,3 +172,29 @@ Antes de fechar qualquer tarefa que mexe nesses endpoints, considere rodar
 (ou sugerir ao Thomas) a mesma correção nos produtores que já existem, não só
 no que motivou a mudança — o objetivo é o Admin inteiro ficar consistente,
 não só o caso que gerou a reclamação.
+
+## Mini Chat: modo E-mail, idioma e visual
+
+- **Modo "E-mail"/"Ambos" manda o diagnóstico sozinho pelo servidor**
+  (`POST /api/minichat/lead-email`, Resend). O destinatário vem SEMPRE do
+  `minichat_config.email_destino` salvo no banco — nunca do corpo da requisição
+  (senão vira relay aberto de e-mail). Se o envio falhar, o `minichat.html` cai no
+  jeito antigo (`mailto:`), nunca deixa o lead sem caminho.
+- **Modo só-WhatsApp não passa por nada disso.** Os textos em `I18N.pt` do
+  `minichat.html` são exatamente os de antes — mudar qualquer um deles muda o Mini
+  Chat (e a mensagem do WhatsApp) de TODO produtor atual.
+- `minichat_config.language` (`pt`|`en`, padrão `pt`) muda só o Mini Chat (textos
+  fixos, perguntas de contato, e-mail do lead) e o idioma das perguntas geradas por
+  IA. `minichat_config.template` (`whatsapp`|`email`, padrão `whatsapp`) +
+  `bg_color`/`accent_color` (só `#hex`, validado em `cleanHexColor`) controlam o
+  visual "Estilo E-mail" (inspirado no mini chat da CAA Renovations).
+- No modo "E-mail" as perguntas de contato são nome, **e-mail** e telefone (no lugar
+  de "telefone com WhatsApp" + nascimento). O e-mail vai pro CRM (`customers.email`).
+
+## Detecção de framework: TanStack Start novo (Lovable)
+
+A versão nova do TanStack Start (a do Lovable) NÃO tem `app.config.ts` — tem
+`vite.config.ts` com o plugin `tanstackStart`. Por isso "tem vite.config" não prova
+que é SPA Vite. `detectRepoFramework()` reconhece o Start por: rotas TanStack + (sem
+`index.html` na raiz OU `src/start|server|client.ts`). Foi assim que o `vercel.json`
+da CAA Renovations virou um genérico de Vite (25/08) — mesmo erro da Lervet (regra 6).

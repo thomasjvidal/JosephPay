@@ -1592,8 +1592,22 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
     // Interessados (lead) x Clientes convertidos (cliente/assinante) do CRM de cada produtor.
-    const { data: customerRows, error: customerErr } = await supabase.from("customers").select("owner_id,status,created_at");
-    if (customerErr) console.error("[admin/clients] customers query error:", customerErr.message, customerErr.details);
+    // Paginado: o Supabase devolve no máximo 1000 linhas por consulta, e essa conta pega
+    // os contatos de TODOS os produtores — sem paginar, os números do painel começam a
+    // sair menores que a realidade assim que a plataforma passa de 1000 contatos.
+    // Também ignora contato excluído (deleted_at), igual a lista "Clientes do produtor"
+    // já faz — senão painel e lista nunca batem depois que alguém apaga um contato.
+    const customerRows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error: customerErr } = await supabase.from("customers")
+        .select("owner_id,status,created_at")
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, from + 999);
+      if (customerErr) { console.error("[admin/clients] customers query error:", customerErr.message, customerErr.details); break; }
+      customerRows.push(...(page || []));
+      if (!page || page.length < 1000) break;
+    }
     const leadsPorUsuario = {};
     const clientesPorUsuario = {};
     (customerRows || []).forEach(row => {
@@ -1969,6 +1983,16 @@ app.patch("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (re
 // existente em vez de nascer uma segunda linha. Contato sem telefone (só nome/e-mail)
 // não tem como conferir duplicata, sempre entra como novo. `rows` já vem pronto pra
 // inserir (owner_id, name, phone, email, status, source — o que cada chamador precisar).
+// Chave de comparação de telefone pra achar repetido — só pra COMPARAR, o número é
+// gravado do jeito que veio. Ignora formatação e o código do país 55 na frente: a mesma
+// pessoa subida uma vez como "5521999015805" (lista do Google Ads) e outra como
+// "21999015805" (lista colada à mão) virava dois contatos separados no CRM.
+function phoneMatchKey(raw) {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) d = d.slice(2);
+  return d;
+}
+
 async function upsertCustomersByPhone(ownerId, rows) {
   const comTelefone = rows.filter(r => r.phone);
   const semTelefone = rows.filter(r => !r.phone);
@@ -1976,17 +2000,29 @@ async function upsertCustomersByPhone(ownerId, rows) {
   const paraInserir = [...semTelefone];
 
   if (comTelefone.length) {
-    const telefones = [...new Set(comTelefone.map(r => r.phone))];
-    const { data: existentes } = await supabase.from("customers").select("id,phone,times_seen").eq("owner_id", ownerId).in("phone", telefones).is("deleted_at", null);
+    // Busca todos os telefones já cadastrados desse produtor (paginado) e compara pela
+    // chave normalizada — um .in("phone", ...) exato não pega "55" + número.
+    const existentes = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page } = await supabase.from("customers").select("id,phone,times_seen").eq("owner_id", ownerId).not("phone", "is", null).is("deleted_at", null).order("id", { ascending: true }).range(from, from + 999);
+      existentes.push(...(page || []));
+      if (!page || page.length < 1000) break;
+    }
     const porTelefone = {};
-    (existentes || []).forEach(e => { if (!porTelefone[e.phone]) porTelefone[e.phone] = e; });
+    existentes.forEach(e => { const k = phoneMatchKey(e.phone); if (k && !porTelefone[k]) porTelefone[k] = e; });
     for (const row of comTelefone) {
-      const existente = porTelefone[row.phone];
-      if (existente) {
+      const k = phoneMatchKey(row.phone);
+      const existente = porTelefone[k];
+      if (existente?.pending) {
+        duplicated++;
+      } else if (existente) {
         await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id);
+        existente.times_seen = (existente.times_seen || 1) + 1;
         duplicated++;
       } else {
         paraInserir.push(row);
+        // Mesmo número repetido dentro da própria lista colada também não duplica.
+        if (k) porTelefone[k] = { pending: true };
       }
     }
   }
@@ -2210,6 +2246,15 @@ app.post("/api/admin/producers/:id/avatar", requireAuth, requireAdmin, async (re
 // Gera (com IA) uma pergunta do Mini Chat com base nos dados reais deste cliente
 // (nome/marca, site, produtos cadastrados) — não salva nada, só devolve a sugestão
 // pro admin revisar/editar antes de clicar em "Salvar perguntas".
+// O Mini Chat de produtor em inglês (ex: CAA Renovations, clientes nos EUA) precisa
+// das perguntas geradas em inglês — o resto do prompt continua em português (é só
+// instrução pra IA, o visitante nunca vê).
+function minichatLangInstruction(language) {
+  return language === "en"
+    ? "Escreva TUDO (text, subtext e options) em inglês americano natural — o Mini Chat desse cliente é em inglês."
+    : "Português do Brasil.";
+}
+
 app.post("/api/admin/producers/:id/minichat/generate-question", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2234,7 +2279,7 @@ Outras perguntas já existentes no fluxo (não repita o mesmo assunto):
 ${outrasPerguntas}
 Gere APENAS a pergunta de número ${index + 1}, adaptada ao negócio acima. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
 {"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}
-As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções. Português do Brasil.`;
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções. ${minichatLangInstruction(profile?.minichat_config?.language)}`;
 
     let reply = null, lastErr = null;
     for (const key of GROQ_KEYS) {
@@ -2271,7 +2316,7 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
 app.post("/api/admin/producers/:id/minichat/generate-all-questions", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let { count, business_context } = req.body;
+    let { count, business_context, language } = req.body;
     count = Math.min(Math.max(Number(count) || 4, 2), 8);
     const [{ data: profile }, { data: products }] = await Promise.all([
       supabase.from("profiles").select("name,company_name,site_url,minichat_config").eq("id", id).maybeSingle(),
@@ -2295,7 +2340,7 @@ Dados reais do negócio deste cliente:
 ${negocio}
 Gere exatamente ${count} perguntas, cada uma sobre um assunto diferente (não repita o mesmo tema), formando uma sequência lógica de diagnóstico que termina qualificando o lead pra falar no WhatsApp. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
 {"questions":[{"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}]}
-As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções por pergunta. Português do Brasil.`;
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções por pergunta. ${minichatLangInstruction(language || profile?.minichat_config?.language)}`;
 
     let reply = null, lastErr = null;
     for (const key of GROQ_KEYS) {
@@ -2326,6 +2371,81 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   } catch (err) {
     console.error("[admin/producers minichat generate-all-questions]", err.message);
     res.status(500).json({ error: "Não consegui gerar as perguntas agora. Tenta de novo em instantes." });
+  }
+});
+
+// Puxa as perguntas de um mini chat que o cliente JÁ tinha no próprio site (ex: o
+// public/minichat/index.html da CAA Renovations) pra dentro do nosso Mini Chat — sem
+// ninguém precisar copiar pergunta por pergunta. Só LÊ o repositório (nada é escrito
+// lá) e só devolve as perguntas pra tela; vira definitivo só quando o admin clica
+// "Salvar perguntas" depois de revisar. Usa a IA embutida (regra 5 do CLAUDE.md:
+// nada de "copie e cole no ChatGPT").
+app.post("/api/admin/producers/:id/minichat/import-questions-from-repo", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("github_repo,minichat_config").eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Esse cliente não tem repositório GitHub vinculado (card \"Site\")." });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
+    // Candidatos: arquivo com cara de mini chat/quiz/diagnóstico pelo caminho. Nome de
+    // pasta OU de arquivo vale (public/minichat/index.html, src/components/Quiz.tsx...).
+    const candidatos = (treeResp.data.tree || [])
+      .filter(i => i.type === "blob" && i.size < 200000
+        && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro)$/i.test(i.path)
+        && !/(^|\/)(node_modules|dist|build|\.next|components\/ui)\//i.test(i.path)
+        && /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard)/i.test(i.path))
+      .slice(0, 6);
+    if (!candidatos.length) return res.status(404).json({ error: "Não achei nenhum mini chat/quiz no repositório desse cliente." });
+
+    // Só o trecho que interessa (em volta das perguntas) vai pra IA — o arquivo inteiro
+    // (CSS, HTML) estouraria o limite e deixaria a resposta lenta.
+    const trechos = [];
+    for (const item of candidatos) {
+      let conteudo = "";
+      try { conteudo = await readGithubFile(repo, item.path, headers, token); } catch { continue; }
+      const idx = conteudo.search(/questions\s*[=:]|options\s*:\s*\[|perguntas\s*[=:]/i);
+      if (idx < 0) continue;
+      trechos.push({ path: item.path, texto: conteudo.slice(Math.max(0, idx - 300), idx + 7000) });
+    }
+    if (!trechos.length) return res.status(404).json({ error: `Achei ${candidatos.map(c => c.path).join(", ")}, mas nenhum tem uma lista de perguntas reconhecível.` });
+
+    const systemPrompt = `Você recebe trechos de código de um mini chat/quiz de diagnóstico que já existe no site de um cliente. Extraia as perguntas EXATAMENTE como estão no código (mesmo idioma, mesmas palavras — não traduza, não reescreva, não invente). Ignore perguntas de contato (nome, telefone, e-mail, data de nascimento) — essas o nosso Mini Chat já faz sozinho.
+Para cada pergunta: "text" é a frase de transição/saudação antes da pergunta (pode ser vazia), "subtext" é a pergunta em si, "options" são as opções de resposta.
+Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
+{"language":"pt ou en","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
+    const userMsg = trechos.map(t => `--- ${t.path} ---\n${t.texto}`).join("\n\n").slice(0, 16000);
+
+    let reply = null, lastErr = null;
+    for (const key of GROQ_KEYS) {
+      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: userMsg }]); break; }
+      catch (e) { lastErr = e; console.warn("[minichat import-questions] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
+    }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) {
+      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: userMsg }]); }
+      catch (e) { lastErr = e; console.error("[minichat import-questions] anthropic falhou:", e.response?.data || e.message); }
+    }
+    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
+
+    const match = reply.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = match ? JSON.parse(match[0]) : null; } catch { parsed = null; }
+    const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
+      .map(q => ({
+        text: String(q?.text || "").trim(),
+        subtext: String(q?.subtext || "").trim(),
+        options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 8) : [],
+      }))
+      .filter(q => (q.text || q.subtext) && q.options.length >= 2)
+      .slice(0, 10);
+    if (!questions.length) return res.status(500).json({ error: "A IA não conseguiu ler as perguntas desse arquivo, tenta de novo." });
+    res.json({ questions, language: parsed?.language === "en" ? "en" : "pt", source: trechos.map(t => t.path) });
+  } catch (err) {
+    console.error("[admin/producers minichat import-questions]", err.message);
+    res.status(500).json({ error: "Não consegui ler o repositório agora. Tenta de novo em instantes." });
   }
 });
 
@@ -2461,10 +2581,15 @@ function normalizeWhatsappNumber(raw) {
   return digits || null;
 }
 
+function cleanHexColor(v) {
+  const c = String(v || "").trim();
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c) ? c.toLowerCase() : null;
+}
+
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message, language, template, accent_color, bg_color } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -2503,6 +2628,16 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       business_context: business_context !== undefined ? (business_context?.trim() || null) : (existing.business_context ?? null),
       closing_message: closing_message !== undefined ? (closing_message?.trim() || null) : (existing.closing_message ?? null),
       destination_type: destination_type !== undefined ? (destination_type || "whatsapp") : (existing.destination_type ?? "whatsapp"),
+      // Idioma só do Mini Chat (textos fixos, perguntas de contato, e-mail do lead) —
+      // "pt" é o padrão, então todo produtor que já existe continua exatamente igual.
+      language: language !== undefined ? (language === "en" ? "en" : "pt") : (existing.language ?? "pt"),
+      // Modelo visual: "whatsapp" (o de sempre, padrão) ou "email" (tela escura com
+      // resumo do projeto, inspirado no mini chat da CAA Renovations).
+      template: template !== undefined ? (template === "email" ? "email" : "whatsapp") : (existing.template ?? "whatsapp"),
+      // Cores do produtor — só usadas pelo modelo "email". Aceita só #rgb/#rrggbb pra
+      // nunca injetar CSS arbitrário na página pública do Mini Chat.
+      accent_color: accent_color !== undefined ? cleanHexColor(accent_color) : (existing.accent_color ?? null),
+      bg_color: bg_color !== undefined ? cleanHexColor(bg_color) : (existing.bg_color ?? null),
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
@@ -4419,7 +4554,17 @@ function detectRepoFramework(allPaths) {
   // rotas, builds completamente diferentes. Tratar os dois como "é Vite" foi o que gerou
   // um vercel.json errado (framework:"vite" + outputDirectory:"dist") num projeto Start —
   // que não builda pra uma pasta dist/ estática, e quebrou o site publicado da Lervet.
-  const hasTanStackStart = allPaths.some(p => /^app\.config\.[jt]s$/.test(p));
+  //
+  // A versão NOVA do TanStack Start (a que o Lovable gera — caso da CAA Renovations) não
+  // tem mais app.config.ts: usa vite.config.ts com o plugin tanstackStart, então "ter
+  // vite.config" NÃO prova que é um SPA Vite comum. A assinatura confiável por caminho é
+  // não ter index.html na raiz (um SPA Vite sempre tem; o Start gera o HTML no servidor)
+  // ou ter os arquivos de entrada do Start (src/start.ts, src/server.ts, src/client.tsx).
+  // Foi assim que o vercel.json da CAA virou um genérico de Vite sem ninguém perceber.
+  const hasRootIndexHtml = allPaths.includes("index.html");
+  const hasStartEntry = allPaths.some(p => /^src\/(start|server|client)\.[jt]sx?$/.test(p));
+  const hasTanStackStart = allPaths.some(p => /^app\.config\.[jt]s$/.test(p))
+    || (hasTanStackRoutes && (!hasRootIndexHtml || hasStartEntry));
   const hasTanStack = hasTanStackRoutes && !hasTanStackStart;
   const hasAstroConfig   = allPaths.some(p => /^astro\.config\.[jt]s$/.test(p));
   const hasSvelteConfig  = allPaths.some(p => /^svelte\.config\.[jt]s$/.test(p));
@@ -4427,7 +4572,9 @@ function detectRepoFramework(allPaths) {
   const hasRemixConfig   = allPaths.some(p => /^remix\.config\.[jt]s$/.test(p));
   // Qualquer framework fora dos que sabemos montar um vercel.json correto de cor — melhor
   // não inventar um molde genérico errado do que arriscar quebrar o build.
-  const unknownFramework = hasPackageJson && !hasViteConfig && !hasNextConfig && !hasTanStack
+  // Esses frameworks usam vite.config por baixo (TanStack Start novo, SvelteKit, Astro,
+  // Remix com Vite) — por isso "tem vite.config" não pode mais excluir eles daqui.
+  const unknownFramework = hasPackageJson && !hasNextConfig
     && (hasTanStackStart || hasAstroConfig || hasSvelteConfig || hasNuxtConfig || hasRemixConfig);
   const hasPublicDir   = allPaths.some(p => /^public\//.test(p));
   // Qualquer projeto com package.json passa por um passo de build (Vite/Next/CRA/etc)
@@ -5720,10 +5867,14 @@ app.post("/api/leads/create", (req, res, next) => {
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
 
   const telefone = phone?.trim() || null;
+  const emailLead = email?.trim() || null;
   // Mesma pessoa conversando de novo no Mini Chat não pode virar uma segunda linha no
   // CRM — só atualiza a contagem de quantas vezes voltou na linha que já existe.
-  if (telefone) {
-    const { data: existente } = await supabase.from("customers").select("id,times_seen").eq("owner_id", ownerKey).eq("phone", telefone).is("deleted_at", null).maybeSingle();
+  // Sem telefone (Mini Chat no modo e-mail pode não pedir), o e-mail faz esse papel.
+  if (telefone || emailLead) {
+    let q = supabase.from("customers").select("id,times_seen").eq("owner_id", ownerKey).is("deleted_at", null);
+    q = telefone ? q.eq("phone", telefone) : q.ilike("email", emailLead.replace(/[\\%_]/g, m => "\\" + m));
+    const { data: existente } = await q.limit(1).maybeSingle();
     if (existente) {
       const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
       if (errUpd) return res.status(500).json({ error: errUpd.message });
@@ -5737,7 +5888,7 @@ app.post("/api/leads/create", (req, res, next) => {
       owner_id: profile.id,
       name: name.trim(),
       phone: telefone,
-      email: email?.trim() || null,
+      email: emailLead,
       birthday: parseBirthdate(birthday),
       source: "minichat",
       status: "lead",
@@ -5748,6 +5899,115 @@ app.post("/api/leads/create", (req, res, next) => {
   if (error) return res.status(500).json({ error: error.message });
   sendPushToOwner(profile.id, { title: "Novo interessado!", body: name.trim(), url: "/" });
   res.json(data);
+});
+
+// ── Mini Chat: lead por E-MAIL de verdade (sem depender do app de e-mail do visitante)
+// Antes, o modo "E-mail" do Mini Chat só abria um mailto: no aparelho do visitante — o
+// contato só chegava se a pessoa apertasse "enviar" no app dela (mesmo problema do mini
+// chat próprio da CAA Renovations). Aqui o servidor manda o diagnóstico direto pro
+// e-mail de destino cadastrado no Admin, via Resend (o mesmo já usado nas notificações
+// de venda). Só é chamado pelo minichat.html quando o destino é "email" ou "ambos" —
+// o fluxo de WhatsApp não passa por aqui e não muda em nada.
+//
+// Segurança: o destinatário vem SEMPRE do minichat_config salvo no banco, nunca do
+// corpo da requisição (senão virava um "relay" aberto pra mandar e-mail pra qualquer um).
+const minichatEmailRateMap = new Map();   // owner:visitor -> { count, reset }
+const minichatEmailOwnerRate = new Map(); // owner -> { count, reset }
+const minichatEmailSent = new Map();      // owner:visitor -> timestamp do último envio
+function escHtml(v) {
+  return String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+function minichatLeadEmailHtml({ brand, lang, lead, answers }) {
+  const t = lang === "en"
+    ? { title: "New lead from your website", sub: "Someone just completed the pre-diagnosis on your website.", contact: "Contact", answers: "Answers", name: "Name", email: "E-mail", phone: "Phone", reply: "Reply to this e-mail to talk to them directly." }
+    : { title: "Novo contato pelo site", sub: "Alguém acabou de completar o diagnóstico no seu site.", contact: "Contato", answers: "Respostas", name: "Nome", email: "E-mail", phone: "Telefone", reply: "Responda este e-mail pra falar direto com a pessoa." };
+  const row = (k, v) => `<tr><td style="padding:12px 18px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;vertical-align:top;padding-right:12px;">${escHtml(k)}</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${escHtml(v)}</td></tr></table></td></tr>`;
+  const contato = [[t.name, lead.name], [t.email, lead.email], [t.phone, lead.phone]].filter(([, v]) => v).map(([k, v]) => row(k, v)).join("");
+  const respostas = answers.map(a => row(a.question, a.answer)).join("");
+  const bloco = (titulo, linhas) => linhas ? `<tr><td style="padding:18px 32px 0;"><div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-bottom:8px;">${escHtml(titulo)}</div><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:12px;border:1px solid #2a2a2a;overflow:hidden;">${linhas}</table></td></tr>` : "";
+  return `<!DOCTYPE html><html lang="${lang === "en" ? "en" : "pt-BR"}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0D0D0D;padding:32px 16px;"><tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#0D0D0D;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
+<tr><td style="padding:28px 32px 0;text-align:center;">
+  <div style="color:#888;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">${escHtml(brand)}</div>
+  <h1 style="color:#fff;font-size:22px;font-weight:800;margin:10px 0 6px;">${escHtml(t.title)}</h1>
+  <p style="color:#888;font-size:14px;margin:0;">${escHtml(t.sub)}</p>
+</td></tr>
+${bloco(t.contact, contato)}
+${bloco(t.answers, respostas)}
+<tr><td style="padding:20px 32px 28px;text-align:center;color:#666;font-size:12px;">${lead.email ? escHtml(t.reply) : ""}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+app.options("/api/minichat/lead-email", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Methods", "POST");
+  res.sendStatus(204);
+});
+app.post("/api/minichat/lead-email", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  next();
+}, async (req, res) => {
+  try {
+    const { owner_id, visitor_id, lead, answers } = req.body || {};
+    if (!owner_id || !visitor_id) return res.status(400).json({ error: "Dados incompletos" });
+    const now = Date.now();
+    const visitKey = `${owner_id}:${String(visitor_id).slice(0, 100)}`;
+    // Mesmo visitante clicando de novo (ou o envio automático + o botão) não pode
+    // mandar dois e-mails iguais pro produtor.
+    const ultimo = minichatEmailSent.get(visitKey);
+    if (ultimo && now - ultimo < 30 * 60 * 1000) return res.json({ ok: true, duplicate: true });
+
+    const bump = (map, key, max, windowMs) => {
+      const e = map.get(key) || { count: 0, reset: now + windowMs };
+      if (now > e.reset) { e.count = 0; e.reset = now + windowMs; }
+      e.count++; map.set(key, e);
+      return e.count > max;
+    };
+    if (bump(minichatEmailRateMap, visitKey, 5, 10 * 60 * 1000)) return res.status(429).json({ error: "Limite de requisições atingido" });
+    if (bump(minichatEmailOwnerRate, String(owner_id), 60, 60 * 60 * 1000)) return res.status(429).json({ error: "Limite de requisições atingido" });
+
+    const { data: profile } = await supabase.from("profiles").select("id,name,minichat_config").eq("id", owner_id).maybeSingle();
+    if (!profile) return res.status(401).json({ error: "owner_id inválido" });
+    const cfg = profile.minichat_config || {};
+    const destino = String(cfg.email_destino || "").trim();
+    // fallback:true avisa o Mini Chat pra cair no comportamento antigo (abrir o app de
+    // e-mail do visitante) em vez de mostrar erro — o lead nunca fica sem caminho.
+    if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "E-mail de destino não configurado", fallback: true });
+    if (!resend) return res.status(503).json({ error: "Envio de e-mail indisponível", fallback: true });
+
+    const lang = cfg.language === "en" ? "en" : "pt";
+    const brand = String(cfg.brand_name || profile.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
+    const clean = (v, n) => String(v ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, n);
+    const leadInfo = {
+      name: clean(lead?.name, 120),
+      email: EMAIL_RE.test(clean(lead?.email, 200)) ? clean(lead?.email, 200) : "",
+      phone: clean(lead?.phone, 40),
+    };
+    const respostas = (Array.isArray(answers) ? answers : []).slice(0, 20)
+      .map(a => ({ question: clean(a?.question, 300), answer: clean(a?.answer, 500) }))
+      .filter(a => a.question && a.answer);
+    const quem = leadInfo.name || leadInfo.email || leadInfo.phone || (lang === "en" ? "website visitor" : "visitante do site");
+    const subject = lang === "en" ? `New lead from your website — ${quem}` : `Novo contato pelo site — ${quem}`;
+
+    const { error } = await resend.emails.send({
+      from: `${brand} via JosephPay <noreply@josephpay.com>`,
+      to: destino,
+      subject,
+      html: minichatLeadEmailHtml({ brand, lang, lead: leadInfo, answers: respostas }),
+      ...(leadInfo.email ? { replyTo: leadInfo.email } : {}),
+    });
+    if (error) {
+      console.error("[minichat/lead-email] resend erro:", error.message || error);
+      return res.status(502).json({ error: "Não consegui enviar o e-mail agora", fallback: true });
+    }
+    minichatEmailSent.set(visitKey, now);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[minichat/lead-email]", err.message);
+    res.status(500).json({ error: err.message, fallback: true });
+  }
 });
 
 // ── Mini Chat: rastreio de sessão (até qual pergunta a pessoa chegou, o que
