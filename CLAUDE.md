@@ -235,3 +235,12 @@ claro quando esse chat NÃO manda o contato pro JosephPay (só o `sensor.js` nã
 Link interno pro chat próprio deixa de ser pendência em "Botões do site"; o job
 automático nunca reinstala o nosso por cima de um próprio. wa.me continua pendência
 (regra 3).
+
+## Visual: estilo Apple + vidro fosco (glassmorphism)
+
+Pedido do Thomas: telas limpas, estilo Apple, sempre com vidro fosco. Use os helpers
+`glassCard()`, `glassInset` e `pillBtn()` (`index.html`, junto das cores). Padrão de
+card: UM status em linguagem simples no topo (ícone + título + 1 frase), UMA ação
+principal conforme o status, ações secundárias como links pequenos, e tudo que é
+técnico/raro escondido em "Detalhes" — sem nunca remover função (regra do Admin).
+Primeiro card nesse padrão: "Mini Chat no site" (`MinichatRepoAdmin`).

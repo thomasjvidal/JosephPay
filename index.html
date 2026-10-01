@@ -311,6 +311,12 @@ const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B
 const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
 const BDR="rgba(255,255,255,0.06)", MUTED="#B0A894", TEXT="#F2EFEA";
 const F="'Inter',system-ui,sans-serif", SF="'Newsreader',Georgia,serif";
+// Vidro fosco (glassmorphism, estilo Apple) — padrão visual pedido pelo Thomas pros
+// cards novos/redesenhados. glassCard = o card em si; glassInset = bloco dentro dele;
+// pillBtn = botão em pílula (primário dourado ou secundário de vidro).
+const glassCard=(done)=>({background:"linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.025))",backdropFilter:"blur(24px) saturate(160%)",WebkitBackdropFilter:"blur(24px) saturate(160%)",border:`1px solid ${done?"rgba(34,197,94,0.28)":"rgba(255,255,255,0.10)"}`,borderRadius:24,padding:"18px",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 32px rgba(0,0,0,0.35)"});
+const glassInset={background:"rgba(255,255,255,0.045)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px"};
+const pillBtn=(primary,disabled)=>({width:"100%",height:50,borderRadius:100,border:primary?"none":"1px solid rgba(255,255,255,0.14)",background:primary?`linear-gradient(180deg,${GOLD2},${GOLD})`:"rgba(255,255,255,0.06)",color:primary?"#0C0C0C":TEXT,fontWeight:600,fontSize:15,letterSpacing:"-0.01em",cursor:disabled?"default":"pointer",opacity:disabled?0.55:1,fontFamily:F,backdropFilter:primary?"none":"blur(12px)",WebkitBackdropFilter:primary?"none":"blur(12px)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,textDecoration:"none",boxSizing:"border-box"});
 
 const mkData=(n,base,variance)=>Array.from({length:n},(_,i)=>({i,v:Math.max(0,base+Math.floor((Math.random()-0.4)*variance))}));
 const PERIODS={
@@ -1504,74 +1510,92 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     // Vercel) — assim não depende de o admin lembrar de clicar em "Verificar".
     if(c.site_url)setTimeout(()=>{verificarNoAr();},75000);
   };
+  // Um status só, em linguagem simples, no topo do card — tudo que é técnico fica
+  // escondido em "Detalhes". Nenhuma função foi removida, só reorganizada.
+  const vs=verifyResult?.status;
+  const status=verifying?{tone:"neutral",icon:"…",title:"Verificando o site…",sub:"Leva só alguns segundos."}
+    :vs==="ok"?{tone:"ok",icon:"✓",title:"No ar",sub:"O site abre o Mini Chat do JosephPay."}
+    :vs==="proprio"?{tone:"ok",icon:"✓",title:"Conectado",sub:"O site já tem um Mini Chat próprio."}
+    :vs==="sem_site"?{tone:"neutral",icon:"i",title:"Falta o endereço do site",sub:"Cadastre o site no perfil do cliente pra eu conferir."}
+    :vs?{tone:"warn",icon:"!",title:"Ainda não está no ar",sub:"O botão do site ainda não abre o Mini Chat."}
+    :installedAt?{tone:"neutral",icon:"✓",title:"Instalado",sub:"Toque em Verificar pra confirmar no site."}
+    :{tone:"neutral",icon:"+",title:"Não instalado",sub:"Instale pra o site abrir o Mini Chat."};
+  const toneColor=status.tone==="ok"?GREEN:status.tone==="warn"?"#F5A524":MUTED;
+  const podeInstalar=!!c.github_repo&&!!minichatPath.trim()&&!installing;
+  const precisaCorrigir=vs&&vs!=="ok"&&vs!=="sem_site"&&vs!=="proprio"&&!!c.github_repo;
+  const linkBtn={background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px",textDecoration:"none"};
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Mini Chat no site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
-      {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Aponta esse caminho do site direto pro Mini Chat. Pros botões de verdade do site (ex: "COMPRAR") abrirem o Mini Chat, use <b style={{color:TEXT}}>"Botões do site"</b> abaixo.</div>
-        {proprio&&!showPathInput?null:!showPathInput?(
-          <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:12}}>
-            Vamos usar o caminho <b style={{color:TEXT,fontFamily:"monospace"}}>{minichatPath}</b>.{" "}
-            <button onClick={()=>setShowPathInput(true)} style={{background:"none",border:"none",color:GOLD,textDecoration:"underline",fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>usar outro caminho</button>
+      {open&&(<div style={{marginTop:14}}>
+        {/* Status */}
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+          <div style={{width:46,height:46,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:`${toneColor}1F`,border:`1px solid ${toneColor}40`,color:toneColor,fontSize:20,fontWeight:700}}>{status.icon}</div>
+          <div style={{minWidth:0}}>
+            <div style={{color:TEXT,fontSize:17,fontWeight:600,letterSpacing:"-0.02em"}}>{status.title}</div>
+            <div style={{color:MUTED,fontSize:13,marginTop:2,lineHeight:1.4}}>{status.sub}</div>
           </div>
-        ):(<>
-          <button onClick={detectar} disabled={!c.github_repo||detecting} style={{width:"100%",background:CARD2,border:`1px solid ${detecting?GOLD:BDR}`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:(!c.github_repo||detecting)?"default":"pointer",fontFamily:F,marginBottom:10,opacity:detecting?0.7:1}}>
-            {detecting?"🔍 Detectando…":"🔍 Detectar caminho automaticamente"}
-          </button>
-          {sugestoes.length>0&&(
-            <div style={{marginBottom:12}}>
-              <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Caminhos detectados:</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {sugestoes.map(s=>(
-                  <button key={s} onClick={()=>setMinichatPath(s)} style={{background:minichatPath===s?`${GOLD}20`:"none",border:`1px solid ${minichatPath===s?GOLD:BDR}`,borderRadius:10,padding:"9px 13px",color:minichatPath===s?GOLD:TEXT,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"monospace",textAlign:"left"}}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",marginBottom:10,boxSizing:"border-box"}}/>
-        </>)}
-        {proprio&&(
-          <div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}40`,borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-            <div style={{color:GREEN,fontSize:13,fontWeight:700,marginBottom:verifyResult.aviso?6:0}}>✓ Conectado — o site já tem um Mini Chat próprio</div>
-            <div style={{color:MUTED,fontSize:11,lineHeight:1.4,fontFamily:"monospace",marginBottom:verifyResult.aviso?6:0}}>{verifyResult.path}</div>
-            {verifyResult.aviso&&<div style={{color:GOLD,fontSize:11,lineHeight:1.5}}>⚠️ {verifyResult.aviso}</div>}
-          </div>
-        )}
-        <button onClick={()=>instalar()} disabled={!c.github_repo||installing||!minichatPath.trim()} style={{width:"100%",background:(done||proprio)?`${GREEN}18`:GREEN,border:(done||proprio)?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:(installing||!c.github_repo||!minichatPath.trim())?"default":"pointer",fontFamily:F}}>
-          {installing?"Instalando…":proprio?"Trocar pelo Mini Chat do JosephPay":done?"Reinstalar Mini Chat":"Instalar Mini Chat no site"}
-        </button>
-        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:msg.startsWith("Erro")||msg.startsWith("⚠️")?RED:MUTED,fontSize:11,marginTop:10,lineHeight:1.4}}>{msg}</div>}
-        <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
-          <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:700,textDecoration:"none"}}>Testar ↗</a>
-          {c.site_url&&(c.github_minichat_path||c.github_repo)&&<button onClick={verificarNoAr} disabled={verifying} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:verifying?"default":"pointer",fontFamily:F}}>{verifying?"Checando…":"🔎 Verificar no site"}</button>}
         </div>
-        {verifyResult&&!proprio&&(
-          <div style={{marginTop:8,color:verifyResult.status==="ok"?GREEN:verifyResult.status==="sem_site"?MUTED:RED,fontSize:12,lineHeight:1.5}}>
-            {verifyResult.status==="ok"?"✓ ":verifyResult.status==="sem_site"?"":"⚠️ "}{verifyResult.message}
-            {verifyResult.detail&&!showTecnico&&<> <button onClick={()=>setShowTecnico(true)} style={{background:"none",border:"none",color:"inherit",textDecoration:"underline",fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>por quê?</button></>}
+
+        {proprio&&verifyResult.aviso&&(
+          <div style={{...glassInset,marginBottom:14,color:MUTED,fontSize:12,lineHeight:1.5}}>
+            <span style={{color:"#F5A524",fontWeight:600}}>Atenção: </span>{verifyResult.aviso.replace(/Se quiser que entrem.*$/,"").trim()}
           </div>
-        )}
-        {verifyResult&&verifyResult.status!=="ok"&&verifyResult.status!=="sem_site"&&!proprio&&c.github_repo&&(
-          <button onClick={corrigirBotaoAgora} disabled={corrigindoBotao} style={{width:"100%",background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:12,padding:"12px",color:GOLD,fontWeight:700,fontSize:13,cursor:corrigindoBotao?"default":"pointer",fontFamily:F,marginTop:10}}>
-            {corrigindoBotao?"Corrigindo…":"🔧 Corrigir botão agora"}
-          </button>
         )}
 
-        <button onClick={()=>setShowTecnico(t=>!t)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginTop:16,display:"flex",alignItems:"center",gap:4}}>Detalhes técnicos {showTecnico?"▲":"▼"}</button>
-        {showTecnico&&(<div style={{marginTop:10}}>
-          {verifyResult?.detail&&<div style={{color:RED,fontSize:12,lineHeight:1.5,marginBottom:10}}>{verifyResult.detail}</div>}
-          <div style={{background:`${GOLD}0D`,border:`1px solid ${GOLD}25`,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-            <div style={{color:GOLD,fontSize:11,fontWeight:700,marginBottom:4}}>⚡ O que precisa de deploy vs o que é instantâneo</div>
-            <div style={{color:MUTED,fontSize:11,lineHeight:1.5}}>
-              <b style={{color:TEXT}}>Precisa de deploy (Vercel ~1 min):</b> instalar/reinstalar essa regra de redirecionamento no repositório.<br/>
-              <b style={{color:TEXT}}>Instantâneo (sem deploy):</b> nome, foto, WhatsApp, perguntas e e-mail — esses dados ficam no Supabase e o Mini Chat já carrega a versão mais recente a cada abertura.
-            </div>
+        {/* Ação principal (uma só, conforme o status) */}
+        {precisaCorrigir?(
+          <button onClick={corrigirBotaoAgora} disabled={corrigindoBotao} style={pillBtn(true,corrigindoBotao)}>{corrigindoBotao?"Corrigindo…":"Corrigir agora"}</button>
+        ):vs==="ok"?(
+          <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={pillBtn(false,false)}>Abrir Mini Chat ↗</a>
+        ):proprio?(
+          <button onClick={()=>instalar()} disabled={!podeInstalar} style={pillBtn(false,!podeInstalar)}>{installing?"Instalando…":"Usar o Mini Chat do JosephPay"}</button>
+        ):(
+          <button onClick={()=>instalar()} disabled={!podeInstalar} style={pillBtn(true,!podeInstalar)}>{installing?"Instalando…":installedAt?"Reinstalar":"Instalar Mini Chat"}</button>
+        )}
+
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:msg.startsWith("Erro")||msg.startsWith("⚠️")?"#F5A524":MUTED,fontSize:12,marginTop:12,lineHeight:1.5,textAlign:"center"}}>{msg}</div>}
+
+        {/* Ações secundárias */}
+        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:18,marginTop:10}}>
+          <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={linkBtn}>Testar ↗</a>
+          {c.site_url&&(c.github_minichat_path||c.github_repo)&&<button onClick={verificarNoAr} disabled={verifying} style={{...linkBtn,opacity:verifying?0.5:1}}>{verifying?"Verificando…":"Verificar de novo"}</button>}
+          <button onClick={()=>setShowTecnico(t=>!t)} style={{...linkBtn,color:MUTED}}>Detalhes {showTecnico?"⌃":"⌄"}</button>
+        </div>
+
+        {/* Detalhes: tudo que é técnico/raro, escondido por padrão */}
+        {showTecnico&&(<div style={{...glassInset,marginTop:12,display:"flex",flexDirection:"column",gap:12}}>
+          {verifyResult?.message&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}><b style={{color:TEXT,fontWeight:600}}>Última verificação: </b>{verifyResult.message}{proprio&&verifyResult.path?` (${verifyResult.path})`:""}</div>}
+          {verifyResult?.detail&&<div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{verifyResult.detail}</div>}
+
+          <div>
+            <div style={{color:MUTED,fontSize:11,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:6}}>Caminho no site</div>
+            {!showPathInput?(
+              <div style={{color:TEXT,fontSize:13,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <span style={{fontFamily:"monospace"}}>{minichatPath}</span>
+                <button onClick={()=>setShowPathInput(true)} style={{...linkBtn,fontSize:13,padding:0}}>Alterar</button>
+              </div>
+            ):(<>
+              <button onClick={detectar} disabled={!c.github_repo||detecting} style={{...pillBtn(false,!c.github_repo||detecting),height:42,fontSize:13,marginBottom:8}}>{detecting?"Procurando…":"Detectar automaticamente"}</button>
+              {sugestoes.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+                  {sugestoes.map(sg=>(
+                    <button key={sg} onClick={()=>setMinichatPath(sg)} style={{background:minichatPath===sg?`${GOLD}20`:"rgba(255,255,255,0.04)",border:`1px solid ${minichatPath===sg?GOLD+"80":"rgba(255,255,255,0.10)"}`,borderRadius:12,padding:"9px 13px",color:minichatPath===sg?GOLD:TEXT,fontSize:12,cursor:"pointer",fontFamily:"monospace",textAlign:"left"}}>{sg}</button>
+                  ))}
+                </div>
+              )}
+              <input value={minichatPath} onChange={e=>setMinichatPath(e.target.value)} placeholder="minichat.html" style={{width:"100%",background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.10)",borderRadius:12,padding:"10px 13px",color:TEXT,fontSize:13,outline:"none",fontFamily:"monospace",boxSizing:"border-box"}}/>
+            </>)}
           </div>
-          {done&&<div style={{color:MUTED,fontSize:11,marginBottom:8,lineHeight:1.4}}>Os dois botões abaixo só servem pra corrigir problema — não precisa usar se está tudo funcionando.</div>}
-          {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{width:"100%",background:`${GOLD}12`,border:`1px solid ${GOLD}30`,borderRadius:12,padding:"11px",color:GOLD,fontWeight:700,fontSize:13,cursor:fixing?"default":"pointer",fontFamily:F,marginBottom:8}}>{fixing?"Corrigindo…":"🔧 Corrigir UID no repositório (Mini Chat mostra config errada?)"}</button>}
-          {done&&<button onClick={invalidarMinichat} disabled={invalidating} style={{width:"100%",background:`${RED}12`,border:`1px solid ${RED}40`,borderRadius:12,padding:"10px",color:RED,fontWeight:700,fontSize:12,cursor:invalidating?"default":"pointer",fontFamily:F}}>{invalidating?"Invalidando…":"⚠️ Marcar para reinstalar (força vermelho para reconfirmar)"}</button>}
+
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>
+            <b style={{color:TEXT,fontWeight:600}}>Leva ~1 min (deploy):</b> instalar ou reinstalar.<br/>
+            <b style={{color:TEXT,fontWeight:600}}>Na hora:</b> nome, foto, WhatsApp, perguntas e e-mail do Mini Chat.
+          </div>
+
+          {(vs==="ok"||precisaCorrigir||proprio)&&<button onClick={()=>instalar()} disabled={!podeInstalar} style={{...pillBtn(false,!podeInstalar),height:42,fontSize:13}}>{installing?"Instalando…":installedAt?"Reinstalar Mini Chat":"Instalar Mini Chat"}</button>}
+          {done&&<button onClick={corrigirUid} disabled={fixing||!c.github_repo} style={{...pillBtn(false,fixing||!c.github_repo),height:42,fontSize:13}}>{fixing?"Corrigindo…":"Corrigir UID (Mini Chat mostra outro cliente)"}</button>}
+          {done&&<button onClick={invalidarMinichat} disabled={invalidating} style={{...pillBtn(false,invalidating),height:42,fontSize:13,color:"#F87171"}}>{invalidating?"Marcando…":"Marcar para reinstalar"}</button>}
         </div>)}
       </div>)}
     </div>
