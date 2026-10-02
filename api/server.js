@@ -3058,6 +3058,78 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
   }
 });
 
+// ── Conversão do Google Ads (clique no botão do Mini Chat) ──────────────────────
+// Dispara dentro do PRÓPRIO sensor.js, no site do cliente (não no minichat.html) —
+// é o que garante que o gclid (cookie _gcl_aw, salvo no domínio do cliente no
+// momento do clique no anúncio) já está presente na hora de avisar o Google, senão
+// a conversão não se liga à campanha (ver /sensor.js abaixo). Cobre os dois jeitos
+// de instalar o sensor hoje (GitHub e GTM) porque os dois só carregam esse mesmo
+// arquivo — não precisa mexer em install-sensor nem no buildMinichatGtmTag.
+const AW_ID_RE = /^AW-\d+$/;
+app.patch("/api/admin/producers/:id/google-ads-conversion", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { conversion_id, conversion_label } = req.body;
+    const cid = conversion_id !== undefined ? (String(conversion_id || "").trim() || null) : undefined;
+    const clabel = conversion_label !== undefined ? (String(conversion_label || "").trim() || null) : undefined;
+    if (cid && !AW_ID_RE.test(cid)) return res.status(400).json({ error: `"${cid}" não parece um ID de conversão válido — o formato é AW- seguido só de números (ex: AW-123456789).` });
+    if (cid && !clabel) return res.status(400).json({ error: "Preencha o Rótulo também — os dois campos são obrigatórios juntos." });
+    const { data: current } = await supabase.from("profiles").select("minichat_config").eq("id", id).maybeSingle();
+    const existing = current?.minichat_config || {};
+    const minichat_config = {
+      ...existing,
+      google_ads_conversion_id: cid !== undefined ? cid : (existing.google_ads_conversion_id ?? null),
+      google_ads_conversion_label: clabel !== undefined ? clabel : (existing.google_ads_conversion_label ?? null),
+    };
+    const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, minichat_config });
+  } catch (err) {
+    console.error("[google-ads-conversion patch]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Prova real (mesmo padrão de getSensorStatus/gtmMinichatStatus): campos válidos,
+// sensor instalado, e o sensor.js PUBLICADO de verdade já inclui o ID configurado.
+app.get("/api/admin/producers/:id/google-ads-conversion/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_sensor_installed_at,gtm_sensor_installed_at").eq("id", id).maybeSingle();
+    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
+    const cid = profile.minichat_config?.google_ads_conversion_id || null;
+    const clabel = profile.minichat_config?.google_ads_conversion_label || null;
+    const checks = [];
+    const camposOk = !!(cid && clabel && AW_ID_RE.test(cid));
+    checks.push({ id: "campos", label: "Campos preenchidos", ok: camposOk, detail: camposOk ? `${cid} / ${clabel}` : "Preencha o ID da conversão e o Rótulo acima." });
+    const sensorInstalado = !!(profile.github_sensor_installed_at || profile.gtm_sensor_installed_at);
+    checks.push({ id: "sensor", label: "Sensor instalado no site", ok: sensorInstalado, detail: sensorInstalado ? "O sensor já está no site — é ele que avisa o Google." : "Instale o sensor no card \"Sensor\" acima primeiro." });
+    let scriptOk = null, scriptDetail = "Preencha os campos pra eu conferir o script publicado.";
+    if (camposOk) {
+      try {
+        const live = await axios.get(`${PUBLIC_URL}/sensor.js?uid=${id}&_jp=${Date.now()}`, { timeout: 8000, responseType: "text", transformResponse: x => x });
+        scriptOk = String(live.data || "").includes(cid);
+        scriptDetail = scriptOk ? "O script publicado já dispara a conversão com esse ID." : "O script publicado ainda não tem esse ID — tente de novo em instantes (cache de 1h no navegador do visitante, mas aqui já deveria estar atualizado).";
+      } catch (e) { scriptDetail = `Não consegui buscar o script publicado: ${e.message}`; }
+    }
+    checks.push({ id: "script", label: "Script publicado dispara a conversão", ok: scriptOk, warn: scriptOk === null, detail: scriptDetail });
+    let googleOk = null, googleDetail = "—";
+    if (camposOk) {
+      try {
+        const g = await axios.get(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(cid)}`, { timeout: 8000, validateStatus: () => true });
+        googleOk = g.status === 200;
+        googleDetail = googleOk ? "O Google reconhece esse ID de conversão." : `O Google devolveu ${g.status} pra esse ID — confira se está certo.`;
+      } catch (e) { googleDetail = `Não consegui confirmar com o Google: ${e.message}`; }
+    } else { googleDetail = "Preencha os campos pra eu conferir com o Google."; }
+    checks.push({ id: "google", label: "Google reconhece o ID", ok: googleOk, warn: googleOk === null, detail: googleDetail });
+    const okCount = checks.filter(c => c.ok).length;
+    res.json({ checks, okCount, total: checks.length, allOk: checks.every(c => c.ok) });
+  } catch (err) {
+    console.error("[google-ads-conversion status]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Invalida o status de instalação do Mini Chat — faz o card ficar vermelho
 // para sinalizar que precisa ser reinstalado (útil quando o admin detecta
 // que o link estava errado ou quer forçar re-verificação).
@@ -7321,12 +7393,39 @@ app.options("/api/track/visit", (req, res) => {
 });
 
 // ── Sensor hospedado — uma linha no <head> substitui o bloco inteiro ──────────
-app.get("/sensor.js", (req, res) => {
+app.get("/sensor.js", async (req, res) => {
   const uid = (req.query.uid || "").replace(/[^a-zA-Z0-9\-]/g, "");
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Content-Type", "application/javascript");
   res.header("Cache-Control", "public, max-age=3600");
   if (!uid) return res.send("/* sensor.js: uid ausente */");
+  // Conversão do Google Ads (clique no botão do Mini Chat) — dispara AQUI, no site do
+  // cliente, nunca no minichat.html: é o único jeito do gclid (cookie _gcl_aw, salvo
+  // nesse domínio no momento do clique no anúncio) estar presente quando avisamos o
+  // Google — senão a conversão não se liga à campanha certa. Sensor nunca quebra por
+  // causa disso (try/catch, campos continuam opcionais pro cliente).
+  let convSnippet = "";
+  try {
+    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_minichat_path").eq("id", uid).maybeSingle();
+    const cid = profile?.minichat_config?.google_ads_conversion_id;
+    const clabel = profile?.minichat_config?.google_ads_conversion_label;
+    if (cid && clabel && AW_ID_RE.test(cid)) {
+      const path = profile?.github_minichat_path ? JSON.stringify(profile.github_minichat_path) : "null";
+      convSnippet = `
+var CONV_ID=${JSON.stringify(cid)},CONV_LABEL=${JSON.stringify(clabel)},CONV_PATH=${path},convSent=false;
+function jpFireConv(){
+  if(convSent)return;convSent=true;
+  try{
+    if(typeof window.gtag==="function"){window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});return;}
+    window.dataLayer=window.dataLayer||[];
+    window.gtag=function(){window.dataLayer.push(arguments);};
+    window.gtag('js',new Date());window.gtag('config',CONV_ID);
+    var sc=document.createElement('script');sc.async=true;sc.src='https://www.googletagmanager.com/gtag/js?id='+CONV_ID;document.head.appendChild(sc);
+    window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});
+  }catch(e){}
+}`;
+    }
+  } catch (e) { /* sensor nunca quebra por causa da conversão */ }
   res.send(`(function(){
 var JP="${PUBLIC_URL}";var uid="${uid}";
 var p=window.location.pathname;var ref=document.referrer;
@@ -7337,11 +7436,13 @@ var gclid=q.get("gclid")?1:0;
 var fsrc=src,fads=gclid;
 try{var ss=window.sessionStorage;var s0=ss.getItem("jp_src");if(s0&&(!ref||ref.indexOf(window.location.hostname)>-1))fsrc=s0;else ss.setItem("jp_src",src);if(gclid||q.get("gbraid")||q.get("wbraid"))ss.setItem("jp_ads","1");fads=ss.getItem("jp_ads")==="1"?1:0;}catch(e){}
 fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev,gclid:gclid})}).catch(function(){});
+${convSnippet}
 document.addEventListener("click",function(e){
   var a=e.target&&e.target.closest?e.target.closest("a"):null;
   if(!a||!a.href)return;
   var href=a.href;var type=null;
   try{if(href.indexOf("minichat")>-1&&href.indexOf("jp_src=")<0){var u=new URL(href,window.location.href);u.searchParams.set("jp_src",fsrc);if(fads)u.searchParams.set("jp_ads","1");a.href=u.toString();}}catch(e){}
+  ${convSnippet ? `try{var rawHref=a.getAttribute("href")||"";if(href.indexOf("minichat")>-1||(CONV_PATH&&rawHref===CONV_PATH))jpFireConv();}catch(e){}` : ""}
   if(href.indexOf("tel:")===0)type="click_ligar";
   else if(href.indexOf("wa.me")>-1||href.indexOf("whatsapp.com")>-1)type="click_whatsapp";
   if(!type)return;

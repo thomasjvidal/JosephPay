@@ -1484,6 +1484,83 @@ function GtmBotoesAdmin({c,onStatus}){
   );
 }
 
+// ── Conversão do Google Ads (clique no botão do Mini Chat) ──────────────────────
+// Dispara dentro do PRÓPRIO sensor.js, no site do cliente — é o que garante que o
+// gclid (cookie salvo no domínio do cliente no momento do clique no anúncio) esteja
+// presente quando avisamos o Google, senão a conversão não se liga à campanha certa.
+// Funciona pro cliente GitHub e pro cliente GTM, porque os dois só carregam o mesmo
+// sensor.js — por isso não depende de metodoAtual, nem precisa do botão instalado
+// (GitHub ou GTM) pra já estar salvo, só precisa do Sensor instalado pra funcionar.
+function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
+  const [open,setOpen]=useState(false);
+  const [convId,setConvId]=useState(c.minichat_config?.google_ads_conversion_id||"");
+  const [convLabel,setConvLabel]=useState(c.minichat_config?.google_ads_conversion_label||"");
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState("");
+  const [st,setSt]=useState(null);
+  const [checando,setChecando]=useState(false);
+  const [detalhes,setDetalhes]=useState(false);
+  const salvo=useRef(!!(c.minichat_config?.google_ads_conversion_id));
+  const mounted=useRef(false);
+  useEffect(()=>{
+    if(!mounted.current){mounted.current=true;return;}
+    salvo.current=false;
+  },[convId,convLabel]);
+  const verificar=async()=>{
+    setChecando(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}/google-ads-conversion/status`);
+    setChecando(false);
+    if(!d?.error)setSt(d);
+  };
+  useEffect(()=>{if(open&&!st)verificar();},[open]);
+  const salvarEVerificar=async()=>{
+    setSaving(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/google-ads-conversion`,{method:'PATCH',body:JSON.stringify({conversion_id:convId.trim(),conversion_label:convLabel.trim()})});
+    setSaving(false);
+    if(d?.error){setMsg(d.error);return;}
+    salvo.current=true;
+    setMsg(convId.trim()?"✓ Salvo.":"✓ Removido.");
+    onUpdated&&onUpdated();
+    verificar();
+  };
+  const ok=!!(st?.allOk);
+  return(
+    <div style={glassCard(done)}>
+      <CardHeader title="Conversão do Google Ads" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Quando alguém clica no botão do Mini Chat no site desse cliente, avisa o Google Ads — assim a campanha conta a conversão de verdade, sem precisar lançar na mão.</div>
+        <input value={convId} onChange={e=>setConvId(e.target.value)} placeholder="ID da conversão (AW-123456789)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8,boxSizing:"border-box"}}/>
+        <input value={convLabel} onChange={e=>setConvLabel(e.target.value)} placeholder="Rótulo" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:12,boxSizing:"border-box"}}/>
+        <button onClick={salvarEVerificar} disabled={saving} style={{width:"100%",background:salvo.current?`${GREEN}18`:GOLD,border:salvo.current?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:salvo.current?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":salvo.current?"✓ Salvo":"Salvar"}</button>
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:10,textAlign:"center"}}>{msg}</div>}
+        <div style={{display:"flex",justifyContent:"center",gap:18,marginTop:12}}>
+          <button onClick={verificar} disabled={checando} style={{background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:checando?"default":"pointer",fontFamily:F,padding:"6px 2px"}}>{checando?"Verificando…":"Verificar"}</button>
+          <button onClick={()=>setDetalhes(d=>!d)} style={{background:"none",border:"none",color:MUTED,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px"}}>Detalhes {detalhes?"⌃":"⌄"}</button>
+        </div>
+        {st&&(
+          <div style={{...glassInset,marginTop:12,color:ok?GREEN:TEXT,fontSize:12,fontWeight:600,textAlign:"center"}}>{ok?"✓ Tudo funcionando de verdade":`${st.okCount} de ${st.total} funcionando`}</div>
+        )}
+        {detalhes&&st?.checks&&(
+          <div style={{...glassInset,marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
+            {st.checks.map(ch=>(
+              <div key={ch.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{width:18,flexShrink:0,textAlign:"center",color:ch.ok?GREEN:ch.warn?MUTED:"#F5A524",fontWeight:700}}>{ch.ok?"✓":ch.warn?"…":"!"}</span>
+                <div style={{minWidth:0}}>
+                  <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{ch.label}</div>
+                  <div style={{color:MUTED,fontSize:12,lineHeight:1.45}}>{ch.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{...glassInset,marginTop:12,color:MUTED,fontSize:11,lineHeight:1.6}}>
+          <b style={{color:TEXT,fontWeight:600}}>No Google Ads</b>, ao criar essa conversão, escolha a categoria <b style={{color:TEXT,fontWeight:600}}>"Lead"</b> e a contagem <b style={{color:TEXT,fontWeight:600}}>"Uma"</b> — assim vários cliques da mesma pessoa contam como um só. Isso mede o clique no botão, não o envio do formulário. A atribuição à campanha só aparece no painel do Google Ads, em até 24-48h.
+        </div>
+      </div>)}
+    </div>
+  );
+}
+
 // ── CARD 3: Vercel (GitHub only) ──────────────────────────────────────────────
 function VercelAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
@@ -3273,6 +3350,8 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
     ...(metodoAtual==="gtm"?[{id:"botoes_gtm",label:"Botões do site (GTM)",done:!!gtmBotoesOk,cardKeys:["botoes_gtm"]}]:[]),
+    // Nem todo produtor roda campanha no Google Ads — opcional, igual o e-mail de disparos.
+    {id:"google_ads_conversion",label:"Conversão do Google Ads",done:!!c.minichat_config?.google_ads_conversion_id,cardKeys:["google_ads_conversion"],opcional:true},
     // É o e-mail (SMTP) do produtor pros DISPAROS em massa — não tem nada a ver com o
     // destino dos leads do Mini Chat (esse vai sozinho pelo JosephPay). O nome antigo,
     // "E-mail conectado", dava a entender que sem isso o Mini Chat por e-mail não funcionava.
@@ -3356,6 +3435,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       {metodoAtual==="github"&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}
       {metodoAtual==="gtm"&&<GtmBotoesAdmin c={c} onStatus={setGtmBotoesOk}/>}
+      <GoogleAdsConversionAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("google_ads_conversion")} done={cardDone("google_ads_conversion")}/>
       <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
     </div>
   );
