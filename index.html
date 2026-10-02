@@ -3200,6 +3200,12 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   // pra buscar de novo. Antes ela guardava a cópia da primeira abertura e ficava atrás
   // do painel (ex: painel 153 x lista 107 logo depois de subir 46 números).
   const [contatosVersao,setContatosVersao]=useState(0);
+  // Chegou interessado novo (número do painel mudou) → a lista "Clientes do produtor"
+  // também busca de novo, pra mostrar o mesmo número que o painel.
+  const leadsAnterior=useRef(c?.leads_total);
+  useEffect(()=>{
+    if(leadsAnterior.current!==c?.leads_total){leadsAnterior.current=c?.leads_total;setContatosVersao(v=>v+1);}
+  },[c?.leads_total,c?.clientes_total]);
   const [avatarPreview,setAvatarPreview]=useState("");
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
   const [isDisabled,setIsDisabled]=useState(!!c?.disabled_at);
@@ -3561,6 +3567,16 @@ function ClientesAdmin(){
       else setErroClients(true);
     });
   },[refresh]);
+  // Números sempre frescos: antes só eram calculados ao abrir a aba — um interessado que
+  // chegava com o painel aberto continuava aparecendo como 0 até recarregar a página.
+  // Atualiza sozinho ao voltar pro app e a cada 90s enquanto a tela está visível.
+  useEffect(()=>{
+    const atualizar=()=>{if(document.visibilityState==="visible")setRefresh(r=>r+1);};
+    const t=setInterval(atualizar,90000);
+    document.addEventListener("visibilitychange",atualizar);
+    window.addEventListener("focus",atualizar);
+    return ()=>{clearInterval(t);document.removeEventListener("visibilitychange",atualizar);window.removeEventListener("focus",atualizar);};
+  },[]);
   if(sel!==null){
     const c=clients?.find(x=>x.id===sel)||null;
     return <ClientePerfilAdmin c={c} onBack={()=>{setSel(null);setSelSubTab(null);}} onUpdated={()=>setRefresh(r=>r+1)} initialSubTab={selSubTab}/>;

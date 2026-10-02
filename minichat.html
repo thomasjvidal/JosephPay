@@ -1037,13 +1037,16 @@
         profileCard.innerHTML = `<div class="profile-card-title">${T().profileTitle}</div>${rows}`;
         resultOverlay.style.display = 'flex';
 
+        // Todo mundo que termina o diagnóstico vira interessado no CRM NA HORA, em qualquer
+        // modo (WhatsApp, E-mail ou Ambos) — antes, no modo WhatsApp, só entrava se a pessoa
+        // tocasse no botão verde; quem terminava e fechava sumia do painel. Uma vez só: o
+        // botão do WhatsApp/e-mail depois não conta a pessoa de novo (leadSavedToCRM).
+        // A mensagem que vai pro WhatsApp não muda em nada.
+        sendLeadToCRM();
+
         // Destino "E-mail" ou "Ambos": manda o diagnóstico pro e-mail do produtor assim
-        // que a pessoa termina — sem depender de ela clicar em nada. No modo só-WhatsApp
-        // nada disso roda (o fluxo de WhatsApp continua igual).
+        // que a pessoa termina — sem depender de ela clicar em nada.
         if ((DESTINATION_TYPE === "email" || DESTINATION_TYPE === "ambos") && EMAIL_DESTINO) {
-            // Contato vai pro CRM na hora (uma vez só — o botão do WhatsApp em "Ambos" não
-            // conta de novo), pra nunca perder quem termina e fecha sem clicar em nada.
-            sendLeadToCRM();
             if (DESTINATION_TYPE === "email") {
                 trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
                 emailBtn.textContent = T().sending;

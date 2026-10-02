@@ -285,3 +285,12 @@ salvos) — produtor que já usa nunca tem isso trocado.
   Mini Chat no site, destino e envio de e-mail — só leitura.
 - "E-mail pra disparos" é etapa opcional (não conta no X de Y).
 - Visual: todos os cards da Ativação usam `glassCard()`.
+
+## Interessado entra no CRM sempre (qualquer modo)
+
+O `minichat.html` chama `sendLeadToCRM()` assim que a pessoa termina o diagnóstico
+(tela final), em TODO modo — WhatsApp, E-mail ou Ambos. Antes, no modo WhatsApp, só
+entrava se a pessoa tocasse no botão verde. `leadSavedToCRM` garante uma vez só (o
+botão depois não conta de novo). A mensagem do WhatsApp não muda. No Admin, a lista
+de produtores (`ClientesAdmin`) se atualiza sozinha ao voltar pro app e a cada 90s,
+e "Clientes do produtor" recarrega quando o número de interessados muda.
