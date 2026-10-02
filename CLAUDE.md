@@ -344,3 +344,9 @@ páginas" (antes o sensor criava um duplicado a cada clique).
 - Colunas `origem`, `customer_id`, `quente` (migration_v44) são opcionais: sem o SQL tudo funciona,
   só sem Ads x orgânico/aviso 🔥. Relatório mensal ganha `publico` ("O que seu público respondeu").
 - Nada das telas antigas foi removido — é só aba/seção nova (pedido do Thomas).
+
+## Perguntas do Mini Chat: "📋 Copiar prompt" é a ação principal
+
+Pedido do Thomas: ele usa outra ferramenta (social media) que já conhece cada cliente. Ação
+principal do card = "📋 Copiar prompt" (idioma segue `minichat_config.language`) + "📥 Colar
+resposta" (JSON). "✨ Gerar com IA" continua existindo, só foi pra "Mais opções" (nunca remover).
