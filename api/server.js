@@ -6685,6 +6685,9 @@ app.post("/api/admin/producers/:id/minichat/test-email", requireAuth, requireAdm
       to: destino,
       subject: exemplo.subject,
       html: minichatLeadEmailHtml({ brand, lang, lead: exemplo.lead, answers: exemplo.answers }),
+      // "Responder" vai pro e-mail do próprio admin logado — assim o teste mostra na prática
+      // que responder o e-mail do lead fala direto com a pessoa (no real, é o e-mail do lead).
+      ...(EMAIL_RE.test(String(req.user?.email || "")) ? { replyTo: req.user.email } : {}),
     });
     if (error) return res.status(502).json({ error: `O serviço de e-mail recusou: ${error.message || "erro desconhecido"}` });
     res.json({ ok: true, to: destino });

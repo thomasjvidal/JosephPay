@@ -2707,7 +2707,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     setEnviandoTeste(true);setTesteEmail("");
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat/test-email`,{method:'POST'});
     setEnviandoTeste(false);
-    setTesteEmail(d?.ok?`✓ Enviado pra ${d.to}. Confira a caixa de entrada (e o spam).`:(d?.error||"Não consegui enviar o teste."));
+    setTesteEmail(d?.ok?`✓ Enviado pra ${d.to}. Confira a caixa de entrada (e o spam). Clique em Responder: vai pro seu e-mail — no real, vai direto pro cliente.`:(d?.error||"Não consegui enviar o teste."));
   };
   const [resetResult,setResetResult]=useState(null);
   const [resetting,setResetting]=useState(false);
