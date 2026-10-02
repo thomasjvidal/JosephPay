@@ -2206,7 +2206,7 @@ function AniversariosClienteAdmin({ownerId}){
   return(
     <div style={{...glassSurface,borderRadius:20,padding:"16px 18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <span style={{color:TEXT,fontWeight:700,fontSize:14,display:"inline-flex",alignItems:"center",gap:7}}><Ic n="cake" s={15}/> Próximos aniversários</span>
+        <span style={{color:TEXT,fontWeight:700,fontSize:14,display:"inline-flex",alignItems:"center",gap:7}}>🎂 Próximos aniversários</span>
         {hoje>0&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><Ic n="gift" s={11}/> {hoje} hoje</span>}
       </div>
       <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:4}}>
@@ -2214,7 +2214,7 @@ function AniversariosClienteAdmin({ownerId}){
           <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0}}>
             <div style={{width:44,height:44,borderRadius:"50%",background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,position:"relative"}}>
               {a.inits}
-              <span style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:100,background:"rgba(30,29,27,0.9)",border:"1px solid rgba(255,255,255,0.12)",color:GOLD,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="cake" s={10} w={2}/></span>
+              <span style={{position:"absolute",bottom:-4,right:-4,fontSize:12}}>🎂</span>
             </div>
             <div style={{fontSize:11,fontWeight:600,color:TEXT,whiteSpace:"nowrap"}}>{a.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:a.dias===0?GOLD:MUTED,fontWeight:a.dias===0?700:400}}>{a.label}</div>
@@ -2498,7 +2498,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
             <div>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{editForm.name||sel.name}</div>
               <div style={{color:MUTED,fontSize:11,marginTop:2}}>{stLabel(sel.status)} · {srcLabel(sel.source)} · desde {sel.created_at?new Date(sel.created_at).toLocaleDateString('pt-BR'):"—"}</div>
-              <div style={{color:editForm.birthday?GOLD:MUTED,fontSize:11,marginTop:2}}><Ic n="cake" s={11}/> {editForm.birthday?new Date(editForm.birthday+'T00:00:00').toLocaleDateString('pt-BR'):"aniversário não informado"}</div>
+              <div style={{color:editForm.birthday?GOLD:MUTED,fontSize:11,marginTop:2}}>🎂 {editForm.birthday?new Date(editForm.birthday+'T00:00:00').toLocaleDateString('pt-BR'):"aniversário não informado"}</div>
             </div>
           </div>
           {sales!==null&&sales.length>0&&(
@@ -2583,7 +2583,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div>
                     <div style={{color:MUTED,fontSize:11,marginTop:2}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
-                    <div style={{color:bl&&bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}><Ic n="cake" s={10}/> {bl||"não informado"}</div>
+                    <div style={{color:bl&&bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}>🎂 {bl||"não informado"}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginRight:4}}>
                     <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
@@ -6558,7 +6558,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
         <div className="det">
           <div className="back" onClick={()=>{setSel(null);setEditing(false);}}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
           <div className="pc">
-            <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<><Ic n="cake" s={11}/> {af}</>}</div></div></div>
+            <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<>🎂 {af}</>}</div></div></div>
             <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
           <div className="qr">
@@ -6694,11 +6694,11 @@ function ClientesTab({targetCustomerId,navSubTab}){
           {/* Aniversários */}
           {anivs.length>0&&(
             <div className="bday-msgs-card" style={{marginBottom:12}}>
-              <div className="bm-header"><div className="bm-title"><Ic n="cake" s={15}/> Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
+              <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
               <div className="bday-circles">
                 {anivs.map((a,i)=>(
                   <div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}>
-                    <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge"><Ic n="cake" s={10} w={2}/></div></div>
+                    <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
                     <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
                     <div className="bday-circle-date">{a.label}</div>
                   </div>
@@ -6711,7 +6711,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
             <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
               <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
-                  <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}><Ic n="cake" s={16}/> Todos os aniversários</div>
+                  <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
                   <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
                 </div>
                 {(clientes||[]).filter(c=>c.birthday).map(c=>{
@@ -6731,7 +6731,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
                       <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
                     </div>
                     <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>
-                      <Ic n="cake" s={11}/> {c.label}
+                      🎂 {c.label}
                     </div>
                   </div>
                 ))}
@@ -7000,11 +7000,11 @@ function DisparosTab({onWapChange,onEmailChange}){
         <div style={{marginBottom:12}}/>
         {anivs.length>0&&(
           <div className="bday-msgs-card" style={{marginBottom:12}}>
-            <div className="bm-header"><div className="bm-title"><Ic n="cake" s={15}/> Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
+            <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
             <div className="bday-circles">
               {anivs.map((a,i)=>(
                 <div key={i} className="bday-circle-wrap">
-                  <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge"><Ic n="cake" s={10} w={2}/></div></div>
+                  <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
                   <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
                   <div className="bday-circle-date">{a.label}</div>
                 </div>
@@ -7078,7 +7078,7 @@ function DisparosTab({onWapChange,onEmailChange}){
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
           <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
-              <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}><Ic n="cake" s={16}/> Todos os aniversários</div>
+              <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
               <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
             </div>
             {(clientes||[]).filter(c=>c.birthday).map(c=>{
@@ -7095,7 +7095,7 @@ function DisparosTab({onWapChange,onEmailChange}){
                   <div style={{fontSize:14,fontWeight:600,color:'var(--tx)',marginBottom:2}}>{c.name}</div>
                   <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
                 </div>
-                <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}><Ic n="cake" s={11}/> {c.label}</div>
+                <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>🎂 {c.label}</div>
               </div>
             ))}
           </div>

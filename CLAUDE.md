@@ -9,7 +9,7 @@ Thomas dizer que pode. Trabalhe num ramo `claude/...` até lá.
 
 Botões e rótulos da interface usam `<Ic n="copy"/>` (traço fino estilo Apple, `IC` em
 `index.html`) e `iconBtn()` pra botão só de ícone (vidro). Emoji só em CONTEÚDO de
-mensagem (WhatsApp, Mini Chat, e-mail).
+mensagem (WhatsApp, Mini Chat, e-mail) — e o 🎂 do aniversário, que o Thomas preferiu em emoji.
 
 ## REGRA CRÍTICA: IDs de botões são permanentes
 
