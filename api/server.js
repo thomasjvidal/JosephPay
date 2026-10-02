@@ -2233,6 +2233,286 @@ app.get("/api/admin/producers/:id/minichat/sessions", requireAuth, requireAdmin,
   }
 });
 
+// ── Métricas do Mini Chat (sub-aba "📊 Mini Chat" do produtor + relatório) ─────────
+// Tudo calculado a partir do que o Mini Chat JÁ grava (minichat_sessions.answers) — vale
+// pra qualquer produtor, português ou inglês, WhatsApp ou e-mail, inclusive o histórico.
+// As colunas novas da migration_v44 (origem, customer_id, quente) são opcionais: antes
+// do SQL rodar, tudo continua funcionando, só sem a divisão Google Ads x orgânico.
+const MC_ORIGENS = ["google_ads", "google", "instagram", "facebook", "whatsapp", "site", "direto", "outro"];
+const MC_ORIGEM_LABEL = { google_ads: "Google Ads", google: "Google (orgânico)", instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp", site: "Site do cliente", direto: "Direto", outro: "Outros" };
+function cleanMinichatOrigem(v) {
+  const s = String(v || "").toLowerCase().trim();
+  return MC_ORIGENS.includes(s) ? s : (s ? "outro" : null);
+}
+// "Quente" = respondeu algo que indica pressa ("Quanto antes", "Este mês", "As soon as
+// possible"...). Só olha as respostas de múltipla escolha — nunca nome/telefone.
+const MC_QUENTE_RE = /(quanto antes|o mais r[aá]pido|o quanto antes|este m[eê]s|esse m[eê]s|esta semana|essa semana|\bhoje\b|\bagora\b|imediat|urgente|urg[eê]ncia|j[aá] quero|pront[oa] pra|as soon as possible|\basap\b|this month|this week|\btoday\b|right away|immediately|\burgent|\bnow\b|ready to)/i;
+function minichatSessionQuente(answers) {
+  return (Array.isArray(answers) ? answers : []).some(a => a?.answer && MC_QUENTE_RE.test(String(a.answer)));
+}
+async function fetchAllMinichatSessions(ownerId, fromIso, toIso) {
+  const out = [];
+  for (let page = 0; page < 10; page++) {
+    const { data, error } = await supabase.from("minichat_sessions").select("*")
+      .eq("owner_id", ownerId).gte("created_at", fromIso).lt("created_at", toIso)
+      .order("created_at", { ascending: false }).range(page * 1000, page * 1000 + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+// Agrupa as respostas por PERGUNTA (pelo texto, não pela posição — se o produtor mudou
+// as perguntas no meio do período, cada pergunta continua com os números dela).
+function minichatQuestionStats(sessoes, perguntasAtuais) {
+  const norm = s => String(s || "").trim();
+  const mapa = new Map(); // texto -> { texto, idx, total, respostas: Map }
+  sessoes.forEach(s => {
+    const origem = cleanMinichatOrigem(s.origem);
+    (Array.isArray(s.answers) ? s.answers : []).forEach((a, idx) => {
+      const q = norm(a?.question), r = norm(a?.answer);
+      if (!q || !r) return;
+      if (!mapa.has(q)) mapa.set(q, { texto: q, idx, total: 0, ads: 0, organico: 0, respostas: new Map() });
+      const p = mapa.get(q);
+      p.idx = Math.min(p.idx, idx);
+      p.total++;
+      if (!p.respostas.has(r)) p.respostas.set(r, { resposta: r, count: 0, ads: 0, organico: 0 });
+      const o = p.respostas.get(r);
+      o.count++;
+      if (origem === "google_ads") { p.ads++; o.ads++; } else if (origem) { p.organico++; o.organico++; }
+    });
+  });
+  const atuais = (perguntasAtuais || []).map(norm).filter(Boolean);
+  return [...mapa.values()].map(p => ({
+    texto: p.texto, idx: p.idx, total: p.total, ads: p.ads, organico: p.organico,
+    atual: !atuais.length || atuais.includes(p.texto),
+    respostas: [...p.respostas.values()].sort((a, b) => b.count - a.count).map(o => ({
+      ...o,
+      pct: Math.round((o.count / p.total) * 100),
+      pctAds: p.ads ? Math.round((o.ads / p.ads) * 100) : null,
+      pctOrganico: p.organico ? Math.round((o.organico / p.organico) * 100) : null,
+    })),
+  })).sort((a, b) => (b.atual - a.atual) || (a.idx - b.idx) || (b.total - a.total));
+}
+// Versão curta pro relatório que vai pro cliente (só perguntas atuais, top 5 respostas).
+async function minichatPublicoParaRelatorio(ownerId, mc, from, to) {
+  try {
+    const sessoes = await fetchAllMinichatSessions(ownerId, from.toISOString(), to.toISOString());
+    if (!sessoes.length) return null;
+    const perguntas = minichatQuestionStats(sessoes, (mc.questions || []).map(q => q.subtext || q.text))
+      .filter(p => p.atual && p.total > 0).slice(0, 6)
+      .map(p => ({ texto: p.texto, total: p.total, respostas: p.respostas.slice(0, 5).map(r => ({ resposta: r.resposta, count: r.count, pct: r.pct })) }));
+    if (!perguntas.length) return null;
+    const comOrigem = sessoes.filter(s => cleanMinichatOrigem(s.origem));
+    const ads = comOrigem.filter(s => cleanMinichatOrigem(s.origem) === "google_ads").length;
+    return {
+      conversas: sessoes.length,
+      quentes: sessoes.filter(s => minichatSessionQuente(s.answers)).length,
+      origem: comOrigem.length ? { ads, organico: comOrigem.length - ads, pctAds: Math.round((ads / comOrigem.length) * 100) } : null,
+      perguntas,
+    };
+  } catch (e) {
+    console.warn("[minichat publico relatorio]", e.message);
+    return null;
+  }
+}
+// Liga a conversa do Mini Chat ao contato que acabou de entrar no CRM e avisa o admin
+// quando o interessado é "quente". Nunca bloqueia nem altera a criação do contato.
+async function linkMinichatSessionToCustomer(ownerId, visitorId, customer) {
+  try {
+    if (!visitorId || !customer?.id) return;
+    const { data: sessao } = await supabase.from("minichat_sessions").select("*").eq("owner_id", ownerId).eq("visitor_id", String(visitorId).slice(0, 100)).maybeSingle();
+    if (!sessao) return;
+    const quente = minichatSessionQuente(sessao.answers);
+    const { error } = await supabase.from("minichat_sessions").update({ customer_id: customer.id, quente }).eq("id", sessao.id);
+    if (error) return; // migration_v44 ainda não rodou — sem coluna, sem aviso duplicado
+    if (quente && sessao.quente !== true) {
+      const { data: prof } = await supabase.from("profiles").select("name,company_name").eq("id", ownerId).maybeSingle();
+      const respostas = (sessao.answers || []).filter(a => a?.answer).map(a => a.answer).join(" · ");
+      notifyAdmins(`🔥 Interessado quente — ${prof?.company_name || prof?.name || "produtor"}`, `${customer.name || "Contato"}${respostas ? `: ${respostas}` : ""}`.slice(0, 180)).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("[minichat link lead]", e.message);
+  }
+}
+const minichatInsightsIaCache = new Map(); // `${id}:${dias}` -> { at, insights }
+app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const dias = [7, 30, 90, 365].includes(Number(req.query.dias)) ? Number(req.query.dias) : 30;
+    const to = new Date();
+    const from = new Date(to.getTime() - dias * 86400000);
+    const prevFrom = new Date(from.getTime() - dias * 86400000);
+    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,minichat_config").eq("id", id).maybeSingle();
+    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
+    const mc = profile.minichat_config || {};
+    const en = mc.language === "en";
+    const perguntasConfig = (mc.questions || []).map(q => q.subtext || q.text).filter(Boolean);
+    const nOpcoes = perguntasConfig.length || 3;
+
+    const head = q => q.then(r => r.count || 0, () => 0);
+    const [sessoes, anteriores, visitasSite, visitasAds, abriramChat, abriramAnterior, novosContatos] = await Promise.all([
+      fetchAllMinichatSessions(id, from.toISOString(), to.toISOString()),
+      fetchAllMinichatSessions(id, prevFrom.toISOString(), from.toISOString()),
+      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").neq("site_url", "minichat").gte("created_at", from.toISOString())),
+      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").neq("site_url", "minichat").eq("has_gclid", true).gte("created_at", from.toISOString())),
+      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").eq("site_url", "minichat").gte("created_at", from.toISOString())),
+      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").eq("site_url", "minichat").gte("created_at", prevFrom.toISOString()).lt("created_at", from.toISOString())),
+      head(supabase.from("customers").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("source", "minichat").is("deleted_at", null).gte("created_at", from.toISOString())),
+    ]);
+
+    // 1) O que o público procura (com comparação ao período anterior e Ads x orgânico)
+    const perguntas = minichatQuestionStats(sessoes, perguntasConfig);
+    const anteriorPorPergunta = new Map(minichatQuestionStats(anteriores, perguntasConfig).map(p => [p.texto, p]));
+    perguntas.forEach(p => {
+      const ant = anteriorPorPergunta.get(p.texto);
+      p.totalAnterior = ant?.total || 0;
+      p.respostas.forEach(r => { const ra = ant?.respostas.find(x => x.resposta === r.resposta); r.pctAnterior = ant ? (ra?.pct || 0) : null; });
+    });
+    const atuais = perguntas.filter(p => p.atual);
+
+    // 2) Funil + em qual pergunta as pessoas desistem
+    const respondidas = s => (Array.isArray(s.answers) ? s.answers : []).filter(a => a?.answer).length;
+    const completasPergs = sessoes.filter(s => respondidas(s) >= Math.min(nOpcoes, Math.max(1, atuais.length))).length;
+    const clicaram = sessoes.filter(s => s.completed_at);
+    const funil = {
+      visitasSite, visitasAds, abriramChat, abriramAnterior,
+      comecaram: sessoes.length, comecaramAnterior: anteriores.length,
+      responderamTudo: completasPergs, novosContatos,
+      clicaramBotao: clicaram.length,
+      viaWhatsapp: clicaram.filter(s => s.finished_via === "whatsapp").length,
+      viaEmail: clicaram.filter(s => s.finished_via === "email").length,
+    };
+    const ordem = atuais.slice().sort((a, b) => a.idx - b.idx);
+    const desistencia = ordem.map((p, i) => {
+      const chegaram = i === 0 ? Math.max(abriramChat, p.total) : ordem[i - 1].total;
+      const pct = chegaram ? Math.max(0, Math.round(((chegaram - p.total) / chegaram) * 100)) : 0;
+      return { texto: p.texto, chegaram, responderam: p.total, pct, alerta: chegaram >= 10 && pct >= (i === 0 ? 60 : 35) };
+    });
+
+    // 3) Cruzamentos: 1ª pergunta x cada uma das outras
+    const cruzamentos = [];
+    if (ordem.length > 1) {
+      const A = ordem[0];
+      ordem.slice(1).forEach(B => {
+        const linhas = A.respostas.slice(0, 6).map(ra => {
+          const doGrupo = sessoes.filter(s => (s.answers || []).some(a => String(a?.question || "").trim() === A.texto && String(a?.answer || "").trim() === ra.resposta));
+          const cont = {};
+          doGrupo.forEach(s => { const b = (s.answers || []).find(a => String(a?.question || "").trim() === B.texto && a?.answer); if (b) { const k = String(b.answer).trim(); cont[k] = (cont[k] || 0) + 1; } });
+          const tot = Object.values(cont).reduce((x, y) => x + y, 0);
+          return { resposta: ra.resposta, total: tot, colunas: Object.entries(cont).sort((x, y) => y[1] - x[1]).map(([resposta, count]) => ({ resposta, count, pct: Math.round((count / tot) * 100) })) };
+        }).filter(l => l.total > 0);
+        if (linhas.length) cruzamentos.push({ a: A.texto, b: B.texto, linhas });
+      });
+    }
+
+    // 4) Origem (Google Ads x orgânico) — só conversas que já vieram com a origem gravada
+    const comOrigem = sessoes.filter(s => cleanMinichatOrigem(s.origem));
+    const porOrigem = {};
+    comOrigem.forEach(s => { const o = cleanMinichatOrigem(s.origem); porOrigem[o] = (porOrigem[o] || 0) + 1; });
+    const adsN = porOrigem.google_ads || 0;
+    const origem = {
+      rastreadas: comOrigem.length, semOrigem: sessoes.length - comOrigem.length,
+      ads: adsN, organico: comOrigem.length - adsN,
+      pctAds: comOrigem.length ? Math.round((adsN / comOrigem.length) * 100) : null,
+      canais: Object.entries(porOrigem).map(([k, n]) => ({ origem: k, label: MC_ORIGEM_LABEL[k] || k, count: n, pct: Math.round((n / comOrigem.length) * 100) })).sort((a, b) => b.count - a.count),
+      quentesAds: comOrigem.filter(s => cleanMinichatOrigem(s.origem) === "google_ads" && minichatSessionQuente(s.answers)).length,
+      quentesOrganico: comOrigem.filter(s => cleanMinichatOrigem(s.origem) !== "google_ads" && minichatSessionQuente(s.answers)).length,
+    };
+
+    // 5) Interessados quentes (com o contato, quando a conversa já está ligada ao CRM)
+    const quentesSess = sessoes.filter(s => minichatSessionQuente(s.answers));
+    const idsClientes = [...new Set(quentesSess.map(s => s.customer_id).filter(Boolean))];
+    const clientes = new Map();
+    if (idsClientes.length) {
+      const { data } = await supabase.from("customers").select("id,name,phone,email,status").in("id", idsClientes.slice(0, 200));
+      (data || []).forEach(c => clientes.set(c.id, c));
+    }
+    const quentes = {
+      total: quentesSess.length,
+      pct: sessoes.length ? Math.round((quentesSess.length / sessoes.length) * 100) : 0,
+      totalAnterior: anteriores.filter(s => minichatSessionQuente(s.answers)).length,
+      lista: quentesSess.slice(0, 30).map(s => ({
+        quando: s.created_at, origem: MC_ORIGEM_LABEL[cleanMinichatOrigem(s.origem)] || null,
+        respostas: (s.answers || []).filter(a => a?.answer).map(a => String(a.answer)),
+        contato: clientes.get(s.customer_id) || null,
+      })),
+    };
+
+    // 6) Horário em que as conversas acontecem (fuso do produtor)
+    const tz = en ? "America/New_York" : "America/Sao_Paulo";
+    const FAIXAS = [["00-06h", 0, 6], ["06-12h", 6, 12], ["12-18h", 12, 18], ["18-24h", 18, 24]];
+    const horarios = FAIXAS.map(([faixa]) => ({ faixa, conversas: 0 }));
+    sessoes.forEach(s => {
+      const h = Number(new Date(s.created_at).toLocaleString("en-US", { timeZone: tz, hour: "2-digit", hour12: false })) % 24;
+      const i = FAIXAS.findIndex(([, ini, fim]) => h >= ini && h < fim);
+      if (i >= 0) horarios[i].conversas++;
+    });
+
+    // 7) Resumo da IA — só comenta os números acima (cache 30 min)
+    let insights = [];
+    const cacheKey = `${id}:${dias}`;
+    const cached = minichatInsightsIaCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < 30 * 60 * 1000 && cached.n === sessoes.length) insights = cached.insights;
+    else if (sessoes.length >= 3) {
+      const dadosIA = {
+        conversas: sessoes.length, conversasPeriodoAnterior: anteriores.length,
+        perguntas: atuais.slice(0, 5).map(p => ({ pergunta: p.texto, respostas: p.respostas.slice(0, 4).map(r => `${r.resposta}: ${r.pct}%${r.pctAnterior != null ? ` (antes ${r.pctAnterior}%)` : ""}`) })),
+        quentes: `${quentes.total} (${quentes.pct}%)`,
+        googleAds: origem.pctAds != null ? `${origem.pctAds}% das conversas com origem conhecida` : null,
+        maiorDesistencia: desistencia.slice().sort((a, b) => b.pct - a.pct)[0] ? `${desistencia.slice().sort((a, b) => b.pct - a.pct)[0].pct}% desistem em "${desistencia.slice().sort((a, b) => b.pct - a.pct)[0].texto}"` : null,
+      };
+      const prompt = `Você resume, em português simples e direto, o que o público de um negócio respondeu no mini chat do site. Números reais (JSON): ${JSON.stringify(dadosIA)}\n\nEscreva 3 frases curtas, cada uma sobre um número acima (ex: "42% procuram cirurgia — o serviço mais buscado"). NÃO invente nenhum dado. Campo null = não fale dele. Responda SOMENTE um array JSON de strings.`;
+      try {
+        let reply = null;
+        for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: "Gere o resumo." }]); break; } catch {} }
+        if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: "Gere o resumo." }]); } catch {} }
+        const m = reply && reply.match(/\[[\s\S]*\]/);
+        if (m) insights = JSON.parse(m[0]).filter(s => typeof s === "string" && s.trim()).slice(0, 4);
+        minichatInsightsIaCache.set(cacheKey, { at: Date.now(), n: sessoes.length, insights });
+      } catch (e) { console.warn("[minichat insights IA]", e.message); }
+    }
+
+    res.json({
+      dias, idioma: en ? "en" : "pt",
+      origemDisponivel: sessoes.some(s => "origem" in s),
+      conversas: sessoes.length, conversasAnterior: anteriores.length,
+      perguntas: atuais, perguntasAntigas: perguntas.filter(p => !p.atual),
+      funil, desistencia, cruzamentos, origem, quentes, horarios, insights,
+    });
+  } catch (err) {
+    console.error("[admin/producers minichat insights]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+// IA sugere outro jeito de fazer a pergunta onde muita gente desiste. Só SUGERE — nunca
+// muda as perguntas salvas (o admin copia e salva em "Perguntas do Mini Chat" se quiser).
+app.post("/api/admin/producers/:id/minichat/suggest-question", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const pergunta = String(req.body?.pergunta || "").slice(0, 300).trim();
+    const opcoes = (Array.isArray(req.body?.opcoes) ? req.body.opcoes : []).slice(0, 8).map(o => String(o).slice(0, 120));
+    const desistencia = Number(req.body?.desistencia) || null;
+    if (!pergunta) return res.status(400).json({ error: "Pergunta ausente" });
+    const { data: profile } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
+    const mc = profile?.minichat_config || {};
+    const en = mc.language === "en";
+    const prompt = `Você melhora perguntas de um mini chat de pré-diagnóstico no site de um negócio${mc.business_context ? ` (contexto: ${String(mc.business_context).slice(0, 400)})` : ""}. ${desistencia ? `${desistencia}% das pessoas desistem nesta pergunta.` : ""} Pergunta atual: "${pergunta}"${opcoes.length ? `. Opções: ${opcoes.join(" | ")}` : ""}.\n\nSugira 3 versões mais curtas, simples e convidativas${en ? ", em INGLÊS (o público é americano)" : ", em português"}, mantendo o mesmo objetivo. Responda SOMENTE um array JSON de objetos {"pergunta": "...", "opcoes": ["..."]}.`;
+    let reply = null;
+    for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: "Sugira." }]); break; } catch {} }
+    if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: "Sugira." }]); } catch {} }
+    const m = reply && reply.match(/\[[\s\S]*\]/);
+    let sugestoes = [];
+    try { sugestoes = m ? JSON.parse(m[0]) : []; } catch {}
+    sugestoes = (Array.isArray(sugestoes) ? sugestoes : []).filter(s => s && typeof s.pergunta === "string").slice(0, 3)
+      .map(s => ({ pergunta: s.pergunta.slice(0, 300), opcoes: (Array.isArray(s.opcoes) ? s.opcoes : []).slice(0, 8).map(o => String(o).slice(0, 120)) }));
+    if (!sugestoes.length) return res.status(502).json({ error: "A IA não respondeu agora. Tente de novo em instantes." });
+    res.json({ sugestoes });
+  } catch (err) {
+    console.error("[admin/producers minichat suggest-question]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin conecta/desconecta o e-mail (SMTP) de qualquer cliente em nome dele —
 // mesma lógica de /api/email/connect, só que escopada pelo :id em vez do usuário logado.
 app.get("/api/admin/producers/:id/email/status", requireAuth, requireAdmin, async (req, res) => {
@@ -3803,6 +4083,7 @@ app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin,
       atual, anterior,
       conversasWhatsapp,
       evolucaoInteressados, horarios, canaisOrigem, interesses, insights,
+      publico: await minichatPublicoParaRelatorio(id, mc, from, to),
     });
   } catch (err) {
     console.error("[google-ads/report]", err.message);
@@ -6603,6 +6884,7 @@ app.post("/api/leads/create", (req, res, next) => {
       if (nomeGenerico && name.trim() && !/^Lead Mini Chat \(/i.test(name.trim())) completar.name = name.trim();
       const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ ...completar, times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
       if (errUpd) return res.status(500).json({ error: errUpd.message });
+      linkMinichatSessionToCustomer(ownerKey, req.body.visitor_id, atualizado);
       return res.json(atualizado);
     }
   }
@@ -6623,6 +6905,7 @@ app.post("/api/leads/create", (req, res, next) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
   sendPushToOwner(profile.id, { title: "Novo interessado!", body: name.trim(), url: "/" });
+  linkMinichatSessionToCustomer(profile.id, req.body.visitor_id, data);
   res.json(data);
 });
 
@@ -6784,7 +7067,7 @@ app.post("/api/minichat/track-progress", (req, res, next) => {
   next();
 }, async (req, res) => {
   try {
-    const { owner_id, visitor_id, index, question, answer, questions_total, completed, finished_via } = req.body;
+    const { owner_id, visitor_id, index, question, answer, questions_total, completed, finished_via, origem } = req.body;
     if (!owner_id || !visitor_id) return res.status(400).json({ error: "Dados incompletos" });
 
     // Rate limit: 40 req/min por visitante (um fluxo tem no máximo ~10 perguntas,
@@ -6819,6 +7102,10 @@ app.post("/api/minichat/track-progress", (req, res, next) => {
 
     const { error } = await supabase.from("minichat_sessions").upsert({ ...row, owner_id, visitor_id: row.visitor_id }, { onConflict: "owner_id,visitor_id" });
     if (error) return res.status(500).json({ error: error.message });
+    // De onde a pessoa veio (Google Ads, Instagram...) — gravado à parte e só uma vez por
+    // conversa: se a coluna ainda não existe (migration_v44), nada acima é afetado.
+    const origemLimpa = cleanMinichatOrigem(origem);
+    if (origemLimpa) supabase.from("minichat_sessions").update({ origem: origemLimpa }).eq("owner_id", owner_id).eq("visitor_id", row.visitor_id).is("origem", null).then(() => {}, () => {});
     res.json({ ok: true });
   } catch (err) {
     console.error("[minichat/track-progress]", err.message);
@@ -7037,11 +7324,14 @@ var q=new URLSearchParams(window.location.search);
 var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
 var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
 var gclid=q.get("gclid")?1:0;
+var fsrc=src,fads=gclid;
+try{var ss=window.sessionStorage;var s0=ss.getItem("jp_src");if(s0&&(!ref||ref.indexOf(window.location.hostname)>-1))fsrc=s0;else ss.setItem("jp_src",src);if(gclid||q.get("gbraid")||q.get("wbraid"))ss.setItem("jp_ads","1");fads=ss.getItem("jp_ads")==="1"?1:0;}catch(e){}
 fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev,gclid:gclid})}).catch(function(){});
 document.addEventListener("click",function(e){
   var a=e.target&&e.target.closest?e.target.closest("a"):null;
   if(!a||!a.href)return;
   var href=a.href;var type=null;
+  try{if(href.indexOf("minichat")>-1&&href.indexOf("jp_src=")<0){var u=new URL(href,window.location.href);u.searchParams.set("jp_src",fsrc);if(fads)u.searchParams.set("jp_ads","1");a.href=u.toString();}}catch(e){}
   if(href.indexOf("tel:")===0)type="click_ligar";
   else if(href.indexOf("wa.me")>-1||href.indexOf("whatsapp.com")>-1)type="click_whatsapp";
   if(!type)return;

@@ -3454,7 +3454,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={()=>{setContatosVersao(v=>v+1);onUpdated&&onUpdated();}}/>}
       <Btn sm outline color={GOLD} onClick={()=>setShowContatos(true)}>+ Adicionar contatos</Btn>
       <div style={{display:"flex",gap:6}}>
-        {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"}].map(t=>(
+        {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"},{id:"minichat",label:"📊 Mini Chat"}].map(t=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:CARD,color:t.id===subTab?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
         ))}
       </div>
@@ -3507,6 +3507,263 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
         </>
       )}
       {subTab==="ativacao"&&<AtivacaoChecklistAdmin c={c} onUpdated={onUpdated}/>}
+      {subTab==="minichat"&&<MinichatMetricasAdmin c={c}/>}
+    </div>
+  );
+}
+
+// Sub-aba "📊 Mini Chat" do produtor: o que o público respondeu no Mini Chat, em %,
+// com funil, desistência, cruzamentos, Google Ads x orgânico, interessados quentes e
+// resumo da IA. Só LÊ dados (/minichat/insights) — não muda nada do Mini Chat.
+function MinichatMetricasAdmin({c}){
+  const [dias,setDias]=useState(30);
+  const [d,setD]=useState(null);
+  const [erro,setErro]=useState("");
+  const [filtro,setFiltro]=useState("todos"); // todos | ads | organico
+  const [cruzB,setCruzB]=useState(0);
+  const [sug,setSug]=useState({}); // texto -> {loading, lista, erro}
+  const [copiado,setCopiado]=useState("");
+  const [verAntigas,setVerAntigas]=useState(false);
+  useEffect(()=>{
+    let vivo=true;setD(null);setErro("");
+    apiCall(`/api/admin/producers/${c.id}/minichat/insights?dias=${dias}`).then(r=>{if(!vivo)return;if(r?.error||!r)setErro(r?.error||"Não consegui carregar as métricas.");else setD(r);});
+    return()=>{vivo=false;};
+  },[c.id,dias]);
+  const pctDelta=(a,b)=>(b==null?null:a-b);
+  const fmtDelta=v=>v==null||v===0?null:<span style={{color:v>0?GREEN:RED,fontSize:10,fontWeight:700,marginLeft:6}}>{v>0?"↑":"↓"}{Math.abs(v)}{" pp"}</span>;
+  const variacao=(atual,ant)=>{if(!ant)return null;const v=Math.round(((atual-ant)/ant)*100);return v===0?null:<span style={{color:v>0?GREEN:RED,fontSize:11,fontWeight:700}}>{v>0?"↑":"↓"}{Math.abs(v)}% vs período anterior</span>;};
+  const titulo=(t,sub)=>(<div style={{marginBottom:12}}><div style={{color:TEXT,fontWeight:700,fontSize:15,letterSpacing:"-0.01em"}}>{t}</div>{sub&&<div style={{color:MUTED,fontSize:12,marginTop:3,lineHeight:1.45}}>{sub}</div>}</div>);
+  const barra=(pct,cor)=>(<div style={{height:8,borderRadius:100,background:"rgba(255,255,255,0.06)",overflow:"hidden"}}><div style={{width:`${Math.max(2,Math.min(100,pct||0))}%`,height:"100%",borderRadius:100,background:cor||`linear-gradient(90deg,${GOLD},${GOLD2})`}}/></div>);
+  const sugerir=async(p,pct)=>{
+    setSug(s=>({...s,[p.texto]:{loading:true}}));
+    const r=await apiCall(`/api/admin/producers/${c.id}/minichat/suggest-question`,{method:"POST",body:JSON.stringify({pergunta:p.texto,opcoes:(p.respostas||[]).map(x=>x.resposta),desistencia:pct})});
+    setSug(s=>({...s,[p.texto]:r?.sugestoes?{lista:r.sugestoes}:{erro:r?.error||"A IA não respondeu agora."}}));
+  };
+  const copiar=async(txt)=>{try{await navigator.clipboard.writeText(txt);setCopiado(txt);setTimeout(()=>setCopiado(""),1800);}catch{}};
+
+  const chips=(
+    <div style={{display:"flex",gap:6}}>
+      {[7,30,90,365].map(n=>(
+        <button key={n} onClick={()=>setDias(n)} style={{flex:1,padding:"9px 0",borderRadius:100,border:`1px solid ${n===dias?GOLD+"66":"rgba(255,255,255,0.10)"}`,background:n===dias?`${GOLD}1F`:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",color:n===dias?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{n===365?"12 meses":`${n} dias`}</button>
+      ))}
+    </div>
+  );
+  if(erro)return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{chips}<div style={glassCard()}><div style={{color:RED,fontSize:13}}>{erro}</div></div></div>);
+  if(!d)return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{chips}{[1,2,3].map(i=>(<div key={i} style={glassCard()}><div className="sk" style={{height:14,width:"45%",borderRadius:7,marginBottom:12}}/><div className="sk" style={{height:10,width:"90%",borderRadius:5,marginBottom:8}}/><div className="sk" style={{height:10,width:"70%",borderRadius:5}}/></div>))}</div>);
+
+  const temOrigem=d.origem?.rastreadas>0;
+  const perguntas=d.perguntas||[];
+  if(!d.conversas)return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {chips}
+      <div style={glassCard()}>
+        <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+          <div style={{fontSize:26}}>📊</div>
+          <div><div style={{color:TEXT,fontWeight:700,fontSize:15}}>Ainda sem conversas neste período</div><div style={{color:MUTED,fontSize:12,marginTop:4,lineHeight:1.5}}>Assim que alguém responder o Mini Chat deste produtor, as porcentagens de cada resposta aparecem aqui. Experimente um período maior.</div></div>
+        </div>
+      </div>
+    </div>
+  );
+  const f=d.funil||{};
+  const passos=[
+    {l:"Visitas no site",v:f.visitasSite,sub:f.visitasAds?`${f.visitasAds} vieram do Google Ads`:null},
+    {l:"Abriram o Mini Chat",v:f.abriramChat},
+    {l:"Começaram a responder",v:f.comecaram},
+    {l:"Responderam todas as perguntas",v:f.responderamTudo},
+    {l:"Novos contatos no CRM",v:f.novosContatos},
+    {l:"Tocaram no botão final",v:f.clicaramBotao,sub:(f.viaWhatsapp||f.viaEmail)?`${f.viaWhatsapp} WhatsApp · ${f.viaEmail} e-mail`:null},
+  ].filter(p=>p.v>0||p.l==="Começaram a responder");
+  const maxPasso=Math.max(1,...passos.map(p=>p.v||0));
+  const cruz=(d.cruzamentos||[])[cruzB]||(d.cruzamentos||[])[0];
+  const pctDe=r=>filtro==="ads"?r.pctAds:filtro==="organico"?r.pctOrganico:r.pct;
+  const totalDe=p=>filtro==="ads"?p.ads:filtro==="organico"?p.organico:p.total;
+  const maxHora=Math.max(1,...(d.horarios||[]).map(h=>h.conversas));
+
+  const cardPergunta=(p,i)=>(
+    <div key={i} style={{...glassInset,marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,marginBottom:10}}>
+        <div style={{color:TEXT,fontWeight:600,fontSize:13,lineHeight:1.4}}>{p.texto}</div>
+        <div style={{color:MUTED,fontSize:11,whiteSpace:"nowrap"}}>{totalDe(p)} resp.</div>
+      </div>
+      {totalDe(p)===0?<div style={{color:MUTED,fontSize:12}}>Sem respostas desta origem ainda.</div>:
+      (p.respostas||[]).slice(0,8).map((r,j)=>{const pc=pctDe(r);return pc==null?null:(
+        <div key={j} style={{marginBottom:9}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,gap:8}}>
+            <span style={{color:TEXT,fontSize:12.5}}>{r.resposta}</span>
+            <span style={{whiteSpace:"nowrap"}}><span style={{color:GOLD,fontWeight:700,fontSize:13}}>{pc}%</span>{filtro==="todos"&&fmtDelta(pctDelta(r.pct,r.pctAnterior))}</span>
+          </div>
+          {barra(pc,j===0?null:"rgba(212,175,55,0.55)")}
+        </div>
+      );})}
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {chips}
+
+      {/* Resumo */}
+      <div style={glassCard()}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:(d.insights||[]).length?14:0}}>
+          {[
+            {l:"Conversas",v:d.conversas,s:variacao(d.conversas,d.conversasAnterior)},
+            {l:"🔥 Quentes",v:`${d.quentes?.pct||0}%`,s:<span style={{color:MUTED,fontSize:11}}>{d.quentes?.total||0} pessoas</span>},
+            {l:"Google Ads",v:temOrigem?`${d.origem.pctAds}%`:"—",s:<span style={{color:MUTED,fontSize:11}}>{temOrigem?`${d.origem.ads} conversas`:"aguardando dados"}</span>},
+          ].map((k,i)=>(
+            <div key={i} style={{...glassInset,padding:"12px"}}>
+              <div style={{color:MUTED,fontSize:11,fontWeight:600}}>{k.l}</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:22,letterSpacing:"-0.02em",margin:"4px 0 2px"}}>{k.v}</div>
+              <div style={{lineHeight:1.3}}>{k.s}</div>
+            </div>
+          ))}
+        </div>
+        {(d.insights||[]).length>0&&(
+          <div>
+            <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>✨ Resumo da IA</div>
+            <ul style={{margin:0,padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.7}}>{d.insights.map((s,i)=>(<li key={i}>{s}</li>))}</ul>
+          </div>
+        )}
+      </div>
+
+      {/* O que o público procura */}
+      <div style={glassCard()}>
+        {titulo("O que o público procura","Porcentagem de cada resposta no Mini Chat. ↑↓ = mudança em relação ao período anterior.")}
+        {temOrigem&&(
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[["todos","Todos"],["ads","Google Ads"],["organico","Orgânico"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setFiltro(k)} style={{flex:1,padding:"8px 0",borderRadius:100,border:`1px solid ${k===filtro?GOLD+"66":"rgba(255,255,255,0.10)"}`,background:k===filtro?`${GOLD}1F`:"rgba(255,255,255,0.04)",color:k===filtro?GOLD:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{l}</button>
+            ))}
+          </div>
+        )}
+        {perguntas.length===0?<div style={{color:MUTED,fontSize:12}}>Sem respostas das perguntas atuais neste período.</div>:perguntas.map(cardPergunta)}
+        {(d.perguntasAntigas||[]).length>0&&(
+          <div>
+            <button onClick={()=>setVerAntigas(v=>!v)} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 0",fontFamily:F}}>{verAntigas?"▾":"▸"} Perguntas antigas ({d.perguntasAntigas.length})</button>
+            {verAntigas&&<div style={{marginTop:8}}>{d.perguntasAntigas.map(cardPergunta)}</div>}
+          </div>
+        )}
+      </div>
+
+      {/* Google Ads x orgânico */}
+      <div style={glassCard()}>
+        {titulo("De onde vêm as conversas","Google Ads x orgânico (Google, Instagram, site, direto…).")}
+        {temOrigem?(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Google Ads</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.ads}</div><div style={{color:MUTED,fontSize:11}}>🔥 {d.origem.quentesAds} quentes</div></div>
+              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Orgânico</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.organico}</div><div style={{color:MUTED,fontSize:11}}>🔥 {d.origem.quentesOrganico} quentes</div></div>
+            </div>
+            {(d.origem.canais||[]).map((o,i)=>(
+              <div key={i} style={{marginBottom:9}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:TEXT,fontSize:12.5}}>{o.label}</span><span style={{color:MUTED,fontSize:11}}>{o.count} · <span style={{color:GOLD,fontWeight:700}}>{o.pct}%</span></span></div>
+                {barra(o.pct,o.origem==="google_ads"?`linear-gradient(90deg,${BLUE},#7FA8F5)`:null)}
+              </div>
+            ))}
+            {d.origem.semOrigem>0&&<div style={{color:MUTED,fontSize:11,marginTop:6}}>{d.origem.semOrigem} conversa(s) de antes desta medição ficaram sem origem.</div>}
+          </>
+        ):(
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>
+            {d.origemDisponivel?"A partir de agora cada conversa nova guarda de onde a pessoa veio. Os números aparecem aqui assim que as próximas conversas chegarem.":"Falta rodar o SQL da migration_v44 no Supabase pra começar a separar Google Ads x orgânico. Todo o resto desta aba já funciona."}
+            {f.visitasSite>0&&<div style={{marginTop:8,color:TEXT}}>No site: <b>{f.visitasAds}</b> de <b>{f.visitasSite}</b> visitas ({Math.round((f.visitasAds/f.visitasSite)*100)}%) vieram do Google Ads.</div>}
+          </div>
+        )}
+      </div>
+
+      {/* Interessados quentes */}
+      <div style={glassCard()}>
+        {titulo("🔥 Interessados quentes",`Responderam algo como "Quanto antes" ou "Este mês". ${d.quentes?.total||0} no período${d.quentes?.totalAnterior!=null?` (antes: ${d.quentes.totalAnterior})`:""}.`)}
+        {(d.quentes?.lista||[]).length===0?<div style={{color:MUTED,fontSize:12}}>Nenhum neste período.</div>:
+        d.quentes.lista.map((q,i)=>(
+          <div key={i} style={{...glassInset,padding:"12px 14px",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+              <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{q.contato?.name||"Contato não identificado"}</span>
+              <span style={{color:MUTED,fontSize:11,whiteSpace:"nowrap"}}>{new Date(q.quando).toLocaleDateString('pt-BR')}</span>
+            </div>
+            {q.contato?.phone&&<div style={{color:GOLD,fontSize:12,marginTop:2}}>{q.contato.phone}</div>}
+            <div style={{color:MUTED,fontSize:12,marginTop:4,lineHeight:1.45}}>{q.respostas.join(" · ")}</div>
+            {q.origem&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>Veio de: {q.origem}</div>}
+          </div>
+        ))}
+        {d.origemDisponivel&&<div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.45}}>Você recebe um aviso 🔥 no celular quando entra um interessado quente (se as notificações estiverem ativadas).</div>}
+      </div>
+
+      {/* Funil */}
+      <div style={glassCard()}>
+        {titulo("Funil do Mini Chat","Do site até o botão final.")}
+        {passos.map((p,i)=>(
+          <div key={i} style={{marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:TEXT,fontSize:12.5}}>{p.l}</span><span style={{color:TEXT,fontWeight:700,fontSize:13}}>{p.v||0}</span></div>
+            {barra(Math.round(((p.v||0)/maxPasso)*100))}
+            {p.sub&&<div style={{color:MUTED,fontSize:11,marginTop:3}}>{p.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Desistência */}
+      {(d.desistencia||[]).length>0&&(
+        <div style={glassCard((d.desistencia||[]).every(x=>!x.alerta))}>
+          {titulo("Onde as pessoas desistem","Quantas chegaram em cada pergunta e não responderam.")}
+          {d.desistencia.map((x,i)=>{const pq=perguntas.find(p=>p.texto===x.texto);const s=sug[x.texto];return(
+            <div key={i} style={{...glassInset,padding:"12px 14px",marginBottom:8,border:x.alerta?`1px solid ${RED}55`:glassInset.border}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                <span style={{color:TEXT,fontSize:12.5,lineHeight:1.4}}>{x.alerta?"⚠️ ":""}{x.texto}</span>
+                <span style={{color:x.alerta?RED:MUTED,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{x.pct}%</span>
+              </div>
+              <div style={{color:MUTED,fontSize:11,marginTop:3}}>{x.chegaram} chegaram · {x.responderam} responderam</div>
+              {x.alerta&&(
+                <div style={{marginTop:8}}>
+                  {!s&&<button onClick={()=>sugerir(pq||{texto:x.texto},x.pct)} style={{background:"none",border:`1px solid ${GOLD}55`,borderRadius:100,padding:"6px 12px",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>✨ Sugerir outra pergunta</button>}
+                  {s?.loading&&<div style={{color:MUTED,fontSize:12}}>A IA está pensando…</div>}
+                  {s?.erro&&<div style={{color:RED,fontSize:12}}>{s.erro}</div>}
+                  {s?.lista&&s.lista.map((o,k)=>(
+                    <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"10px 12px",marginTop:6}}>
+                      <div style={{color:TEXT,fontSize:12.5,fontWeight:600}}>{o.pergunta}</div>
+                      {o.opcoes?.length>0&&<div style={{color:MUTED,fontSize:11,marginTop:3}}>{o.opcoes.join(" · ")}</div>}
+                      <button onClick={()=>copiar(o.pergunta)} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",padding:"6px 0 0",fontFamily:F}}>{copiado===o.pergunta?"✓ Copiado":"Copiar"}</button>
+                    </div>
+                  ))}
+                  {s?.lista&&<div style={{color:MUTED,fontSize:11,marginTop:6}}>Só sugestão — pra usar, cole em "Perguntas do Mini Chat" e salve.</div>}
+                </div>
+              )}
+            </div>
+          );})}
+        </div>
+      )}
+
+      {/* Cruzamentos */}
+      {cruz&&(
+        <div style={glassCard()}>
+          {titulo("Cruzamentos",`Pra cada resposta de "${cruz.a}", o que as pessoas responderam depois.`)}
+          {(d.cruzamentos||[]).length>1&&(
+            <select value={cruzB} onChange={e=>setCruzB(Number(e.target.value))} style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.10)",borderRadius:12,color:TEXT,padding:"10px 12px",fontSize:13,fontFamily:F,marginBottom:12}}>
+              {d.cruzamentos.map((x,i)=>(<option key={i} value={i} style={{background:"#1C1C1A"}}>{x.b}</option>))}
+            </select>
+          )}
+          {cruz.linhas.map((l,i)=>(
+            <div key={i} style={{...glassInset,padding:"12px 14px",marginBottom:8}}>
+              <div style={{color:TEXT,fontWeight:700,fontSize:12.5,marginBottom:6}}>{l.resposta} <span style={{color:MUTED,fontWeight:400,fontSize:11}}>({l.total})</span></div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {l.colunas.slice(0,5).map((co,j)=>(<span key={j} style={{background:j===0?`${GOLD}1F`:"rgba(255,255,255,0.05)",border:`1px solid ${j===0?GOLD+"44":"rgba(255,255,255,0.08)"}`,borderRadius:100,padding:"4px 10px",fontSize:11.5,color:j===0?GOLD:TEXT}}>{co.resposta} <b>{co.pct}%</b></span>))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Horários */}
+      {(d.horarios||[]).some(h=>h.conversas>0)&&(
+        <div style={glassCard()}>
+          {titulo("Horário das conversas",d.idioma==="en"?"Horário de Nova York.":"Horário de Brasília.")}
+          {d.horarios.map((h,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{color:MUTED,fontSize:12,width:52}}>{h.faixa}</span>
+              <div style={{flex:1}}>{barra(Math.round((h.conversas/maxHora)*100))}</div>
+              <span style={{color:TEXT,fontSize:12,fontWeight:700,width:28,textAlign:"right"}}>{h.conversas}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{color:MUTED,fontSize:11,textAlign:"center",lineHeight:1.5,padding:"0 8px"}}>Estes números também entram no relatório mensal do cliente (seção "O que seu público respondeu").</div>
     </div>
   );
 }
@@ -5260,6 +5517,27 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {report.publico?.perguntas?.length>0&&(
+        <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:4}}>O que seu público respondeu</div>
+          <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{report.publico.conversas} conversas no Mini Chat{report.publico.quentes?` · 🔥 ${report.publico.quentes} com pressa`:""}{report.publico.origem?` · ${report.publico.origem.pctAds}% pelo Google Ads`:""}</div>
+          {report.publico.perguntas.map((p,i)=>(
+            <div key={i} style={{marginBottom:i<report.publico.perguntas.length-1?14:0}}>
+              <div style={{color:TEXT,fontSize:12.5,fontWeight:600,marginBottom:6}}>{p.texto}</div>
+              {p.respostas.map((r,j)=>(
+                <div key={j} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0"}}>
+                  <span style={{color:TEXT,fontSize:12.5}}>{r.resposta}</span>
+                  <span style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{color:MUTED,fontSize:11}}>{r.count}</span>
+                    <span style={{color:GOLD,fontWeight:700,fontSize:12,minWidth:32,textAlign:"right"}}>{r.pct}%</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 

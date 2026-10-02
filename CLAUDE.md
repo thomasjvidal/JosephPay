@@ -328,3 +328,19 @@ páginas" (antes o sensor criava um duplicado a cada clique).
   bloqueou, site fora do ar, Mini Chat parou (só se estava funcionando). Push pro admin
   SÓ na mudança (quebrou ⚠️ / voltou ✓), nunca repete; a 1ª rodada após o servidor
   ligar só anota. Teste: "enviar teste" no checklist (`/api/admin/alerts/test`).
+
+## Métricas do Mini Chat (sub-aba "📊 Mini Chat" do produtor)
+
+- `GET /api/admin/producers/:id/minichat/insights?dias=7|30|90|365` calcula tudo a partir de
+  `minichat_sessions.answers` (vale pra todo produtor, pt/en, WhatsApp/e-mail, inclusive histórico):
+  % de cada resposta (agrupado pelo TEXTO da pergunta, com ↑↓ vs período anterior), funil,
+  desistência por pergunta (⚠️ + "✨ Sugerir outra pergunta" via IA — só sugere, nunca salva),
+  cruzamentos (1ª pergunta x as outras), Google Ads x orgânico, 🔥 quentes, horários, resumo IA.
+- Origem: `minichat.html` manda `origem` no track-progress (`getOrigem()`: gclid/gbraid/wbraid,
+  utm de anúncio Google, `jp_ads=1`/`jp_src` que o `sensor.js` acrescenta nos links com "minichat").
+- 🔥 Quente = resposta tipo "Quanto antes"/"Este mês"/"As soon as possible" (`MC_QUENTE_RE`).
+  `leads/create` recebe `visitor_id` e liga a conversa ao contato (`linkMinichatSessionToCustomer`,
+  depois da resposta, nunca bloqueia) + push pro admin uma vez.
+- Colunas `origem`, `customer_id`, `quente` (migration_v44) são opcionais: sem o SQL tudo funciona,
+  só sem Ads x orgânico/aviso 🔥. Relatório mensal ganha `publico` ("O que seu público respondeu").
+- Nada das telas antigas foi removido — é só aba/seção nova (pedido do Thomas).

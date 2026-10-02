@@ -576,6 +576,29 @@
         } catch(e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     }
 
+    // De onde a pessoa veio (só pra métrica do Admin — não muda nada no chat). Google Ads
+    // quando o link traz gclid/gbraid/wbraid, utm de anúncio do Google, ou o jp_ads=1 que
+    // o sensor.js do site do cliente acrescenta no link do Mini Chat. Guardado na sessão
+    // pra continuar igual nas perguntas seguintes.
+    function getOrigem() {
+        try { const c = sessionStorage.getItem('mc_origem'); if (c) return c; } catch(e) {}
+        let o = 'direto';
+        try {
+            const q = new URLSearchParams(location.search);
+            const src = (q.get('utm_source') || q.get('jp_src') || '').toLowerCase();
+            const med = (q.get('utm_medium') || '').toLowerCase();
+            const ref = document.referrer || '';
+            if (q.get('gclid') || q.get('gbraid') || q.get('wbraid') || q.get('jp_ads') === '1' || (/google/.test(src) && /cpc|ppc|paid|ads/.test(med))) o = 'google_ads';
+            else if (src) o = /insta/.test(src) ? 'instagram' : /face|^fb/.test(src) ? 'facebook' : /whats|^wa$|wpp/.test(src) ? 'whatsapp' : /google/.test(src) ? 'google' : src === 'direto' ? 'direto' : src === 'referral' ? 'site' : 'outro';
+            else if (ref) {
+                const h = new URL(ref).hostname;
+                o = /(^|\.)google\./.test(h) ? 'google' : /instagram/.test(h) ? 'instagram' : /facebook|(^|\.)fb\./.test(h) ? 'facebook' : /whatsapp/.test(h) ? 'whatsapp' : /josephpay/.test(h) ? 'direto' : 'site';
+            }
+        } catch(e) {}
+        try { sessionStorage.setItem('mc_origem', o); } catch(e) {}
+        return o;
+    }
+
     function trackProgress({ index, question, answer, questionsTotal, completed, finishedVia }) {
         const uid = new URLSearchParams(location.search).get("uid");
         if (!uid) return;
@@ -587,6 +610,7 @@
                 index, question, answer,
                 questions_total: questionsTotal,
                 completed: !!completed, finished_via: finishedVia,
+                origem: getOrigem(),
             }),
         }).catch(() => {});
     }
@@ -836,6 +860,7 @@
                 phone: userData.telefoneDigits || userData.telefone || null,
                 email: userData.email || null,
                 birthday: userData.nascimentoISO || userData.nascimento || null,
+                visitor_id: getVisitorId(),
             }),
         }).catch(() => {});
     }

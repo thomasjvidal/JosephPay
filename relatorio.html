@@ -272,6 +272,14 @@ function render({producer, tipo, dados: r, comments}, nomeVisitante){
     html += `</div>`;
   }
 
+  if(r.publico?.perguntas?.length){
+    const pb = r.publico;
+    const resumo = [`${pb.conversas} conversas no Mini Chat`, pb.quentes ? `🔥 ${pb.quentes} com pressa` : "", pb.origem ? `${pb.origem.pctAds}% pelo Google Ads` : ""].filter(Boolean).join(" · ");
+    html += `<div class="card"><div class="sec-title">O que seu público respondeu</div><div class="sec-sub">${esc(resumo)}</div>`;
+    html += pb.perguntas.map(p => `<div style="margin-top:12px"><div style="font-weight:700;font-size:13px;margin-bottom:4px">${esc(p.texto)}</div>${p.respostas.map(it => `<div class="list-row"><span>${esc(it.resposta)}</span><span><span class="muted">${it.count}</span> <span class="gold">${it.pct}%</span></span></div>`).join("")}</div>`).join("");
+    html += `</div>`;
+  }
+
   if(r.insights?.length){
     html += `<div class="card insights"><div class="lbl">O que descobrimos este mês</div><ul>${r.insights.map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>`;
   }
