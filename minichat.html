@@ -1089,12 +1089,11 @@
             .map(q => {
                 let rotulo = String((usingDefaultFlow ? (q.label || q.subtext) : (q.subtext || q.label)) || q.text || '').trim();
                 if (!/[?:]$/.test(rotulo)) rotulo += ':';
-                return `- ${b(rotulo)} ${userData[q.id]}`;
+                return `— ${b(rotulo)} ${userData[q.id]}`;
             }).join('\n');
-        const partes = [t.msgHello(b(GREETING_NAME)), nome ? t.msgIntro(b(nome)) : t.msgIntroNoName];
-        if (email && userData.telefone) partes.push(`${t.msgPhone}: ${userData.telefone}`);
-        let msg = partes.join('\n');
-        if (linhas) msg += `\n\n${b(t.msgProfile)}\n${linhas}`;
+        let msg = `${t.msgHello(b(GREETING_NAME))}\n\n${nome ? t.msgIntro(b(nome)) : t.msgIntroNoName}`;
+        if (email && userData.telefone) msg += `\n${t.msgPhone}: ${userData.telefone}`;
+        if (linhas) msg += `\n\n📋 ${b(t.msgProfile)}\n${linhas}`;
         if (CLOSING_MESSAGE) msg += `\n\n${CLOSING_MESSAGE}`;
         return msg;
     }

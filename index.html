@@ -3111,8 +3111,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   // nome + respostas, sem telefone/e-mail/aniversário, negrito do WhatsApp.
   const en=idiomaMc==="en";
   const marca=c.minichat_config?.brand_name||c.name||(en?"[producer name]":"[nome do produtor]");
-  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `- *${r}* ${en?"[answer]":"[resposta]"}`;}).join("\n");
-  return en?`Hi *${marca}*! 👋\nI'm *John Smith* and I just finished the pre-diagnosis on your website.\n\n*My profile*\n${linhas}\n`:`Olá, *${marca}*! 👋\nSou *João Silva* e acabei de fazer o pré-diagnóstico no seu site.\n\n*Meu perfil*\n${linhas}\n`;
+  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `— *${r}* ${en?"[answer]":"[resposta]"}`;}).join("\n");
+  return en?`Hi *${marca}*! 👋\n\nI'm *John Smith* and I just finished the pre-diagnosis on your website.\n\n📋 *My profile*\n${linhas}\n`:`Olá, *${marca}*! 👋\n\nSou *João Silva* e acabei de fazer o pré-diagnóstico no seu site.\n\n📋 *Meu perfil*\n${linhas}\n`;
 })()}
                 </div>
                 <input
