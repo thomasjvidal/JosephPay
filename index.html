@@ -4053,7 +4053,6 @@ function ClientesAdmin(){
         <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clientsFiltrados.length} produtores`:"—"}</span>
       </div>
       {showAudit&&<SiteAuditModal onClose={()=>setShowAudit(false)} onAbrirCliente={id=>{setShowAudit(false);setSel(id);setSelSubTab("ativacao");}}/>}
-      <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:0}}><Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn></div>
         <button onClick={()=>setShowAudit(true)} title="Diagnóstico técnico de todos os produtores" style={{width:34,height:34,borderRadius:"50%",background:"transparent",border:`1.5px solid ${BDR}`,color:MUTED,fontSize:14,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="search" s={15}/></button>
@@ -4108,6 +4107,35 @@ function ClientesAdmin(){
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Aba "Relatórios" do rodapé do Admin: as sub-abas Relatórios e Mini Chat que antes
+// ficavam dentro de Clientes (mesmos componentes, só mudaram de lugar).
+function RelatoriosAdmin(){
+  const [subTab,setSubTab]=useState("relatorios");
+  const [clients,setClients]=useState(null);
+  const [sel,setSel]=useState(null);
+  const [selRelatorio,setSelRelatorio]=useState(null);
+  const [refresh,setRefresh]=useState(0);
+  useEffect(()=>{apiCall('/api/admin/clients').then(d=>{if(Array.isArray(d?.clients))setClients(d.clients);});},[refresh]);
+  if(sel!==null){
+    const c=clients?.find(x=>x.id===sel)||null;
+    return <ClientePerfilAdmin c={c} onBack={()=>setSel(null)} onUpdated={()=>setRefresh(r=>r+1)} initialSubTab="ativacao"/>;
+  }
+  if(subTab==="relatorios"&&selRelatorio)return <RelatoriosDetalheAdmin ownerId={selRelatorio.id} nome={selRelatorio.nome} onBack={()=>setSelRelatorio(null)}/>;
+  const TABS=[{id:"relatorios",label:"Relatórios"},{id:"minichat",label:"Mini Chat"}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:2}}>Relatórios</div>
+      <div style={{display:"flex",gap:6}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)} style={{flex:1,padding:"10px 0",borderRadius:100,border:`1px solid ${t.id===subTab?GOLD+"66":"rgba(255,255,255,0.10)"}`,background:t.id===subTab?`${GOLD}1F`:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",color:t.id===subTab?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
+        ))}
+      </div>
+      {subTab==="relatorios"&&<RelatoriosOverviewAdmin onAbrir={(id,nome)=>setSelRelatorio({id,nome})}/>}
+      {subTab==="minichat"&&<MinichatOverviewAdmin clients={clients} onConfigurar={id=>setSel(id)}/>}
     </div>
   );
 }
@@ -4663,6 +4691,7 @@ function BottomNav({tab,setTab,nav}){
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
       </svg>
     ),
+    relatorios:<Ic n="note" s={20}/>,
     disparos:(
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -4872,6 +4901,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
     ...(isAdmin?[
       {icon:<Ic n="settings" s={17}/>,label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")},
       {icon:<Ic n="plug" s={17}/>,label:"Integrações",onClick:()=>onNavigate&&onNavigate("integracoes")},
+      {icon:<Ic n="star" s={17}/>,label:"Chat IA",onClick:()=>onNavigate&&onNavigate("chat")},
     ]:[]),
     {icon:<Ic n="phone" s={17}/>,label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
   ];
@@ -5769,13 +5799,16 @@ function AdminPanel({onLogout,userEmail}){
     {id:"clientes",icon:<Ic n="users" s={17}/>,label:"Clientes"},
     {id:"financeiro",icon:<Ic n="card" s={17}/>,label:"Financeiro"},
     {id:"googleads",icon:<Ic n="target" s={17}/>,label:"Google Ads"},
+    {id:"relatorios",icon:<Ic n="note" s={17}/>,label:"Relatórios"},
     {id:"chat",icon:<Ic n="star" s={17}/>,label:"Chat IA"},
     {id:"integracoes",icon:<Ic n="plug" s={17}/>,label:"Integrações"},
     {id:"config",icon:<Ic n="settings" s={17}/>,label:"Config"},
   ];
-  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
+  // Rodapé (celular): "Relatórios" entrou no lugar do Chat IA — o Chat IA continua no menu
+  // lateral (computador) e no menu do perfil (foto no topo), nunca some.
+  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes"&&n.id!=="chat");
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",relatorios:"Relatórios",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,relatorios:<RelatoriosAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={onNav} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
