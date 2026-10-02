@@ -92,6 +92,12 @@ trocar botões, trocar imagem) precisa respeitar isso:
    app interceptava a requisição antes do arquivo. Se algum dia PRECISAR
    criar um arquivo novo num repo de cliente por outro motivo, aí sim use
    `detectRepoFramework()`/`public/` — mas não é mais o caso do Mini Chat.
+   **Exceção descoberta na CAA (02/10):** site com servidor próprio que publica
+   pelo formato "Build Output" da Vercel (Nitro: TanStack Start/Lovable, e
+   parecidos — `unknownFramework`) **ignora as regras do `vercel.json`**,
+   inclusive `redirects`. Ali o redirecionamento nunca funciona, mesmo com a
+   publicação passando; o caminho é trocar o botão/rota no código ("Corrigir
+   agora" / `apply-links`). `verifyMinichatLive()` já explica isso no "por quê".
 2. **Scanner de links/botões precisa tratar `${...}` como bloco atômico.**
    Mensagens de WhatsApp pré-preenchidas (`` `https://wa.me/${tel}?text=${encodeURIComponent('Olá, ...')}` ``)
    têm aspas e vírgulas DENTRO do `${}` — um regex ingênuo corta a captura ali
@@ -257,3 +263,23 @@ sem traduzir); e-mail, WhatsApp, nome, cores e idioma vêm de `extractMinichatSe
 puxadas se o cliente não tem perguntas próprias salvas; destino, idioma, visual, e-mail e
 WhatsApp só são preenchidos em Mini Chat nunca configurado (sem WhatsApp nem e-mail
 salvos) — produtor que já usa nunca tem isso trocado.
+
+
+## Ativação robusta: verde só com prova real
+
+- `getRepoDeployStatus()` lê do GitHub o resultado da última publicação da Vercel
+  (ok / publicando / bloqueado / falhou) — card Vercel e "Testar tudo". "Bloqueado"
+  = a Vercel (plano Hobby) recusou o autor do commit; resolve com Redeploy no painel
+  da Vercel pelo dono. Commit feito por fora do JosephPay (ex: sessão do Claude com
+  co-autor) cai nisso — visto na CAA em 02/10.
+- `getSensorStatus()`: sensor aparece no HTML do site? Visitas do SITE (não só da
+  página do mini chat) chegando nos últimos 14 dias? A CAA tinha o sensor só dentro
+  do mini chat antigo e o card ficava verde.
+- Instalação do sensor: sempre que houver `</head>`/`</Head>`/`</body>` (HTML ou JSX)
+  a `<script>` vai ali; o carregador em JS só como último recurso e protegido com
+  `typeof document !== "undefined"` — sem isso derrubava site com servidor próprio.
+- `detectHosting()` identifica Vercel/Netlify/Cloudflare/etc. pelos cabeçalhos.
+- `/activation-test` ("Testar tudo" no checklist): site no ar, publicação, sensor,
+  Mini Chat no site, destino e envio de e-mail — só leitura.
+- "E-mail pra disparos" é etapa opcional (não conta no X de Y).
+- Visual: todos os cards da Ativação usam `glassCard()`.

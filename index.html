@@ -1089,7 +1089,7 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
   };
   const semGithub=!c.github_repo;
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Botões do site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         {semGithub?(
@@ -1214,7 +1214,7 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
   );
   const SLabel=({t})=><div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>{t}</div>;
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <SLabel t="Google Tag Manager"/>
@@ -1321,8 +1321,16 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
     }
   };
   const semSite=!metodo;
+  // Prova real: o sensor aparece no site publicado e as visitas do SITE estão chegando?
+  const [sensorSt,setSensorSt]=useState(null);
+  useEffect(()=>{if(open&&!sensorSt)apiCall(`/api/admin/producers/${c.id}/sensor-status`).then(d=>{if(!d?.error)setSensorSt(d);});},[open]);
+  const sensorLinha=!sensorSt?null:sensorSt.visitas14d>0
+    ?{ok:true,txt:`Recebendo visitas do site — ${sensorSt.visitas14d} nos últimos 14 dias.`}
+    :sensorSt.noHtml?{ok:true,txt:"Instalado no site. Esperando a primeira visita."}
+    :sensorSt.soMinichat?{ok:false,txt:"Só chegam visitas da página do mini chat — o sensor não está nas páginas do site. Toque em Instalar de novo."}
+    :{ok:false,txt:"Ainda não encontrei o sensor no site publicado nem visitas recentes."};
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Sensor" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         {semSite?(
@@ -1336,6 +1344,7 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
             {metodo==="github"&&installedFile&&<div style={{color:MUTED,fontSize:11,marginBottom:10}}>Instalado em: <span style={{color:TEXT}}>{installedFile}</span></div>}
             {metodo==="github"&&!installedFile&&<div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>O arquivo de destino é detectado automaticamente ao instalar.</div>}
             {installedAt&&<div style={{color:GREEN,fontSize:11,fontWeight:600,marginBottom:10}}>✓ Instalado em {new Date(installedAt).toLocaleString('pt-BR')}</div>}
+            {sensorLinha&&<div style={{...glassInset,marginBottom:12,display:"flex",gap:10,alignItems:"flex-start"}}><span style={{color:sensorLinha.ok?GREEN:"#F5A524",fontWeight:700}}>{sensorLinha.ok?"✓":"!"}</span><span style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{sensorLinha.txt}</span></div>}
             <button onClick={instalar} disabled={installing} style={{width:"100%",background:done?`${GREEN}18`:GREEN,border:done?`1px solid ${GREEN}50`:"none",borderRadius:14,padding:"14px",color:done?"#22c55e":"#0C0C0C",fontWeight:700,fontSize:14,cursor:installing?"default":"pointer",fontFamily:F}}>{installing?"Instalando…":done?"Reinstalar sensor":"Instalar sensor"}</button>
             {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:11,marginTop:10}}>{msg}</div>}
           </>
@@ -1359,12 +1368,30 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
     if(d?.error){setMsg(d.error);return;}
     setReadyAt(new Date().toISOString());setEditing(false);
     onUpdated&&onUpdated();
+    setTimeout(()=>carregarDeploy(),60000);
   };
+  // Prova real: a última publicação na Vercel passou? (lido do GitHub)
+  const [deploy,setDeploy]=useState(null);
+  const carregarDeploy=()=>apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{if(!d?.error)setDeploy(d);});
+  useEffect(()=>{if(open&&!deploy&&c.github_repo)carregarDeploy();},[open]);
+  const deployCor=!deploy?MUTED:deploy.state==="ok"?GREEN:deploy.state==="publicando"||deploy.state==="desconhecido"?MUTED:"#F5A524";
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Vercel" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Adiciona o arquivo de config que a Vercel precisa pra fazer o deploy (Lovable/Vite).</div>
+        {deploy&&deploy.state!=="sem_repo"&&(
+          <div style={{...glassInset,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:deployCor,flexShrink:0}}/>
+              <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Publicação bloqueada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
+              <button onClick={carregarDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F}}>Atualizar</button>
+            </div>
+            <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{deploy.message}</div>
+            {deploy.commitMessage&&<div style={{color:MUTED,fontSize:11,marginTop:4,opacity:0.8}}>Último commit: “{deploy.commitMessage}”{deploy.commitDate?` · ${new Date(deploy.commitDate).toLocaleString('pt-BR')}`:""}</div>}
+            {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>Abrir na Vercel ↗</a>}
+          </div>
+        )}
         {readyAt&&!editing?(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:CARD2,borderRadius:12,padding:"10px 14px"}}>
             <span style={{color:GREEN,fontSize:12,fontWeight:600}}>✓ Preparado em {new Date(readyAt).toLocaleDateString('pt-BR')}</span>
@@ -1710,7 +1737,7 @@ function EmailAdmin({c,onUpdated,initialOpen,done}){
   };
   if(status===null)return null;
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="E-mail (disparos)" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
       {status.connected?(
@@ -2668,7 +2695,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     });
   },[open]);
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&preenchidoDoSite&&<div style={{...glassInset,marginTop:10,marginBottom:4,color:MUTED,fontSize:12,lineHeight:1.5}}><span style={{color:GOLD,fontWeight:600}}>✨ Lido do site. </span>{preenchidoDoSite}</div>}
       {open&&(<div style={{marginTop:8}}>
@@ -2859,7 +2886,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     setSaved(true);
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${done?GREEN+"55":BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={glassCard(done)}>
       <CardHeader title="Perguntas do Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:6,lineHeight:1.4}}>{usandoPadrao?"Estas são as 4 perguntas padrão do Mini Chat. Edite à vontade — ao salvar, passam a valer só para este cliente.":"Perguntas personalizadas deste cliente."}</div>
@@ -3078,9 +3105,21 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     // É o e-mail (SMTP) do produtor pros DISPAROS em massa — não tem nada a ver com o
     // destino dos leads do Mini Chat (esse vai sozinho pelo JosephPay). O nome antigo,
     // "E-mail conectado", dava a entender que sem isso o Mini Chat por e-mail não funcionava.
-    {id:"email",label:"E-mail pra disparos conectado",done:emailOk,cardKeys:["email"]},
+    {id:"email",label:"E-mail pra disparos conectado",done:emailOk,cardKeys:["email"],opcional:true},
   ];
-  const currentStep=steps.find(s=>!s.done);
+  // "E-mail pra disparos" é opcional — não conta no "X de Y" nem trava a próxima etapa.
+  const obrigatorias=steps.filter(s=>!s.opcional);
+  const currentStep=obrigatorias.find(s=>!s.done);
+  // "Testar tudo": prova real, etapa por etapa (site no ar, publicação, sensor, Mini Chat,
+  // destino e envio de e-mail) — é isso que confirma se o cliente está ativado DE VERDADE.
+  const [teste,setTeste]=useState(null);
+  const [testando,setTestando]=useState(false);
+  const testarTudo=async()=>{
+    setTestando(true);setTeste(null);
+    const d=await apiCall(`/api/admin/producers/${c.id}/activation-test`);
+    setTestando(false);
+    setTeste(d?.error?{error:d.error}:d);
+  };
   const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||(minichatInstOk&&!!c.github_vercel_ready_at));
 
   const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
@@ -3088,7 +3127,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+      <div style={glassCard(false)}>
         {clienteAtivo?(
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
             <span style={{color:GREEN,fontSize:16,fontWeight:800}}>✓ Cliente ativo</span>
@@ -3096,19 +3135,37 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
         ):(
           <div style={{color:TEXT,fontWeight:800,fontSize:15,marginBottom:2}}>Ativação pendente</div>
         )}
-        <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{steps.filter(s=>s.done).length} de {steps.length} etapas concluídas</div>
+        <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{obrigatorias.filter(s=>s.done).length} de {obrigatorias.length} etapas concluídas</div>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {steps.map(s=>{
-            const color=s.done?GREEN:"#f87171";
+            const color=s.done?GREEN:s.opcional?MUTED:"#f87171";
             const icone=s.done?"✓":"○";
             return(
               <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:500,color}}>
                 <span style={{width:16,textAlign:"center"}}>{icone}</span>
                 <span>{s.label}</span>
+                {s.opcional&&!s.done&&<span style={{fontSize:10,color:MUTED,border:`1px solid rgba(255,255,255,0.12)`,borderRadius:100,padding:"1px 7px"}}>opcional</span>}
               </div>
             );
           })}
         </div>
+        <button onClick={testarTudo} disabled={testando} style={{...pillBtn(false,testando),height:44,fontSize:14,marginTop:14}}>{testando?"Testando no site de verdade…":"🔍 Testar tudo"}</button>
+        {teste?.error&&<div style={{color:"#F5A524",fontSize:12,marginTop:10}}>{teste.error}</div>}
+        {teste?.checks&&(
+          <div style={{...glassInset,marginTop:12,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{color:teste.allOk?GREEN:TEXT,fontSize:13,fontWeight:600}}>{teste.allOk?"✓ Tudo funcionando de verdade":`${teste.okCount} de ${teste.total} funcionando`}</div>
+            {teste.checks.map(ch=>(
+              <div key={ch.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{width:18,flexShrink:0,textAlign:"center",color:ch.ok?GREEN:ch.warn?MUTED:"#F5A524",fontWeight:700}}>{ch.ok?"✓":ch.warn?"…":"!"}</span>
+                <div style={{minWidth:0}}>
+                  <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{ch.label}</div>
+                  <div style={{color:MUTED,fontSize:12,lineHeight:1.45}}>{ch.detail}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{color:MUTED,fontSize:10,opacity:0.7}}>Testado agora · só leitura, nada é alterado</div>
+          </div>
+        )}
         {!c.github_repo&&!c.gtm_container_id&&!siteOk&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Não sei ainda como o site desse cliente foi feito — comece abrindo "Instalação técnica" abaixo e escolhendo GTM ou GitHub.</div>}
         {!c.github_repo&&!c.gtm_container_id&&siteOk&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente já está funcionando de verdade (visitas reais detectadas), mas foi configurado fora do fluxo automático — não sei se é GTM ou GitHub. Vincule em "Instalação técnica" se quiser usar a instalação automática pra próximas mudanças (opcional, não é obrigatório já estando ativo).</div>}
         {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — instalar a página do Mini Chat direto no site ainda só funciona para clientes com GitHub. Configure o Mini Chat normalmente; o link continua funcionando, só não dá pra criar a página automaticamente no site dele.</div>}

@@ -5121,6 +5121,16 @@ async function verifyMinichatLive(id) {
   // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
   const diagnosticoCatchAll = async () => {
     if (!headers || !profile.github_repo) return "";
+    // Site com servidor próprio (TanStack Start/Lovable, Astro, SvelteKit, Nuxt…) publica
+    // na Vercel num formato próprio que IGNORA as regras do vercel.json — o
+    // redirecionamento nunca vai funcionar ali, não adianta reinstalar. Confirmado na CAA
+    // (02/10): a publicação passava, mas o /minichat.html nunca redirecionava.
+    try {
+      const repoInfo = await axios.get(`https://api.github.com/repos/${profile.github_repo}`, { headers });
+      const tree = await axios.get(`https://api.github.com/repos/${profile.github_repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
+      const det = detectRepoFramework((tree.data.tree || []).filter(i => i.type === "blob").map(i => i.path));
+      if (det.unknownFramework) return " Esse tipo de site (ex: Lovable/TanStack Start) ignora o redirecionamento do vercel.json — por isso esse caminho não abre o Mini Chat, e reinstalar não resolve.";
+    } catch {}
     const aviso = await catchAllRewriteWarning(profile.github_repo, headers);
     return aviso ? ` ${aviso}` : "";
   };
@@ -5167,6 +5177,148 @@ app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireA
     res.json(result);
   } catch (err) {
     console.error("[github/verify-minichat]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Ativação robusta: provas de que está funcionando DE VERDADE ────────────────
+// Commit certo no GitHub não é o mesmo que "está no ar" (regra 4). Estas funções dão
+// ao Admin a prova real de cada etapa: a publicação da Vercel passou? O site está no
+// ar e em que hospedagem? O sensor aparece no site e as visitas estão chegando?
+
+// Situação da última publicação, lida do próprio GitHub (a Vercel escreve o resultado
+// de cada deploy no commit) — não precisa de token da Vercel.
+async function getRepoDeployStatus(repo, headers) {
+  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+  const branch = repoInfo.data.default_branch;
+  const [statusResp, commitResp] = await Promise.all([
+    axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}/status`, { headers }),
+    axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}`, { headers }),
+  ]);
+  const st = (statusResp.data.statuses || []).find(x => /vercel/i.test(x.context || "")) || null;
+  let checkRun = null;
+  if (!st) {
+    try {
+      const cr = await axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}/check-runs`, { headers });
+      checkRun = (cr.data.check_runs || []).find(x => /vercel/i.test(x.name || "") || /vercel/i.test(x.app?.slug || "")) || null;
+    } catch {}
+  }
+  const base = { sha: commitResp.data.sha?.slice(0, 7), commitMessage: (commitResp.data.commit?.message || "").split("\n")[0], commitDate: commitResp.data.commit?.committer?.date };
+  if (!st && !checkRun) return { ...base, state: "desconhecido", message: "Não achei nenhuma publicação da Vercel ligada a esse repositório — confira se o projeto está conectado na Vercel." };
+  const raw = st ? st.state : (checkRun.status !== "completed" ? "pending" : checkRun.conclusion === "success" ? "success" : "failure");
+  const desc = st ? (st.description || "") : (checkRun.output?.title || checkRun.conclusion || "");
+  const url = st ? st.target_url : checkRun.details_url;
+  if (raw === "success") return { ...base, state: "ok", url, message: "Publicado na Vercel." };
+  if (raw === "pending") return { ...base, state: "publicando", url, message: "A Vercel está publicando agora (leva ~1 min)." };
+  // Bloqueado: no plano Hobby a Vercel bloqueia commit cujo autor (ou co-autor) não é o
+  // dono do projeto — não é erro do site, é permissão. Visto na CAA em 02/10.
+  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto)." };
+  return { ...base, state: "falhou", url, message: `A última publicação na Vercel falhou${desc ? ` (${desc})` : ""}. O site continua na versão anterior até corrigir.` };
+}
+
+// Onde o site está hospedado, pelos cabeçalhos da resposta. O Mini Chat por
+// redirecionamento (vercel.json) só funciona na Vercel — fora dela, o caminho certo é
+// trocar o botão no código ("Corrigir agora").
+async function detectHosting(siteUrl) {
+  try {
+    const r = await axios.get(siteUrl, { timeout: 10000, maxRedirects: 5, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
+    const h = r.headers || {};
+    const server = String(h.server || "").toLowerCase();
+    let host = "desconhecida";
+    if (h["x-vercel-id"] || server.includes("vercel")) host = "vercel";
+    else if (h["x-nf-request-id"] || server.includes("netlify")) host = "netlify";
+    else if (server.includes("github.com") || h["x-github-request-id"]) host = "github-pages";
+    else if (h["cf-ray"] || server.includes("cloudflare")) host = "cloudflare";
+    else if (/wix|squarespace|shopify|wordpress|wp-engine|hostinger|nginx|apache|litespeed/.test(server + " " + String(h["x-powered-by"] || "").toLowerCase())) host = "outra";
+    const body = typeof r.data === "string" ? r.data : "";
+    return { ok: r.status >= 200 && r.status < 400, status: r.status, host, html: body };
+  } catch (e) {
+    return { ok: false, status: 0, host: "desconhecida", html: "", error: e.code || e.message };
+  }
+}
+
+// Sensor de visitas: aparece no HTML do site? As visitas do SITE (não só do Mini Chat)
+// estão chegando? Foi assim que descobrimos que o sensor da CAA estava só dentro do
+// mini chat antigo — o card ficava verde e a home não contava visita nenhuma.
+async function getSensorStatus(id, siteUrl, htmlPronto) {
+  const desde = new Date(Date.now() - 14 * 864e5).toISOString();
+  const { data: visitas } = await supabase.from("visits").select("site_url,page,created_at").eq("owner_id", id).gte("created_at", desde).order("created_at", { ascending: false }).limit(500);
+  const doSite = (visitas || []).filter(v => v.site_url !== "minichat" && !/minichat/i.test(v.page || ""));
+  let noHtml = null;
+  if (siteUrl) {
+    const html = htmlPronto !== undefined ? htmlPronto : (await detectHosting(siteUrl)).html;
+    noHtml = html ? html.includes(`sensor.js?uid=${id}`) : null;
+  }
+  return { noHtml, visitas14d: doSite.length, ultimaVisita: doSite[0]?.created_at || null, soMinichat: !doSite.length && (visitas || []).length > 0 };
+}
+
+app.get("/api/admin/producers/:id/deploy-status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
+    if (!p?.github_repo) return res.json({ state: "sem_repo", message: "Sem repositório GitHub vinculado." });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    res.json(await getRepoDeployStatus(p.github_repo, { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }));
+  } catch (err) {
+    console.error("[deploy-status]", err.response?.data?.message || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+app.get("/api/admin/producers/:id/sensor-status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: p } = await supabase.from("profiles").select("site_url").eq("id", req.params.id).maybeSingle();
+    res.json(await getSensorStatus(req.params.id, p?.site_url ? p.site_url.replace(/\/+$/, "") : null));
+  } catch (err) {
+    console.error("[sensor-status]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// "Testar tudo": roda todas as provas de uma vez e devolve uma lista simples de
+// ✓ / ⚠️ por etapa — é isso que diz se o cliente está ativado DE VERDADE.
+// Só leitura: não grava nada no repositório nem manda mensagem pra ninguém.
+app.get("/api/admin/producers/:id/activation-test", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { data: p } = await supabase.from("profiles").select("site_url,github_repo,gtm_container_id,minichat_config").eq("id", id).maybeSingle();
+    if (!p) return res.status(404).json({ error: "Produtor não encontrado" });
+    const site = p.site_url ? p.site_url.replace(/\/+$/, "") : null;
+    const token = p.github_repo ? await getGithubToken() : null;
+    const headers = token ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" } : null;
+    const [hosting, deploy, live] = await Promise.all([
+      site ? detectHosting(site) : Promise.resolve(null),
+      headers ? getRepoDeployStatus(p.github_repo, headers).catch(e => ({ state: "erro", message: e.message })) : Promise.resolve(null),
+      p.github_repo ? verifyMinichatLive(id).catch(e => ({ status: "erro", message: e.message })) : Promise.resolve(null),
+    ]);
+    const sensor = await getSensorStatus(id, site, hosting ? hosting.html : undefined);
+    const mc = p.minichat_config || {};
+    const dest = mc.destination_type || (mc.email_destino && !mc.whatsapp_number ? "email" : "whatsapp");
+    const checks = [];
+    const add = (id2, label, ok, detail, warn) => checks.push({ id: id2, label, ok: !!ok, warn: !ok && !!warn, detail });
+    if (!site) add("site", "Site no ar", false, "Cadastre o endereço do site no perfil (Editar) pra eu conseguir testar.");
+    else add("site", "Site no ar", hosting.ok, hosting.ok ? `Abriu normalmente (${hosting.host === "vercel" ? "hospedado na Vercel" : hosting.host === "desconhecida" ? "hospedagem não identificada" : `hospedado em ${hosting.host}`}).` : `Não abriu (${hosting.status || hosting.error}).`);
+    if (deploy) add("deploy", "Última publicação", deploy.state === "ok", deploy.message, deploy.state === "publicando" || deploy.state === "desconhecido");
+    const sensorOk = sensor.noHtml === true || sensor.visitas14d > 0;
+    add("sensor", "Sensor de visitas", sensorOk,
+      sensor.visitas14d > 0 ? `${sensor.visitas14d} visita(s) do site nos últimos 14 dias.`
+        : sensor.noHtml ? "Instalado no site, esperando a primeira visita."
+        : sensor.soMinichat ? "Só chegam visitas da página do mini chat — o sensor não está nas páginas do site. Reinstale no card Sensor."
+        : "Não encontrei o sensor no site nem visitas recentes. Instale no card Sensor.",
+      sensor.noHtml === null && !sensor.visitas14d);
+    if (live) {
+      const okMc = live.status === "ok" || live.status === "proprio";
+      let detail = live.status === "ok" ? "O site abre o Mini Chat do JosephPay." : live.status === "proprio" ? `O site usa um mini chat próprio (${live.path}).${live.aviso ? " Os contatos dele não entram no CRM." : ""}` : live.message;
+      if (!okMc && hosting && hosting.host !== "vercel" && hosting.host !== "desconhecida") detail += ` Como o site não está na Vercel, o redirecionamento não funciona lá — use "Corrigir agora" (troca o botão no código).`;
+      add("minichat_site", "Mini Chat no site", okMc, detail, live.status === "sem_site");
+    }
+    const cfgOk = dest === "email" ? EMAIL_RE.test(String(mc.email_destino || "")) : dest === "ambos" ? (!!mc.whatsapp_number && EMAIL_RE.test(String(mc.email_destino || ""))) : !!mc.whatsapp_number;
+    add("minichat_config", "Destino dos contatos", cfgOk, cfgOk ? (dest === "email" ? `Chega por e-mail em ${mc.email_destino}.` : dest === "ambos" ? `WhatsApp ${mc.whatsapp_number} + e-mail ${mc.email_destino}.` : `Chega no WhatsApp ${mc.whatsapp_number}.`) : "Configure o WhatsApp ou o e-mail de destino no card Mini Chat.");
+    if (dest !== "whatsapp") add("email_envio", "Envio automático de e-mail", !!resend, resend ? "Servidor pronto pra enviar. Use \"Enviar e-mail de teste\" no card Mini Chat pra conferir a caixa de entrada." : "RESEND_API_KEY não configurada no servidor — o Mini Chat cai no jeito antigo (abrir o e-mail do visitante).");
+    const okCount = checks.filter(c => c.ok).length;
+    res.json({ checks, okCount, total: checks.length, allOk: okCount === checks.length, testedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error("[activation-test]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -5497,12 +5649,24 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
     }
 
     let newContent;
-    if (currentContent.match(/<\/head>/i)) {
+    // Ordem pensada pra nunca derrubar site com servidor próprio (Next, TanStack Start/
+    // Lovable): sempre que existir um <head>/<Head>/<body> de verdade (HTML ou JSX), a tag
+    // <script> vai ali — funciona igual no servidor e no navegador. Só cai no carregador
+    // em JS quando não tem nenhum desses, e mesmo assim protegido pra não rodar no servidor.
+    if (currentContent.match(/<\/head>/)) {
+      newContent = currentContent.replace(/<\/head>/, `  ${sensorSnippet}\n</head>`);
+    } else if (currentContent.match(/<\/HEAD>/i) && !/\.[jt]sx?$/.test(filePath)) {
       newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
+    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</Head>")) {
+      newContent = currentContent.replace("</Head>", `  <script src="${PUBLIC_URL}/sensor.js?uid=${id}" async></script>\n</Head>`);
+    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</body>")) {
+      newContent = currentContent.replace("</body>", `  <script src="${PUBLIC_URL}/sensor.js?uid=${id}" async></script>\n</body>`);
     } else if (/\.[jt]sx?$/.test(filePath)) {
       // ES module: inject AFTER the last import/require line so the IIFE doesn't
       // appear before import statements (SyntaxError in strict ES modules / Vite).
-      const loader = `\n// JosephPay sensor\n(function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';document.head.appendChild(s);})();\n`;
+      // typeof document: em site com servidor próprio esse arquivo também roda no
+      // servidor, onde "document" não existe — sem essa proteção o site inteiro caía.
+      const loader = `\n// JosephPay sensor\nif (typeof document !== "undefined") (function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';s.async=true;document.head.appendChild(s);})();\n`;
       const lines = currentContent.split('\n');
       let lastImportLine = -1;
       for (let i = 0; i < lines.length; i++) {
