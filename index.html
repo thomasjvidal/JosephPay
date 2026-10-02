@@ -2971,10 +2971,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             <span style={{color:GREEN,fontSize:13}}>✓</span>
             <span style={{color:GREEN,fontSize:12,fontWeight:700}}>Sempre incluídas no final, automaticamente</span>
           </div>
-          <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta mais 3 coisas antes de liberar o botão final — pra garantir que todo interessado que aparece no CRM já venha com contato real. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.{destinoMc==="email"?" Como o destino deste cliente é E-mail, pergunta o e-mail da pessoa no lugar da data de nascimento.":""}</div>
+          <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta os dados de contato antes de liberar o botão final — pra garantir que todo interessado que aparece no CRM já venha com contato real. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.{destinoMc==="email"?" Como o destino deste cliente é E-mail, também pergunta o e-mail da pessoa.":""}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {(destinoMc==="email"
-              ?(idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?"])
+              ?(idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?","What's your date of birth? (so we can send you a little gift on your birthday 🎁)"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?","Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)"])
               :(idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
             ).map((q,i)=>(
               <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>

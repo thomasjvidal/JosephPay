@@ -500,7 +500,8 @@
             contactEmail: [
                 { id: 'nome',     text: "Show, já estamos quase terminando.", subtext: "Qual seu nome completo?",  label: "Nome",     type: 'text', placeholder: 'Digite seu nome…' },
                 { id: 'email',    text: "Perfeito.",                          subtext: "Qual seu melhor e-mail?",  label: "E-mail",   type: 'email', placeholder: 'voce@email.com' },
-                { id: 'telefone', text: "Última pergunta.",                    subtext: "E qual seu telefone?",     label: "Telefone", type: 'text', placeholder: '(21) 99999-9999' },
+                { id: 'telefone', text: "Ótimo.",                              subtext: "E qual seu telefone?",     label: "Telefone", type: 'text', placeholder: '(21) 99999-9999' },
+                { id: 'nascimento', text: "Última pergunta.",                  subtext: "Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)", label: "Data de nascimento", type: 'text', placeholder: 'DD/MM/AAAA' },
             ],
             defaultMessage: d => `Olá, tudo bem? Segue meu diagnóstico para avaliação:\n\nNome: ${d.nome||''}\nTelefone: ${d.telefone||''}\nData de nascimento: ${d.nascimento||''}\nProcedimento de interesse: ${d.produto||''}\nObjetivo: ${d.objetivo||''}\nMomento para iniciar: ${d.quando||''}\n\nAguardo orientações 🤍`,
             customMessage: (name, linhas, closing) => `Olá ${name},\n\nAcabei de fazer o pré diagnóstico digital.\n\n*Meu perfil:*\n${linhas}\n\n${closing}`,
@@ -540,7 +541,8 @@
             contactEmail: [
                 { id: 'nome',     text: "Great, we're almost done.", subtext: "What's your full name?",     label: "Name",   type: 'text', placeholder: 'Type your name…' },
                 { id: 'email',    text: "Perfect.",                  subtext: "What's your best e-mail?",   label: "E-mail", type: 'email', placeholder: 'you@email.com' },
-                { id: 'telefone', text: "Last question.",            subtext: "And your phone number?",     label: "Phone",  type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'telefone', text: "Great.",                    subtext: "And your phone number?",     label: "Phone",  type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Last question.",          subtext: "What's your date of birth? (so we can send you a little gift on your birthday 🎁)", label: "Date of birth", type: 'text', placeholder: 'MM/DD/YYYY' },
             ],
             defaultMessage: d => `Hi! Here is my pre-diagnosis:\n\nName: ${d.nome||''}\nPhone: ${d.telefone||''}\nDate of birth: ${d.nascimento||''}\nInterest: ${d.produto||''}\nGoal: ${d.objetivo||''}\nTimeline: ${d.quando||''}\n\nLooking forward to hearing from you.`,
             customMessage: (name, linhas, closing) => `Hi ${name},\n\nI just completed the pre-diagnosis on your website.\n\n*My profile:*\n${linhas}\n\n${closing}`,

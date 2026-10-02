@@ -194,8 +194,10 @@ não só o caso que gerou a reclamação.
   IA. `minichat_config.template` (`whatsapp`|`email`, padrão `whatsapp`) +
   `bg_color`/`accent_color` (só `#hex`, validado em `cleanHexColor`) controlam o
   visual "Estilo E-mail" (inspirado no mini chat da CAA Renovations).
-- No modo "E-mail" as perguntas de contato são nome, **e-mail** e telefone (no lugar
-  de "telefone com WhatsApp" + nascimento). O e-mail vai pro CRM (`customers.email`).
+- No modo "E-mail" as perguntas de contato são nome, **e-mail**, telefone e data de
+  nascimento ("pra gente te mandar um brinde no seu aniversário 🎁" / em inglês "so we
+  can send you a little gift on your birthday 🎁"). O e-mail vai pro CRM
+  (`customers.email`). No modo WhatsApp a pergunta de nascimento continua a de sempre.
 
 ## Detecção de framework: TanStack Start novo (Lovable)
 
