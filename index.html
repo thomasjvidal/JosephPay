@@ -211,6 +211,10 @@ textarea{resize:none}
 .crm-v9 .shin{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:10px;padding:12px 13px;color:var(--tx);font-family:inherit;font-size:15px;outline:none}
 .crm-v9 .shin:focus{border-color:rgba(212,175,55,.3)}
 .crm-v9 .shbtn{width:100%;background:linear-gradient(135deg,#d4a93a,#c8a84b,#b8962e);border:none;border-radius:11px;padding:14px;font-size:15px;font-weight:700;color:#0b0b0c;cursor:pointer;margin-top:8px}
+/* Vidro fosco (estilo Apple) também na área de Disparos — mesmo padrão do resto do app */
+.crm-v9 .dc{background:linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025));backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);border:1px solid rgba(255,255,255,0.09);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 10px 28px rgba(0,0,0,0.3);border-radius:16px}
+.crm-v9 .sh{background:linear-gradient(180deg,rgba(40,38,34,0.88),rgba(22,21,19,0.94));backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border-top:1px solid rgba(255,255,255,0.12);border-radius:24px 24px 0 0}
+.crm-v9 .sys-msg{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .crm-v9 .shop{width:100%;background:var(--c2);border:1px solid var(--ln);border-radius:13px;padding:15px 16px;color:var(--tx);font-size:14px;font-weight:600;cursor:pointer;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:13px}
 .crm-v9 .shop.gd{background:linear-gradient(135deg,#d4a93a,#c8a84b,#b8962e);border-color:transparent;color:#0b0b0c}
 .crm-v9 .shop:active{opacity:.7}
@@ -315,6 +319,13 @@ const F="'Inter',system-ui,sans-serif", SF="'Newsreader',Georgia,serif";
 // cards novos/redesenhados. glassCard = o card em si; glassInset = bloco dentro dele;
 // pillBtn = botão em pílula (primário dourado ou secundário de vidro).
 const glassCard=(done)=>({background:"linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.025))",backdropFilter:"blur(24px) saturate(160%)",WebkitBackdropFilter:"blur(24px) saturate(160%)",border:`1px solid ${done?"rgba(34,197,94,0.28)":"rgba(255,255,255,0.10)"}`,borderRadius:24,padding:"18px",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 32px rgba(0,0,0,0.35)"});
+// Mesma superfície de vidro, sem padding — usada no app INTEIRO (cards, listas, KPIs)
+// pra trocar o fundo sólido antigo sem mudar tamanho nem espaçamento de nada.
+const glassSurface={background:"linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))",backdropFilter:"blur(18px) saturate(150%)",WebkitBackdropFilter:"blur(18px) saturate(150%)",border:"1px solid rgba(255,255,255,0.09)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 28px rgba(0,0,0,0.30)"};
+// Folha que sobe de baixo (modais): vidro mais denso, pra leitura confortável por cima da tela.
+const glassSheet={background:"linear-gradient(180deg,rgba(40,38,34,0.88),rgba(22,21,19,0.94))",backdropFilter:"blur(28px) saturate(160%)",WebkitBackdropFilter:"blur(28px) saturate(160%)",borderTop:"1px solid rgba(255,255,255,0.12)",boxShadow:"0 -12px 40px rgba(0,0,0,0.45)"};
+// Fundo do app com um brilho dourado bem sutil — é ele que faz o vidro "aparecer".
+const APP_BG="radial-gradient(1100px 600px at 12% -8%, rgba(212,175,55,0.13), transparent 60%), radial-gradient(900px 520px at 110% 18%, rgba(91,141,239,0.07), transparent 60%), radial-gradient(800px 600px at 50% 110%, rgba(212,175,55,0.06), transparent 60%), #131312";
 const glassInset={background:"rgba(255,255,255,0.045)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px"};
 const pillBtn=(primary,disabled)=>({width:"100%",height:50,borderRadius:100,border:primary?"none":"1px solid rgba(255,255,255,0.14)",background:primary?`linear-gradient(180deg,${GOLD2},${GOLD})`:"rgba(255,255,255,0.06)",color:primary?"#0C0C0C":TEXT,fontWeight:600,fontSize:15,letterSpacing:"-0.01em",cursor:disabled?"default":"pointer",opacity:disabled?0.55:1,fontFamily:F,backdropFilter:primary?"none":"blur(12px)",WebkitBackdropFilter:primary?"none":"blur(12px)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,textDecoration:"none",boxSizing:"border-box"});
 
@@ -345,7 +356,7 @@ function Tag({status}){
 function KPICard({label,value,sub,accent,icon,vis=true,onClick,compact=false}){
   const c=accent||GOLD;
   return(
-    <div onClick={onClick} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:compact?12:14,padding:compact?"11px 10px":"14px 12px",cursor:onClick?"pointer":"default"}}>
+    <div onClick={onClick} style={{...glassSurface,borderRadius:compact?14:16,padding:compact?"11px 10px":"14px 12px",cursor:onClick?"pointer":"default"}}>
       <div style={{marginBottom:compact?5:7}}>
         <span style={{color:"rgba(255,255,255,0.38)",fontSize:compact?8.5:9.5,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,lineHeight:1.3}}>{label}</span>
       </div>
@@ -357,7 +368,7 @@ function KPICard({label,value,sub,accent,icon,vis=true,onClick,compact=false}){
 
 function Pill({label,value,accent,sub}){
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:18,padding:"18px 16px",flex:1,minWidth:0}}>
+    <div style={{...glassSurface,borderRadius:18,padding:"18px 16px",flex:1,minWidth:0}}>
       <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
       <div style={{color:accent||TEXT,fontSize:20,fontWeight:800,letterSpacing:"-0.03em"}}>{value}</div>
       {sub&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>{sub}</div>}
@@ -420,7 +431,7 @@ function AdvancedChart({accent=GOLD,vis=true,endpoint}){
   const pd=PERIODS[period];
   const gid=`g-${period}-${accent.replace("#","")}`;
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"16px 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",fontFamily:F}}>{pd.label}</div>
@@ -492,7 +503,7 @@ function VisitorChart({analytics,loadingAnalytics}){
   const DAYS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const chartRows=chartData.map(d=>({...d,label:DAYS[new Date(d.date+"T12:00:00").getDay()]}));
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
         {saved&&!editing&&(
@@ -555,7 +566,7 @@ function VisitasClienteAdmin({ownerId}){
   const DAYS=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const chartRows=(analytics?.daily||[]).map(d=>({...d,label:DAYS[new Date(d.date+"T12:00:00").getDay()]}));
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Visitantes do site</div>
         {hasData&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}28`,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{analytics.total} visitas</span>}
@@ -594,7 +605,7 @@ function FunilClienteAdmin({ownerId}){
     apiCall(`/api/admin/funnel?owner=${ownerId}`).then(d=>{if(!d.error)setFunnel(d);setLoading(false);});
   },[ownerId]);
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px 18px 14px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"18px 18px 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Funil de conversão</div>
         <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
@@ -686,7 +697,7 @@ function ChatIA({productName, onBack}){
           <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
             <div style={{color:MUTED,fontSize:11,marginBottom:2}}>Perguntas rápidas:</div>
             {QQ.map(q=>(
-              <button key={q} onClick={()=>send(q)} style={{textAlign:"left",padding:"10px 14px",borderRadius:12,background:CARD,border:`1px solid ${BDR}`,color:"rgba(255,255,255,0.75)",fontSize:13,cursor:"pointer",fontWeight:500,fontFamily:F}}>{q}</button>
+              <button key={q} onClick={()=>send(q)} style={{textAlign:"left",padding:"10px 14px",borderRadius:12,...glassSurface,border:`1px solid ${BDR}`,color:"rgba(255,255,255,0.75)",fontSize:13,cursor:"pointer",fontWeight:500,fontFamily:F}}>{q}</button>
             ))}
           </div>
         )}
@@ -694,7 +705,7 @@ function ChatIA({productName, onBack}){
         <div ref={bottom}/>
       </div>
       <div style={{display:"flex",gap:8,flexShrink:0,paddingBottom:4}}>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." disabled={sending} style={{flex:1,background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,opacity:sending?0.6:1}}/>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Mensagem..." disabled={sending} style={{flex:1,...glassSurface,borderRadius:14,padding:"13px 16px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,opacity:sending?0.6:1}}/>
         <button onClick={()=>send()} disabled={sending} style={{width:46,height:46,borderRadius:14,background:sending?"rgba(212,175,55,0.4)":GOLD,border:"none",color:"#0A0A0A",fontSize:18,cursor:sending?"not-allowed":"pointer",fontWeight:900,flexShrink:0}}>→</button>
       </div>
     </div>
@@ -756,7 +767,7 @@ function Afiliados({isAdmin}){
               <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
             </div>
           </div>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Todos os afiliados</span>
               <Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Convidar</Btn>
@@ -772,7 +783,7 @@ function Afiliados({isAdmin}){
             <Pill label="Total afiliados" value={list?String(list.length):"—"} accent={GOLD}/>
             <Pill label="Comissão total" value={list?fmtBRL(comissaoTotal):"—"} accent={GOLD} sub="acumulado"/>
           </div>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Meus afiliados</span>
               <Btn sm outline color={GOLD}>+ Convidar</Btn>
@@ -819,7 +830,7 @@ function Assinaturas({isAdmin}={}){
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
         </div>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Assinaturas</span></div>
         {subs===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {subs!==null&&subs.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma assinatura registrada ainda.</div>}
@@ -881,7 +892,7 @@ function Sacar({isAdmin}={}){
         </div>
         <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAutN3CNgEjGwomODrN5X4TOoO9lYUUoHWzKR2y1DXVVum-OCBnFZmfHd2oYxnFCsmaUBG-S_-p6CWLcawruI2o0xiEwgFYokwkCFGLUfdM9RYuEIRHnX8wCbHpYb-4baj1zvlB22kJCSGiAkMvBZRhKEAKASdlbVILoAl0rAMz3UaOE3KDx0JEeQ8TaSKRsY26BaU-RIbocWAJLApHHLz_k-nvZw5mlk47BFd6YWyMCbFRd0NPZjSrc-8buFoJ0PZm5n76xi3_erY" alt="Gold Card" style={{position:"absolute",top:0,right:0,width:"45%",height:"100%",objectFit:"cover",opacity:0.35,mixBlendMode:"overlay"}}/>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px",display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"22px",display:"flex",flexDirection:"column",gap:16}}>
         <div>
           <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:10}}>Quanto sacar?</div>
           <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:16}}>
@@ -901,7 +912,7 @@ function Sacar({isAdmin}={}){
         {saqueErr&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{saqueErr}</div>}
         <button onClick={doSaque} disabled={loading} style={{background:(val&&pixKey&&!loading)?GOLD:"rgba(201,168,76,0.2)",border:"none",borderRadius:100,padding:16,color:(val&&pixKey&&!loading)?"#0C0C0C":MUTED,fontWeight:600,fontSize:15,cursor:(val&&pixKey&&!loading)?"pointer":"default",fontFamily:F,transition:"all 0.2s"}}>{loading?"Processando…":"Sacar agora →"}</button>
       </div>
-      <div style={{background:CARD,borderRadius:20,overflow:"hidden",position:"relative",minHeight:100,marginTop:4}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden",position:"relative",minHeight:100,marginTop:4}}>
         <img src="https://images.unsplash.com/photo-1616077168712-fc6c788db4af?q=80&w=2070&auto=format&fit=crop"
           alt="Gold" style={{position:"absolute",right:0,top:0,height:"100%",width:"40%",objectFit:"cover",opacity:0.4,mixBlendMode:"luminosity"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to right, #1C1C1A 60%, transparent)"}}/>
@@ -941,7 +952,7 @@ function GoogleAdmin(){
     load();
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
       <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>Google Tag Manager</div>
       <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta Google uma única vez para instalar o sensor de visitas direto nos containers GTM dos seus clientes, sem colar código no site deles. Só o Admin vê essa tela — o produtor nunca participa desse fluxo.</div>
       {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
@@ -988,7 +999,7 @@ function GithubAdmin(){
     load();
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
       <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:6}}>GitHub</div>
       <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Conecte sua conta GitHub uma única vez para instalar o sensor direto no código dos sites que você (ou sua equipe) mantém em repositório — com um commit automático, sem abrir editor de código. Só pra clientes com site próprio em repositório; o produtor nunca participa desse fluxo.</div>
       {status===null&&<div className="sk" style={{height:44,borderRadius:12}}/>}
@@ -1669,7 +1680,7 @@ function FotosDoSiteAdmin({c,initialOpen,done}){
     reader.readAsDataURL(file);
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Fotos do site" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Lista as imagens de verdade que existem no repositório do cliente — escolha uma e suba a substituta. Mantém o mesmo lugar no site, então não precisa mexer em código nem pedir pra outra IA.</div>
@@ -1784,7 +1795,7 @@ function Config(){
   const save=()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);};
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Taxas da plataforma</span></div>
         <div style={{padding:"18px",display:"flex",flexDirection:"column",gap:14}}>
           {[{label:"Porcentagem",desc:"% sobre cada venda",color:GOLD,key:"pct",sym:"%",right:true},{label:"Taxa Fixa",desc:"Valor fixo por transação",color:GOLD,key:"fixo",sym:"R$",right:false}].map(m=>(
@@ -1793,7 +1804,7 @@ function Config(){
                 <div><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{m.label}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{m.desc}</div></div>
                 <span style={{background:`${m.color}15`,color:m.color,border:`1px solid ${m.color}25`,fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Ativo</span>
               </div>
-              <div style={{display:"flex",alignItems:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:12}}>
+              <div style={{display:"flex",alignItems:"center",...glassSurface,borderRadius:12}}>
                 {!m.right&&<span style={{padding:"0 14px",color:m.color,fontWeight:700}}>{m.sym}</span>}
                 <input value={fees[m.key]} onChange={e=>setFees({...fees,[m.key]:e.target.value})} style={{flex:1,background:"none",border:"none",padding:"11px 14px",color:TEXT,fontSize:18,fontWeight:800,outline:"none",fontFamily:F}}/>
                 {m.right&&<span style={{padding:"0 14px",color:m.color,fontWeight:700}}>{m.sym}</span>}
@@ -1809,7 +1820,7 @@ function Config(){
               {[{label:"% por cobrança",key:"recPct",sym:"%",right:true},{label:"+ fixo (R$)",key:"recFixo",sym:"R$",right:false}].map(f=>(
                 <div key={f.key} style={{flex:1}}>
                   <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5}}>{f.label}</div>
-                  <div style={{display:"flex",alignItems:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:12}}>
+                  <div style={{display:"flex",alignItems:"center",...glassSurface,borderRadius:12}}>
                     {!f.right&&<span style={{padding:"0 12px",color:GOLD,fontWeight:700}}>{f.sym}</span>}
                     <input value={fees[f.key]} onChange={e=>setFees({...fees,[f.key]:e.target.value})} style={{flex:1,background:"none",border:"none",padding:"10px 8px",color:TEXT,fontSize:16,fontWeight:800,outline:"none",fontFamily:F}}/>
                     {f.right&&<span style={{padding:"0 12px",color:GOLD,fontWeight:700}}>{f.sym}</span>}
@@ -1821,7 +1832,7 @@ function Config(){
           <button onClick={save} style={{background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:16,padding:14,color:saved?GREEN:"#0A0A0A",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:F}}>{saved?"✓ Salvo!":"Salvar taxas"}</button>
         </div>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Conexão Asaas</span></div>
         <div style={{padding:"18px",display:"flex",flexDirection:"column",gap:12}}>
           {[{l:"API Key",p:"$aact_xxxx...",t:"password"},{l:"Wallet ID",p:"wallet-id-aqui"}].map(f=>(
@@ -1882,7 +1893,7 @@ function DashAdmin({onNav}){
         </div>
       </div>
       <button id="btn-sacar" onClick={()=>onNav("financeiro","sacar")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"14px 24px",color:"#0C0C0A",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
-      <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
+      <div className="jp-sunburst" style={{...glassSurface,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
           <KPICard label="Suas taxas (0.99%)" value={kpis?fmtBRL(kpis.taxasMes):"—"} accent={GOLD} icon="◈" onClick={()=>onNav("financeiro","vendas")}/>
           <KPICard label="Transações" value={kpis?String(kpis.transacoes):"—"} accent={GOLD} icon="↑" onClick={()=>onNav("financeiro","vendas")}/>
@@ -1908,7 +1919,7 @@ function DashAdmin({onNav}){
       </div>
       <AdvancedChart accent={GOLD} endpoint="/api/admin/chart"/>
       {comentarios?.length>0&&(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
             <span style={{color:TEXT,fontWeight:700,fontSize:14}}>💬 Comentários nos relatórios</span>
           </div>
@@ -1924,7 +1935,7 @@ function DashAdmin({onNav}){
           ))}
         </div>
       )}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <button onClick={()=>onNav("financeiro","vendas")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todas →</button>
@@ -1950,7 +1961,7 @@ function DashAdmin({onNav}){
           );
         })}
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Clientes</span>
           <button onClick={()=>onNav("clientes")} style={{background:"none",border:"none",color:GOLD,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:F}}>Ver todos →</button>
@@ -1972,7 +1983,7 @@ function DashAdmin({onNav}){
           <KPICard label="Volume total" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.vol||0),0)):"—"} accent={GOLD} icon="⊕"/>
           <KPICard label="Taxas totais" value={clients?fmtBRL(clients.reduce((a,c)=>a+Number(c.taxa||0),0)):"—"} accent={GOLD} icon="⟳"/>
         </div>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Fontes de tráfego · Plataforma (últimos 30 dias)</div>
           {traffic===null&&[1,2,3].map(i=>(<div key={i} className="sk" style={{height:16,borderRadius:6,marginBottom:12}}/>))}
           {traffic!==null&&traffic.sources.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"10px 0"}}>Nenhuma visita registrada ainda.</div>}
@@ -2006,7 +2017,7 @@ function NotaProdutorAdmin({ownerId}){
     if(!d?.error){setSaved(true);setTimeout(()=>setSaved(false),2000);}
   };
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+    <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:15}}>📝</span>
@@ -2045,7 +2056,7 @@ function AniversariosClienteAdmin({ownerId}){
   if(!clientes||!anivs.length)return null;
   const hoje=anivs.filter(a=>a.dias===0).length;
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"16px 18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
         <span style={{color:TEXT,fontWeight:700,fontSize:14}}>🎂 Próximos aniversários</span>
         {hoje>0&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🎉 {hoje} hoje</span>}
@@ -2088,9 +2099,9 @@ function DisparosClienteAdmin({ownerId}){
     setDisparos(p=>[...(p||[]),novo]);
   };
   const remover=(i)=>{if(!window.confirm("Remover este disparo?"))return;setDisparos(p=>p.filter((_,j)=>j!==i));};
-  const inputSt={width:"100%",background:CARD,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,boxSizing:"border-box"};
+  const inputSt={width:"100%",...glassSurface,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+    <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <span style={{color:TEXT,fontWeight:700,fontSize:14}}>⚡ Disparos automáticos</span>
         <div style={{display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
@@ -2189,7 +2200,7 @@ function ProdutosDoCliente({ownerId,nome}){
   };
   const inputSt={width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,boxSizing:"border-box"};
   return(
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+    <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
       {showCriar&&<CriarProdutoModal ownerId={ownerId} onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Produtos de {nome||"—"}</span>
@@ -2332,7 +2343,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
     <>
     {sel&&(
       <div onClick={fechar} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:300,display:"flex",alignItems:"flex-end"}}>
-        <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 22px 44px",maxHeight:"92vh",overflowY:"auto"}}>
+        <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"12px 22px 44px",maxHeight:"92vh",overflowY:"auto"}}>
           <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 18px"}}/>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
             <div style={{width:48,height:48,borderRadius:14,background:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:18,color:TEXT,flexShrink:0}}>{(editForm.name||sel.name||"?")[0]}</div>
@@ -2383,7 +2394,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
         </div>
       </div>
     )}
-    <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+    <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
       <CardHeader title="Clientes do produtor" open={open} onToggle={()=>setOpen(o=>!o)}/>
       {open&&(<div style={{marginTop:8}}>
         {lista===null&&!erroLista&&<div style={{color:MUTED,fontSize:12,padding:"10px 0"}}>Carregando…</div>}
@@ -2502,7 +2513,7 @@ function AdicionarContatosModal({ownerId,nome,onClose,onCreated}){
   };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         {savedCount!==null?(
           <div style={{textAlign:"center",padding:"20px 0 10px"}}>
@@ -3265,7 +3276,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar para clientes</button>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
             <div className="sk" style={{width:44,height:44,borderRadius:14,flexShrink:0}}/>
             <div style={{flex:1}}><div className="sk" style={{height:14,width:"45%",borderRadius:6,marginBottom:7}}/><div className="sk" style={{height:10,width:"60%",borderRadius:5}}/></div>
@@ -3366,7 +3377,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
           <ClientesDoProdutorAdmin ownerId={c.id} nome={nome} refreshKey={contatosVersao}/>
           <DisparosClienteAdmin ownerId={c.id}/>
           <NotaProdutorAdmin ownerId={c.id}/>
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+          <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}><span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span></div>
             {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
             {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda encontrada.</div>}
@@ -3485,7 +3496,7 @@ function SiteAuditModal({onClose,onAbrirCliente}){
   const semNada=(producers||[]).filter(p=>!p.fixed?.length&&!p.issues?.length);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"20px 24px 40px",maxHeight:"88vh",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"20px 24px 40px",maxHeight:"88vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         <div style={{color:TEXT,fontWeight:800,fontSize:17,marginBottom:4}}>Diagnóstico técnico de todos os produtores</div>
         <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.5}}>Verifica todos os clientes com GitHub vinculado e já corrige sozinho o que for seguro corrigir (Mini Chat fora do lugar, vercel.json, botões de WhatsApp pendentes). Roda no servidor — pode fechar essa tela que ele continua. Também roda sozinho 1x por dia.</div>
@@ -3632,7 +3643,7 @@ function ClientesAdmin(){
           <button key={o.id} onClick={()=>{setOrdem(o.id);localStorage.setItem('jp_admin_ordem_clientes',o.id);}} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${o.id===ordem?GOLD+"55":BDR}`,background:o.id===ordem?`${GOLD}14`:"transparent",color:o.id===ordem?GOLD:MUTED,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,fontFamily:F,whiteSpace:"nowrap"}}>{o.label}</button>
         ))}
       </div>
-      {clients===null&&!erroClients&&[1,2,3].map(i=>(<div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
+      {clients===null&&!erroClients&&[1,2,3].map(i=>(<div key={i} style={{...glassSurface,borderRadius:16,padding:"12px 14px",marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div className="sk" style={{width:36,height:36,borderRadius:11,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:11,width:"40%",borderRadius:5,marginBottom:5}}/><div className="sk" style={{height:9,width:"30%",borderRadius:4}}/></div><div className="sk" style={{height:18,width:48,borderRadius:20}}/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><div className="sk" style={{height:44,borderRadius:10}}/><div className="sk" style={{height:44,borderRadius:10}}/></div></div>))}
       {erroClients&&(
         <div style={{padding:"20px",textAlign:"center"}}>
           <div style={{color:RED,fontSize:13,marginBottom:10}}>Não consegui carregar os produtores agora — pode ser uma falha passageira de conexão. Ninguém foi apagado, só não carregou.</div>
@@ -3702,9 +3713,9 @@ function MinichatOverviewAdmin({clients,onConfigurar}){
   });
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum produtor cadastrado ainda.</div>}
+      {produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",...glassSurface,borderRadius:20}}>Nenhum produtor cadastrado ainda.</div>}
       {produtores.map(p=>(
-        <div key={p.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px"}}>
+        <div key={p.id} style={{...glassSurface,borderRadius:20,padding:"16px 18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
             <Avatar url={p.avatar_url} name={p.company_name||p.name} size={40} radius={12} fontSize={16}/>
             <div style={{flex:1,minWidth:0}}>
@@ -3740,17 +3751,17 @@ function MinichatDetalheAdmin({ownerId,nome,onBack}){
       {data&&(
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+            <div style={{...glassSurface,borderRadius:16,padding:"12px 14px"}}>
               <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Sessões</div>
               <div style={{color:TEXT,fontWeight:800,fontSize:20,marginTop:2}}>{data.total}</div>
             </div>
-            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+            <div style={{...glassSurface,borderRadius:16,padding:"12px 14px"}}>
               <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>Concluídas</div>
               <div style={{color:GREEN,fontWeight:800,fontSize:20,marginTop:2}}>{data.completas}</div>
             </div>
           </div>
           {data.funil.length>0&&(
-            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+            <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
               <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>Onde as pessoas param</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {data.funil.map((qtd,i)=>(
@@ -3766,11 +3777,11 @@ function MinichatDetalheAdmin({ownerId,nome,onBack}){
             </div>
           )}
           <div style={{color:TEXT,fontWeight:700,fontSize:13,marginTop:4}}>Sessões individuais</div>
-          {data.sessoes.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhuma sessão ainda.</div>}
+          {data.sessoes.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",...glassSurface,borderRadius:16}}>Nenhuma sessão ainda.</div>}
           {data.sessoes.map(s=>{
             const aberta=sessaoAberta===s.id;
             return(
-              <div key={s.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px"}}>
+              <div key={s.id} style={{...glassSurface,borderRadius:16,padding:"12px 14px"}}>
                 <div onClick={()=>setSessaoAberta(aberta?null:s.id)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
                   <span style={{width:8,height:8,borderRadius:"50%",background:s.completed_at?GREEN:MUTED,flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
@@ -3814,9 +3825,9 @@ function RelatoriosOverviewAdmin({onAbrir}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {erro&&<div style={{padding:"14px 16px",color:RED,fontSize:12,textAlign:"center",background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:16}}>{erro}</div>}
-      {!erro&&produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:20}}>Nenhum relatório gerado ainda. Gere um em Google Ads → escolha o produtor → "Gerar relatório".</div>}
+      {!erro&&produtores.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center",...glassSurface,borderRadius:20}}>Nenhum relatório gerado ainda. Gere um em Google Ads → escolha o produtor → "Gerar relatório".</div>}
       {produtores.map(p=>(
-        <div key={p.owner_id} onClick={()=>onAbrir(p.owner_id,p.producer_name)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 18px",cursor:"pointer"}}>
+        <div key={p.owner_id} onClick={()=>onAbrir(p.owner_id,p.producer_name)} style={{...glassSurface,borderRadius:20,padding:"16px 18px",cursor:"pointer"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
             <Avatar url={p.avatar_url} name={p.producer_name} size={40} radius={12} fontSize={16}/>
             <div style={{flex:1,minWidth:0}}>
@@ -3862,12 +3873,12 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
       </div>
       {erro&&<div style={{padding:"14px 16px",color:RED,fontSize:12,textAlign:"center",background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:16}}>{erro}</div>}
       {reports===null&&<div style={{color:MUTED,fontSize:12}}>Carregando…</div>}
-      {!erro&&reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",background:CARD,border:`1px solid ${BDR}`,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
+      {!erro&&reports!==null&&reports.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",...glassSurface,borderRadius:16}}>Nenhum relatório salvo ainda.</div>}
       {reports?.map(r=>{
         const views=r.views||[];
         const fmtDataHora=iso=>new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
         return(
-          <div key={r.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"14px 16px"}}>
+          <div key={r.id} style={{...glassSurface,borderRadius:16,padding:"14px 16px"}}>
             <div>
               <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}/{r.ano}</div>
               <div style={{color:MUTED,fontSize:11,marginTop:2}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
@@ -3969,7 +3980,7 @@ function VendasAdmin(){
         <KPICard label="Transações" value={String(filtered.length)} accent={GOLD} icon="↑"/>
         <KPICard label="Pendentes" value={String(filtered.filter(s=>s.status==="pendente").length)} accent={GOLD} icon="⟳"/>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           {allSales===null?<div className="sk" style={{height:14,width:100,borderRadius:6}}/>:<span style={{color:TEXT,fontWeight:700,fontSize:14}}>{filtered.length+" transações"}</span>}
           <span style={{color:MUTED,fontSize:12}}>{filtro==="todos"?"Todas as contas":filtro}</span>
@@ -4055,7 +4066,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
         <div style={{color:"rgba(12,12,12,0.88)",fontFamily:SF,fontWeight:600,fontSize:32,letterSpacing:"-0.01em",lineHeight:1}}>{vis?(kpis?fmtBRL(kpis.receitaLiquidaMes||kpis.receitaMes):<div className="sk" style={{height:32,width:140,borderRadius:8,background:"rgba(12,12,12,0.15)",marginTop:4}}/>):"R$ ••••••"}</div>
       </div>
       <button id="btn-sacar" onClick={()=>onNav("saque")} style={{background:"linear-gradient(135deg,#9A6E20 0%,#C9953F 20%,#E8C86A 42%,#D4A848 62%,#A07228 82%,#C09040 100%)",border:"none",borderRadius:14,padding:"11px 20px",color:"#0C0C0A",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,width:"100%",letterSpacing:"0.03em"}}>Sacar</button>
-      <div className="jp-sunburst" style={{background:CARD,borderRadius:20,padding:12}}>
+      <div className="jp-sunburst" style={{...glassSurface,borderRadius:20,padding:12}}>
         <div className="kpi-grid">
           {kpis===null?[0,1,2,3].map(i=>(
             <div key={i} style={{background:CARD2,borderRadius:16,padding:"16px 14px",display:"flex",flexDirection:"column",gap:10}}>
@@ -4083,7 +4094,7 @@ function DashClient({accent=GOLD,isDeise,onNav}){
           <button style={{background:"transparent",border:"none",color:GOLD,fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer",padding:0}}>Saiba mais →</button>
         </div>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Últimas vendas</span>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -4125,7 +4136,7 @@ function Vendas({accent=GOLD,isDeise}){
         <Pill label="Total vendas" value={sales?String(sales.length):"—"} accent={accent}/>
         <Pill label="Receita" value={sales?fmtBRL(receita):"—"} accent={GOLD}/>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
         {sales===null&&[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:`1px solid ${BDR}`}}><div className="sk" style={{width:38,height:38,borderRadius:12,flexShrink:0}}/><div style={{flex:1}}><div className="sk" style={{height:12,width:"55%",borderRadius:6,marginBottom:6}}/><div className="sk" style={{height:10,width:"38%",borderRadius:5}}/></div><div style={{textAlign:"right"}}><div className="sk" style={{height:12,width:56,borderRadius:6,marginBottom:6,marginLeft:"auto"}}/><div className="sk" style={{height:10,width:36,borderRadius:5,marginLeft:"auto"}}/></div></div>))}
         {sales!==null&&sales.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhuma venda registrada ainda.</div>}
         {(sales||[]).map((s,i)=>{
@@ -4445,7 +4456,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
     <>
     {cropSrc&&<CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={()=>setCropSrc(null)}/>}
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"85vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         {/* Avatar + nome */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
@@ -4541,7 +4552,7 @@ function GAPendente({titulo,texto,onNav}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{titulo}</div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px 18px",textAlign:"center"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"28px 18px",textAlign:"center"}}>
         <div style={{fontSize:26,marginBottom:10,opacity:0.6}}>⏳</div>
         <div style={{color:TEXT,fontSize:14,fontWeight:700,marginBottom:6}}>Conexão pendente</div>
         <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:16}}>{texto}</div>
@@ -4721,7 +4732,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
             {label:"Clientes",v:String(a.clientes),c:GREEN},
             {label:"Faturamento",v:fmtBRL(a.faturamento),c:GOLD},
           ].map(r=>(
-            <div key={r.label} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div key={r.label} style={{...glassSurface,borderRadius:16,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>{r.label}</span>
               <span style={{textAlign:"right"}}>
                 <span style={{color:r.c,fontFamily:SF,fontWeight:700,fontSize:16}}>{r.v}</span>
@@ -4811,7 +4822,7 @@ function GADesempenho({clienteId,cliente,presetDias,setPresetDias}){
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {passos.map((r,i)=>(
           <React.Fragment key={r.label}>
-            <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{...glassSurface,borderRadius:14,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:MUTED,fontSize:12,fontWeight:600}}>{r.label}</span>
               <span style={{color:TEXT,fontSize:16,fontWeight:800}}>{r.v}</span>
             </div>
@@ -4846,7 +4857,7 @@ function GACampanhas({clienteId,cliente,presetDias,onNav,onSelect}){
       {data.manual&&<div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"10px 14px",color:MUTED,fontSize:12,lineHeight:1.4}}>🖊️ Dados inseridos manualmente em {new Date(data.manualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado.</div>}
       {data.campaigns.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma campanha encontrada ainda.</div>}
       {data.campaigns.map((camp,i)=>(
-        <div key={camp.id||i} onClick={()=>data.manual?null:onSelect(camp)} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,cursor:data.manual?"default":"pointer"}}>
+        <div key={camp.id||i} onClick={()=>data.manual?null:onSelect(camp)} style={{...glassSurface,borderRadius:16,padding:16,cursor:data.manual?"default":"pointer"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{camp.name}</span>
             {!data.manual&&<Tag status={camp.status==="ENABLED"?"ativo":"inativo"}/>}
@@ -4893,7 +4904,7 @@ function GAAnuncios({clienteId,cliente,onNav}){
       {data.error&&<div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar do Google Ads: {data.error}</div>}
       {data.ads.length===0&&!data.error&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhum anúncio encontrado ainda.</div>}
       {data.ads.map(ad=>(
-        <div key={ad.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16}}>
+        <div key={ad.id} style={{...glassSurface,borderRadius:16,padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,gap:10}}>
             <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{ad.headline}</span>
             <Tag status={ad.status==="ENABLED"?"ativo":"inativo"}/>
@@ -4919,7 +4930,7 @@ function GAPalavrasChave({clienteId,cliente,onNav}){
       {data.error&&<div style={{background:`${RED}10`,border:`1px solid ${RED}30`,borderRadius:14,padding:"12px 14px",color:MUTED,fontSize:12,lineHeight:1.5}}>Não consegui buscar do Google Ads: {data.error}</div>}
       {data.keywords.length===0&&!data.error&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma palavra-chave encontrada ainda.</div>}
       {data.keywords.map((kw,i)=>(
-        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div key={i} style={{...glassSurface,borderRadius:16,padding:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>{kw.text}</span>
           <div style={{display:"flex",gap:14,color:MUTED,fontSize:12}}>
             <span>{kw.clicks} cliques</span>
@@ -4994,7 +5005,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <style>{`@media print{.jp-bnav,.jp-sidebar,.jp-topbar{display:none !important}}`}</style>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"22px 20px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"22px 20px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:18,flexWrap:"wrap"}}>
           <div>
             <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:20,letterSpacing:"-0.01em"}}>Joseph Pay<span style={{fontSize:11,verticalAlign:"super"}}>®</span></div>
@@ -5036,7 +5047,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         </div>
       )}
 
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"16px 14px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:10}}>Evolução de interessados</div>
         <ResponsiveContainer width="100%" height={140}>
           <LineChart data={report.evolucaoInteressados} margin={{top:6,right:6,left:-28,bottom:0}}>
@@ -5049,7 +5060,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         </ResponsiveContainer>
       </div>
 
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"16px 14px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:10}}>Canais de origem</div>
         {report.canaisOrigem.length===0?(
           <div style={{color:MUTED,fontSize:12,textAlign:"center",padding:10}}>Nenhum contato nesse período ainda.</div>
@@ -5073,7 +5084,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         </>)}
       </div>
 
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"16px 14px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"16px 14px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:2}}>Horários com mais contatos</div>
         <div style={{color:MUTED,fontSize:10,marginBottom:10}}>Horário de Brasília</div>
         <ResponsiveContainer width="100%" height={140}>
@@ -5098,7 +5109,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         ].filter(x=>x.v!=null);
         if(!AL.length)return null;
         return(
-          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+          <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
             <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:2}}>Ações locais no Google Ads</div>
             <div style={{color:MUTED,fontSize:10,marginBottom:12}}>Ações que as pessoas fizeram depois de ver o anúncio</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -5114,7 +5125,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
       })()}
 
       {report.termosPesquisa?.length>0&&(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>Termos de pesquisa que mais geraram cliques</div>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             {report.termosPesquisa.map((t,i)=>(
@@ -5131,7 +5142,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
       )}
 
       {report.interesses&&(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:12}}>O que as pessoas procuraram</div>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             {report.interesses.map((it,i)=>(
@@ -5148,7 +5159,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
       )}
 
       {report.insights?.length>0&&(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
           <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>O que descobrimos este mês</div>
           <ul style={{margin:0,padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.8}}>
             {report.insights.map((s,i)=>(<li key={i}>{s}</li>))}
@@ -5182,7 +5193,7 @@ function GAIntegracao({clienteId,cliente}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Integração · Google Ads</div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px",color:MUTED,fontSize:13,lineHeight:1.6}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px",color:MUTED,fontSize:13,lineHeight:1.6}}>
         O Google Ads de <b style={{color:TEXT}}>{cliente?.name||"esse produtor"}</b> funciona só por inserção manual agora — sem conexão automática. Volte pra "Visão geral" e use "🖊️ Inserir investimento manualmente".
       </div>
     </div>
@@ -5224,7 +5235,7 @@ function GAHistorico({clienteId,cliente}){
         <div key={ano} style={{display:"flex",flexDirection:"column",gap:8}}>
           <div style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginTop:4}}>{ano}</div>
           {porAno[ano].map(r=>(
-            <div key={r.id} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+            <div key={r.id} style={{...glassSurface,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                 <div>
                   <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{MESES[r.mes-1]}</div>
@@ -5411,7 +5422,7 @@ function CoproducaoView(){
         <KPICard label="Coprodutor" value="—" icon="◉" accent={GOLD}/>
         <KPICard label="Divisão" value="—" icon="◈" accent={GOLD}/>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"28px 20px",textAlign:"center"}}>
         <div style={{color:GOLD,fontSize:32,marginBottom:12}}>◉</div>
         <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:6}}>Adicionar Coprodutor</div>
         <div style={{color:MUTED,fontSize:13,lineHeight:1.6,marginBottom:18}}>Compartilhe a receita deste produto com outro produtor da plataforma.</div>
@@ -5512,7 +5523,7 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
         ))}
       </div>
       {/* Funil pós-compra */}
-      <div style={{background:CARD,border:`1px solid rgba(212,175,55,0.2)`,borderRadius:20,padding:"20px 18px",marginTop:8}}>
+      <div style={{...glassSurface,border:`1px solid rgba(212,175,55,0.2)`,borderRadius:20,padding:"20px 18px",marginTop:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>Funil pós-compra</div>
           <button onClick={()=>{setFunnelEdit(v=>!v);setFunnelMsg("");}} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>{funnelEdit?"Cancelar":"Editar"}</button>
@@ -5561,7 +5572,7 @@ function ProdutoDetalhe({produto,onBack,isDeise,accent}){
         )}
       </div>
       {/* Zona crítica — excluir produto */}
-      <div style={{background:CARD,border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"20px 18px",marginTop:8}}>
+      <div style={{...glassSurface,border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"20px 18px",marginTop:8}}>
         <div style={{color:"rgba(239,68,68,0.6)",fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Zona crítica</div>
         <button onClick={handleDeleteProduto} disabled={deleting} style={{background:"transparent",border:"1px solid rgba(239,68,68,0.35)",borderRadius:100,padding:"10px 22px",color:"rgba(239,68,68,0.8)",fontWeight:600,fontSize:13,cursor:deleting?"not-allowed":"pointer",fontFamily:F,opacity:deleting?0.5:1}}>
           {deleting?"Excluindo…":"Excluir produto"}
@@ -5604,7 +5615,7 @@ function CriarProdutoModal({onClose,onCreated,ownerId}){
   };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         {created?(
           <div style={{textAlign:"center",padding:"20px 0 10px"}}>
@@ -5754,7 +5765,7 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
   };
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",background:CARD,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:480,margin:"0 auto",...glassSheet,borderRadius:"24px 24px 0 0",padding:"12px 24px 40px",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{width:32,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)",margin:"0 auto 20px"}}/>
         {result?(
           <div>
@@ -5864,7 +5875,7 @@ function ProdutosTab({accent,isDeise}){
         <button id="btn-novo-produto" onClick={()=>setShowCriar(true)} style={{background:GOLD,border:"none",borderRadius:100,padding:"6px 14px",color:"#0C0C0C",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>+ Novo produto</button>
       </div>
       {produtos===null&&[1,2,3].map(i=>(
-        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden"}}>
+        <div key={i} style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
           <div className="sk" style={{height:90,borderRadius:0}}/>
           <div style={{padding:"20px",display:"flex",flexDirection:"column",gap:10}}>
             <div className="sk" style={{height:13,width:"55%",borderRadius:6}}/>
@@ -5872,9 +5883,9 @@ function ProdutosTab({accent,isDeise}){
           </div>
         </div>
       ))}
-      {produtos!==null&&produtos.length===0&&<div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"28px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum produto ainda. Crie o seu primeiro! →</div>}
+      {produtos!==null&&produtos.length===0&&<div style={{...glassSurface,borderRadius:20,padding:"28px",textAlign:"center",color:MUTED,fontSize:13}}>Nenhum produto ainda. Crie o seu primeiro! →</div>}
       {(produtos||[]).map((p,i)=>(
-        <div key={i} style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
+        <div key={i} style={{...glassSurface,borderRadius:20,overflow:"hidden",borderLeft:`4px solid ${GREEN}`}}>
           <div style={{height:90,background:"linear-gradient(135deg,#1C1C1A 0%,#2A2500 60%,#1A1800 100%)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <span style={{fontSize:32,color:GOLD,opacity:0.7}}>◈</span>
           </div>
@@ -6717,7 +6728,7 @@ function MaquinaTab({onNav}){
       <VisitorChart analytics={analytics} loadingAnalytics={loadingAnalytics}/>
 
       {/* Fontes de tráfego — real */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Fontes de tráfego</div>
           {hasSources&&analytics?.total>0&&<span style={{color:MUTED,fontSize:11}}>{analytics.total} visitas</span>}
@@ -6759,7 +6770,7 @@ function MaquinaTab({onNav}){
       </div>
 
       {/* Funil de conversão — últimos 30 dias */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"18px 18px 14px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"18px 18px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Funil de conversão</div>
           <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
@@ -6809,7 +6820,7 @@ function MaquinaTab({onNav}){
       </div>
 
       {/* Origem de vendas */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:12}}>Origem de vendas</div>
         {loadingFunnel?[1,2,3].map(i=>(
           <div key={i} style={{marginBottom:i<3?12:0}}>
@@ -6846,7 +6857,7 @@ function MaquinaTab({onNav}){
       </div>
 
       {/* MiniChat — métricas reais */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:14}}>MiniChat</div>
           <span style={{color:MUTED,fontSize:11}}>últimos 30 dias</span>
@@ -6885,7 +6896,7 @@ function MaquinaTab({onNav}){
 
       {/* Alerta — leads sem mensagem */}
       {!loadingFunnel&&(funnel?.leads||0)>0&&(
-        <div style={{background:CARD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"18px"}}>
+        <div style={{...glassSurface,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
             <span style={{fontSize:16}}>⚡</span>
             <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{funnel.leads} interessado{funnel.leads!==1?"s":""} ainda sem mensagem</div>
@@ -6903,7 +6914,7 @@ function MaquinaTab({onNav}){
       )}
 
       {/* Links de venda */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:14}}>Links de venda</div>
         {products===null?[1,2,3].map(i=>(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:i<3?`1px solid ${BDR}`:"none"}}><div className="sk" style={{height:12,width:"50%",borderRadius:6}}/><div className="sk" style={{height:26,width:80,borderRadius:8}}/></div>)):products.length===0?(<div style={{textAlign:"center",color:MUTED,fontSize:12,padding:"8px 0"}}>Nenhum produto cadastrado</div>):products.map((p,i)=>{
           const link=`https://josephpay.com/checkout.html?p=${p.id}`;
@@ -6920,7 +6931,7 @@ function MaquinaTab({onNav}){
       </div>
 
       {/* Reputação — em breve */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+      <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:14,marginBottom:12}}>Reputação</div>
         <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,textAlign:"center"}}>
           <div style={{color:MUTED,fontSize:12}}>Em breve — integração com Google Reviews</div>
@@ -6929,7 +6940,7 @@ function MaquinaTab({onNav}){
 
       {/* Sensor — oculto se site salvo e sensor já ativo */}
       {!(analytics?.total>0) && (analytics?.total>0?(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"14px 18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"14px 18px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:GREEN}}/>
@@ -6945,7 +6956,7 @@ function MaquinaTab({onNav}){
           )}
         </div>
       ):(
-        <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:"20px 18px"}}>
+        <div style={{...glassSurface,borderRadius:20,padding:"20px 18px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{color:TEXT,fontWeight:700,fontSize:14}}>Sensor de visitas</div>
             <button onClick={()=>setShowSensor(v=>!v)} style={{background:`${GOLD}18`,border:`1px solid ${GOLD}40`,color:GOLD,borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{showSensor?"Fechar":"Ver código"}</button>
@@ -7006,7 +7017,7 @@ function Login({onLogin}){
     }
   };
   return(
-    <div style={{background:BG,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",padding:0}}>
+    <div style={{background:APP_BG,backgroundAttachment:"fixed",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",padding:0}}>
       <div style={{width:"100%",maxWidth:480,position:"relative",height:220,overflow:"hidden",flexShrink:0}}>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,#1a1500 0%,#2d2200 30%,#1a1200 60%,#0d0d0c 100%)"}}/>
         <div style={{position:"absolute",inset:0,background:`radial-gradient(ellipse at 60% 40%,${GOLD}22 0%,transparent 65%)`}}/>
@@ -7022,7 +7033,7 @@ function Login({onLogin}){
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{color:MUTED,fontSize:11,fontWeight:600,textAlign:"center",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Como você quer entrar?</div>
             {isAdminMode&&(
-              <button onClick={()=>{setRole("admin");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+              <button onClick={()=>{setRole("admin");setStep(2);}} style={{...glassSurface,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
                 <div style={{width:44,height:44,borderRadius:14,background:`${GOLD}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,fontFamily:SF,fontWeight:700,color:GOLD}}>⊞</div>
                 <div>
                   <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Admin</div>
@@ -7031,7 +7042,7 @@ function Login({onLogin}){
                 </div>
               </button>
             )}
-            <button onClick={()=>{setRole("client");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+            <button onClick={()=>{setRole("client");setStep(2);}} style={{...glassSurface,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
               <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>◈</div>
               <div>
                 <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou produtor</div>
@@ -7039,7 +7050,7 @@ function Login({onLogin}){
                 <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Produtor</span>
               </div>
             </button>
-            <button onClick={()=>{setRole("afiliado");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+            <button onClick={()=>{setRole("afiliado");setStep(2);}} style={{...glassSurface,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
               <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>⊙</div>
               <div>
                 <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou afiliado</div>
@@ -7052,7 +7063,7 @@ function Login({onLogin}){
         {step===2&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",textAlign:"left",fontWeight:600,fontFamily:F}}>← Voltar</button>
-            <div style={{background:CARD,border:`1px solid ${role==="admin"?GOLD+"35":BDR}`,borderRadius:18,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:2}}>
+            <div style={{...glassSurface,border:`1px solid ${role==="admin"?GOLD+"35":BDR}`,borderRadius:18,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:2}}>
               <div style={{width:40,height:40,borderRadius:12,background:role==="admin"?GOLD:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:role==="admin"?16:18,color:role==="admin"?"#0A0A0A":MUTED,flexShrink:0}}>{role==="admin"?"J":role==="afiliado"?"⊙":"◈"}</div>
               <div>
                 <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":role==="afiliado"?"Painel do afiliado":"Painel do produtor"}</div>
@@ -7062,7 +7073,7 @@ function Login({onLogin}){
             {[{l:"E-mail",p:role==="admin"?"admin@josephpay.com":"seu@email.com",t:"email"},{l:"Senha",p:"••••••••",t:"password"}].map(f=>(
               <div key={f.l}>
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{f.l}</div>
-                <input type={f.t} placeholder={f.p} value={f.t==="email"?email:pass} onChange={e=>f.t==="email"?setEmail(e.target.value):setPass(e.target.value)} style={{width:"100%",background:CARD,border:`1px solid ${BDR}`,borderRadius:14,padding:"13px 15px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
+                <input type={f.t} placeholder={f.p} value={f.t==="email"?email:pass} onChange={e=>f.t==="email"?setEmail(e.target.value):setPass(e.target.value)} style={{width:"100%",...glassSurface,borderRadius:14,padding:"13px 15px",color:TEXT,fontSize:14,outline:"none",fontFamily:F}}/>
               </div>
             ))}
             <div style={{textAlign:"right"}}><span onClick={doReset} style={{color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer"}}>{resetSent?"✓ E-mail enviado!":"Esqueci a senha"}</span></div>
@@ -7125,7 +7136,7 @@ function Paywall(){
   };
 
   if(!open)return null;
-  const box={background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:24,width:"100%",maxWidth:420,color:TEXT,fontFamily:F,maxHeight:"90vh",overflowY:"auto"};
+  const box={...glassSurface,borderRadius:16,padding:24,width:"100%",maxWidth:420,color:TEXT,fontFamily:F,maxHeight:"90vh",overflowY:"auto"};
   const btn=(bg)=>({background:bg,color:"#131312",border:"none",borderRadius:10,padding:"13px 16px",fontWeight:700,fontSize:15,cursor:"pointer",width:"100%",fontFamily:F});
   const tabBtn=(active)=>({flex:1,background:active?GOLD:"transparent",color:active?"#131312":MUTED,border:`1px solid ${active?GOLD:BDR}`,borderRadius:9,padding:"9px 0",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F});
   return(
@@ -7227,7 +7238,7 @@ function App(){
   };
 
   if(booting)return(
-    <div style={{background:BG,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+    <div style={{background:APP_BG,backgroundAttachment:"fixed",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div style={{color:TEXT,fontFamily:SF,fontWeight:600,fontSize:28}}>Joseph<span style={{color:GOLD}}>Pay</span></div>
       <div style={{width:32,height:32,border:`3px solid ${GOLD}30`,borderTop:`3px solid ${GOLD}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -7235,7 +7246,7 @@ function App(){
   );
 
   return(
-    <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
+    <div style={{background:APP_BG,backgroundAttachment:"fixed",minHeight:"100vh",fontFamily:F}}>
       {!user&&<Login onLogin={handleLogin}/>}
       {user?.role==="admin"&&<AdminPanel onLogout={handleLogout} userEmail={user.email}/>}
       {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout}/>}

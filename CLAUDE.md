@@ -252,6 +252,10 @@ card: UM status em linguagem simples no topo (ícone + título + 1 frase), UMA a
 principal conforme o status, ações secundárias como links pequenos, e tudo que é
 técnico/raro escondido em "Detalhes" — sem nunca remover função (regra do Admin).
 Primeiro card nesse padrão: "Mini Chat no site" (`MinichatRepoAdmin`).
+Desde 02/10 o app INTEIRO usa vidro: `glassSurface` (cards/KPIs, sem padding — troca
+só o fundo), `glassSheet` (folhas que sobem de baixo) e `APP_BG` (fundo com brilho
+dourado sutil, é o que faz o vidro aparecer). Nunca volte a usar `background:CARD`
+sólido em card novo; a área de Disparos (`.crm-v9`) tem o mesmo vidro em CSS.
 
 ## Ler o mini chat que já existe no site do cliente (padrão)
 
