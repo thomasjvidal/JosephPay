@@ -4232,12 +4232,13 @@ function MinichatDetalheAdmin({ownerId,nome,onBack}){
           {data.sessoes.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center",...glassSurface,borderRadius:16}}>Nenhuma sessão ainda.</div>}
           {data.sessoes.map(s=>{
             const aberta=sessaoAberta===s.id;
+            const nomeLead=((s.answers||[]).find(x=>/^(qual seu nome completo|what's your full name)/i.test(String(x?.question||"").trim()))?.answer||"").trim();
             return(
               <div key={s.id} style={{...glassSurface,borderRadius:16,padding:"12px 14px"}}>
                 <div onClick={()=>setSessaoAberta(aberta?null:s.id)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
                   <span style={{width:8,height:8,borderRadius:"50%",background:s.completed_at?GREEN:MUTED,flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{s.completed_at?`Terminou (${s.finished_via==='email'?'e-mail':'WhatsApp'})`:`Parou na pergunta ${(s.current_index||0)+1}${s.questions_total?` de ${s.questions_total}`:''}`}</div>
+                    <div style={{color:TEXT,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.completed_at?`Terminou (${s.finished_via==='email'?'e-mail':'WhatsApp'})`:`Parou na pergunta ${(s.current_index||0)+1}${s.questions_total?` de ${s.questions_total}`:''}`}{nomeLead&&<span style={{color:GOLD}}> · {nomeLead}</span>}</div>
                     <div style={{color:MUTED,fontSize:10,marginTop:2}}>{new Date(s.updated_at).toLocaleString('pt-BR')}</div>
                   </div>
                   <span style={{color:MUTED,fontSize:11}}>{aberta?"▲":"▼"}</span>

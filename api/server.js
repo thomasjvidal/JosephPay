@@ -2247,6 +2247,15 @@ function cleanMinichatOrigem(v) {
 // "Quente" = respondeu algo que indica pressa ("Quanto antes", "Este mês", "As soon as
 // possible"...). Só olha as respostas de múltipla escolha — nunca nome/telefone.
 const MC_QUENTE_RE = /(quanto antes|o mais r[aá]pido|o quanto antes|este m[eê]s|esse m[eê]s|esta semana|essa semana|\bhoje\b|\bagora\b|imediat|urgente|urg[eê]ncia|j[aá] quero|pront[oa] pra|as soon as possible|\basap\b|this month|this week|\btoday\b|right away|immediately|\burgent|\bnow\b|ready to)/i;
+// Nome/telefone/e-mail/nascimento também ficam em answers (perguntas de contato do
+// minichat.html) — nunca entram nas métricas como "resposta"; o nome vira só rótulo.
+const MC_CONTATO_RE = /^(qual seu nome completo|qual seu telefone com whatsapp|qual sua data de nascimento|qual seu melhor e-mail|e qual seu telefone|what's your full name|what's your whatsapp number|what's your date of birth|what's your best e-mail|and your phone number)/i;
+const MC_NOME_RE = /^(qual seu nome completo|what's your full name)/i;
+function splitMinichatAnswers(answers) {
+  const lista = Array.isArray(answers) ? answers : [];
+  const nome = String(lista.find(a => a && MC_NOME_RE.test(String(a.question || "").trim()))?.answer || "").trim() || null;
+  return { respostas: lista.map(a => (a && MC_CONTATO_RE.test(String(a.question || "").trim())) ? null : a), nome };
+}
 function minichatSessionQuente(answers) {
   return (Array.isArray(answers) ? answers : []).some(a => a?.answer && MC_QUENTE_RE.test(String(a.answer)));
 }
@@ -2257,7 +2266,7 @@ async function fetchAllMinichatSessions(ownerId, fromIso, toIso) {
       .eq("owner_id", ownerId).gte("created_at", fromIso).lt("created_at", toIso)
       .order("created_at", { ascending: false }).range(page * 1000, page * 1000 + 999);
     if (error) throw new Error(error.message);
-    out.push(...(data || []));
+    out.push(...(data || []).map(s => { const { respostas, nome } = splitMinichatAnswers(s.answers); return { ...s, answers: respostas, nome }; }));
     if (!data || data.length < 1000) break;
   }
   return out;
@@ -2323,6 +2332,7 @@ async function linkMinichatSessionToCustomer(ownerId, visitorId, customer) {
     if (!visitorId || !customer?.id) return;
     const { data: sessao } = await supabase.from("minichat_sessions").select("*").eq("owner_id", ownerId).eq("visitor_id", String(visitorId).slice(0, 100)).maybeSingle();
     if (!sessao) return;
+    sessao.answers = splitMinichatAnswers(sessao.answers).respostas;
     const quente = minichatSessionQuente(sessao.answers);
     const { error } = await supabase.from("minichat_sessions").update({ customer_id: customer.id, quente }).eq("id", sessao.id);
     if (error) return; // migration_v44 ainda não rodou — sem coluna, sem aviso duplicado
@@ -2435,7 +2445,7 @@ app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin,
       lista: quentesSess.slice(0, 30).map(s => ({
         quando: s.created_at, origem: MC_ORIGEM_LABEL[cleanMinichatOrigem(s.origem)] || null,
         respostas: (s.answers || []).filter(a => a?.answer).map(a => String(a.answer)),
-        contato: clientes.get(s.customer_id) || null,
+        contato: clientes.get(s.customer_id) || (s.nome ? { name: s.nome } : null),
       })),
     };
 
