@@ -3175,12 +3175,15 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
     if (!workspace) return res.status(500).json({ error: "Nenhuma workspace encontrada nesse container" });
     const workspacePath = workspace.path;
 
-    // Trigger próprio em vez do "All Pages" nativo — evita depender do ID interno do container.
-    const triggerResp = await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/triggers`, {
-      name: "JosephPay — Todas as páginas",
-      type: "pageview",
-    }, { headers });
-    const triggerId = triggerResp.data.triggerId;
+    // Trigger próprio em vez do "All Pages" nativo — evita depender do ID interno do
+    // container. Reaproveita o que já existir (antes cada clique criava um duplicado).
+    const triggerId = await gtmEnsureAllPagesTrigger({ workspacePath, headers });
+    // Sensor já instalado nesse container? Não cria uma segunda tag igual.
+    const tagsAtuais = await axios.get(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/tags`, { headers });
+    if ((tagsAtuais.data.tag || []).some(t => t.name === "JosephPay — Sensor de visitas")) {
+      await supabase.from("profiles").update({ gtm_sensor_installed_at: new Date().toISOString() }).eq("id", id);
+      return res.json({ ok: true, already: true });
+    }
 
     const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
     await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/tags`, {
@@ -3203,6 +3206,189 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
   } catch (err) {
     console.error("[gtm/install-sensor]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar o sensor via GTM" });
+  }
+});
+
+// ── GTM: botões de WhatsApp do site abrem o Mini Chat (sites SEM GitHub) ────────
+// Pra site feito em WordPress/Wix/qualquer coisa que tenha Google Tag Manager, não dá
+// pra trocar o botão no código. Aqui uma tag do GTM faz isso no navegador do visitante:
+// clique num link de WhatsApp DO PRODUTOR (mesmo número) abre o Mini Chat no lugar.
+//
+// Cuidados (regra 7 do CLAUDE.md — o caso da Lervet):
+//  • Só troca link de WhatsApp pro número do produtor (os últimos 8 dígitos batem). Link
+//    pra outro número (ex: um parceiro) fica como está. Link de WhatsApp sem número
+//    algum também é trocado (é o "fale conosco" genérico).
+//  • Nunca roda em página com cara de mini chat/quiz/diagnóstico do próprio site — o
+//    passo final de um chat que o cliente já tem continua indo pro WhatsApp (sem loop).
+//  • Qualquer botão com o atributo data-jp-keep é ignorado (escape manual).
+//  • Só é instalada quando o admin clica — nunca pelo job automático.
+//  • Nunca publica alteração de outra pessoa: se o GTM tiver mudança pendente que não é
+//    nossa, para e avisa.
+const GTM_MINICHAT_TAG = "JosephPay — Botões abrem o Mini Chat";
+const GTM_TRIGGER_ALL = "JosephPay — Todas as páginas";
+function buildMinichatGtmTag(uid, whatsappDigits) {
+  const mc = `https://josephpay.com/minichat.html?uid=${uid}`;
+  const num = String(whatsappDigits || "").replace(/\D/g, "");
+  // ES5 de propósito: o GTM valida o JavaScript das tags de HTML personalizado.
+  return `<script>
+(function(){
+  if (window.__jpMinichatTag) return; window.__jpMinichatTag = true;
+  var MC = ${JSON.stringify(mc)};
+  var NUM = ${JSON.stringify(num)};
+  if (/mini-?_?chat|quiz|diagn|pre-?diag/i.test(location.pathname)) return;
+  function waPhone(u){
+    var x; try { x = new URL(u, location.href); } catch (e) { return null; }
+    var host = x.hostname.replace(/^www\\./, "");
+    if (x.protocol === "whatsapp:") return (x.searchParams.get("phone") || "").replace(/\\D/g, "");
+    if (host === "wa.me") return x.pathname.replace(/\\D/g, "");
+    if (host === "api.whatsapp.com" || host === "web.whatsapp.com" || host === "whatsapp.com") {
+      if (!/send/i.test(x.pathname) && !x.searchParams.get("phone")) return null;
+      return (x.searchParams.get("phone") || "").replace(/\\D/g, "");
+    }
+    return null;
+  }
+  function deveTrocar(u){
+    var p = waPhone(u);
+    if (p === null) return false;
+    if (!NUM || !p) return true;
+    return p.slice(-8) === NUM.slice(-8);
+  }
+  function marcar(a){
+    if (!a || !a.getAttribute || a.hasAttribute("data-jp-keep")) return;
+    var h = a.getAttribute("href");
+    if (h && h !== MC && deveTrocar(h)) { a.setAttribute("data-jp-original", h); a.setAttribute("href", MC); }
+  }
+  function varrer(raiz){ var l = (raiz || document).querySelectorAll ? (raiz || document).querySelectorAll("a[href]") : []; for (var i = 0; i < l.length; i++) marcar(l[i]); }
+  document.addEventListener("click", function(e){
+    var el = e.target;
+    while (el && el.tagName !== "A") el = el.parentElement;
+    if (!el || el.hasAttribute("data-jp-keep")) return;
+    var h = el.getAttribute("data-jp-original") || el.getAttribute("href");
+    if (!h || !deveTrocar(h)) return;
+    e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    if (el.getAttribute("target") === "_blank") window.open(MC, "_blank"); else window.location.href = MC;
+  }, true);
+  var abrir = window.open;
+  window.open = function(u, t, f){ if (u && deveTrocar(String(u))) return abrir.call(window, MC, t || "_blank", f); return abrir.apply(window, arguments); };
+  varrer(document);
+  if (window.MutationObserver) new MutationObserver(function(ms){
+    for (var i = 0; i < ms.length; i++) {
+      var m = ms[i];
+      if (m.type === "attributes") marcar(m.target);
+      else for (var j = 0; j < m.addedNodes.length; j++) { var n = m.addedNodes[j]; if (n.nodeType === 1) { if (n.tagName === "A") marcar(n); varrer(n); } }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+})();
+</script>`;
+}
+
+// Contexto do GTM do produtor: token, workspace e o ID público (GTM-XXXX).
+async function getGtmContext(id) {
+  const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id,site_url,phone,minichat_config").eq("id", id).maybeSingle();
+  if (!profile?.gtm_account_id || !profile?.gtm_container_id) return { error: "Vincule um container do GTM a este cliente primeiro (card Site)." };
+  const token = await getGoogleAccessToken();
+  if (!token) return { error: "Google ainda não conectado" };
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const base = `https://www.googleapis.com/tagmanager/v2/accounts/${profile.gtm_account_id}/containers/${profile.gtm_container_id}`;
+  const [cont, ws] = await Promise.all([axios.get(base, { headers }), axios.get(`${base}/workspaces`, { headers })]);
+  const workspace = (ws.data.workspace || [])[0];
+  if (!workspace) return { error: "Nenhuma workspace encontrada nesse container do GTM." };
+  return { profile, headers, base, workspacePath: workspace.path, publicId: cont.data.publicId };
+}
+
+// Mudanças pendentes no workspace que NÃO são nossas (tag/trigger "JosephPay —").
+async function gtmForeignPendingChanges(ctx) {
+  const st = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/status`, { headers: ctx.headers });
+  return (st.data.workspaceChange || []).filter(ch => {
+    const nome = ch.tag?.name || ch.trigger?.name || ch.variable?.name || ch.folder?.name || "";
+    return !/^JosephPay — /.test(nome);
+  });
+}
+
+async function gtmEnsureAllPagesTrigger(ctx) {
+  const tr = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/triggers`, { headers: ctx.headers });
+  const existente = (tr.data.trigger || []).find(t => t.name === GTM_TRIGGER_ALL);
+  if (existente) return existente.triggerId;
+  const novo = await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/triggers`, { name: GTM_TRIGGER_ALL, type: "pageview" }, { headers: ctx.headers });
+  return novo.data.triggerId;
+}
+
+async function gtmPublish(ctx, nomeVersao) {
+  const v = await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}:create_version`, { name: nomeVersao }, { headers: ctx.headers });
+  const vid = v.data.containerVersion?.containerVersionId;
+  if (!vid) throw new Error(v.data.compilerError ? "O GTM recusou a versão (erro de compilação)." : "O GTM não criou a versão.");
+  await axios.post(`${ctx.base}/versions/${vid}:publish`, {}, { headers: ctx.headers });
+}
+
+// Prova real: a tag está no GTM PUBLICADO (gtm.js público) e o site carrega esse GTM?
+async function gtmMinichatStatus(id) {
+  const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id,site_url").eq("id", id).maybeSingle();
+  if (!profile?.gtm_container_id) return { status: "sem_gtm" };
+  let publicId = null;
+  try { const ctx = await getGtmContext(id); if (ctx.error) return { status: "erro", message: ctx.error }; publicId = ctx.publicId; }
+  catch (e) { return { status: "erro", message: e.response?.data?.error?.message || e.message }; }
+  let publicado = false, noSite = null;
+  try {
+    const js = await axios.get(`https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(publicId)}&_jp=${Date.now()}`, { timeout: 10000, responseType: "text", transformResponse: x => x });
+    publicado = String(js.data || "").includes(`minichat.html?uid=${id}`);
+  } catch {}
+  if (profile.site_url) {
+    const h = await detectHosting(profile.site_url.replace(/\/+$/, ""));
+    noSite = h.html ? h.html.includes(publicId) : null;
+  }
+  const ok = publicado && noSite !== false;
+  return {
+    status: ok ? "ok" : publicado ? "gtm_fora_do_site" : "nao_publicado",
+    publicId, publicado, noSite,
+    message: ok ? "Os botões de WhatsApp do site abrem o Mini Chat."
+      : publicado ? `A tag está publicada, mas não achei o GTM ${publicId} no código do site — confira se o GTM está instalado no site.`
+      : "A tag ainda não está publicada no GTM.",
+  };
+}
+
+app.get("/api/admin/producers/:id/gtm/minichat-status", requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await gtmMinichatStatus(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post("/api/admin/producers/:id/gtm/install-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ctx = await getGtmContext(id);
+    if (ctx.error) return res.status(400).json({ error: ctx.error });
+    const alheias = await gtmForeignPendingChanges(ctx);
+    if (alheias.length) return res.status(409).json({ error: `O GTM desse cliente tem ${alheias.length} alteração(ões) não publicada(s) feitas por outra pessoa. Publique ou descarte no GTM e tente de novo — eu não publico mudança de ninguém sem você ver.` });
+    const numero = normalizeWhatsappNumber(ctx.profile.minichat_config?.whatsapp_number || ctx.profile.phone || "");
+    const html = buildMinichatGtmTag(id, numero);
+    const triggerId = await gtmEnsureAllPagesTrigger(ctx);
+    const tags = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, { headers: ctx.headers });
+    const existente = (tags.data.tag || []).find(t => t.name === GTM_MINICHAT_TAG);
+    const corpo = { name: GTM_MINICHAT_TAG, type: "html", parameter: [{ type: "template", key: "html", value: html }, { type: "boolean", key: "supportDocumentWrite", value: "false" }], firingTriggerId: [triggerId] };
+    if (existente) await axios.put(`https://www.googleapis.com/tagmanager/v2/${existente.path}`, corpo, { headers: ctx.headers });
+    else await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, corpo, { headers: ctx.headers });
+    await gtmPublish(ctx, `JosephPay — botões abrem o Mini Chat (${new Date().toLocaleDateString("pt-BR")})`);
+    res.json({ ok: true, updated: !!existente, publicId: ctx.publicId, numero: numero || null });
+  } catch (err) {
+    console.error("[gtm/install-minichat]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar no GTM" });
+  }
+});
+
+app.post("/api/admin/producers/:id/gtm/remove-minichat", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ctx = await getGtmContext(req.params.id);
+    if (ctx.error) return res.status(400).json({ error: ctx.error });
+    const alheias = await gtmForeignPendingChanges(ctx);
+    if (alheias.length) return res.status(409).json({ error: `O GTM desse cliente tem ${alheias.length} alteração(ões) não publicada(s) feitas por outra pessoa. Publique ou descarte no GTM e tente de novo.` });
+    const tags = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, { headers: ctx.headers });
+    const existente = (tags.data.tag || []).find(t => t.name === GTM_MINICHAT_TAG);
+    if (!existente) return res.json({ ok: true, already: true });
+    await axios.delete(`https://www.googleapis.com/tagmanager/v2/${existente.path}`, { headers: ctx.headers });
+    await gtmPublish(ctx, `JosephPay — remove botões do Mini Chat (${new Date().toLocaleDateString("pt-BR")})`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[gtm/remove-minichat]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao remover no GTM" });
   }
 });
 
@@ -5252,6 +5438,68 @@ async function getSensorStatus(id, siteUrl, htmlPronto) {
   return { noHtml, visitas14d: doSite.length, ultimaVisita: doSite[0]?.created_at || null, soMinichat: !doSite.length && (visitas || []).length > 0 };
 }
 
+// ── "Consertar" vercel.json de site com servidor próprio (Lovable/TanStack Start…) ──
+// Antes da detecção certa (25/08), a JosephPay escrevia a configuração genérica de Vite
+// (framework "vite" + pasta "dist" + rewrite pra index.html) nesses sites. Aqui volta
+// pro que esse tipo de site espera — tira SÓ essas chaves genéricas e marca
+// framework: null (a Vercel usa a saída que o próprio site gera) — e mantém tudo o mais
+// (ex: "redirects"). Sempre com prévia antes; só grava quando o admin confirma.
+const GENERIC_VITE_KEYS = { buildCommand: "npm run build", outputDirectory: "dist", framework: "vite" };
+async function vercelFixPlan(repo, headers) {
+  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
+  const tree = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
+  const det = detectRepoFramework((tree.data.tree || []).filter(i => i.type === "blob").map(i => i.path));
+  if (!det.unknownFramework) return { needed: false, motivo: "framework_conhecido" };
+  let atualTxt = null, sha = null, atual = {};
+  try {
+    const r = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+    sha = r.data.sha; atualTxt = Buffer.from(r.data.content, "base64").toString("utf8");
+    atual = JSON.parse(atualTxt || "{}");
+  } catch (e) { if (e.response?.status === 404) return { needed: false, motivo: "sem_vercel_json" }; if (e instanceof SyntaxError) return { needed: false, motivo: "vercel_json_invalido" }; throw e; }
+  if (!(atual.framework === "vite" && atual.outputDirectory === "dist")) return { needed: false, motivo: "ja_ok" };
+  const proposto = { ...atual };
+  for (const [k, v] of Object.entries(GENERIC_VITE_KEYS)) if (proposto[k] === v) delete proposto[k];
+  if (Array.isArray(proposto.rewrites) && proposto.rewrites.length === 1 && proposto.rewrites[0]?.source === "/(.*)" && proposto.rewrites[0]?.destination === "/index.html") delete proposto.rewrites;
+  const final = { framework: null, ...proposto };
+  return { needed: true, sha, atualTxt, propostoTxt: JSON.stringify(final, null, 2) + "\n" };
+}
+
+app.get("/api/admin/producers/:id/github/vercel-fix", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
+    if (!p?.github_repo) return res.json({ needed: false, motivo: "sem_repo" });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    res.json(await vercelFixPlan(p.github_repo, { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }));
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/github/vercel-fix", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
+    if (!p?.github_repo) return res.status(400).json({ error: "Sem repositório GitHub vinculado." });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const plano = await vercelFixPlan(p.github_repo, headers);
+    if (!plano.needed) return res.json({ ok: true, already: true });
+    // Só grava exatamente o que o admin viu na prévia — se o arquivo mudou no meio, para.
+    if (req.body?.sha && req.body.sha !== plano.sha) return res.status(409).json({ error: "O vercel.json mudou desde a prévia — abra de novo pra ver a versão atual." });
+    const r = await axios.put(`https://api.github.com/repos/${p.github_repo}/contents/vercel.json`, {
+      message: "JosephPay: conserta vercel.json (site com servidor próprio)",
+      content: Buffer.from(plano.propostoTxt, "utf8").toString("base64"),
+      sha: plano.sha,
+    }, { headers });
+    await supabase.from("profiles").update({ github_vercel_config_sha: r.data?.content?.sha || null }).eq("id", req.params.id).then(null, () => {});
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[vercel-fix]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
 app.get("/api/admin/producers/:id/deploy-status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
@@ -5311,6 +5559,10 @@ app.get("/api/admin/producers/:id/activation-test", requireAuth, requireAdmin, a
       let detail = live.status === "ok" ? "O site abre o Mini Chat do JosephPay." : live.status === "proprio" ? `O site usa um mini chat próprio (${live.path}).${live.aviso ? " Os contatos dele não entram no CRM." : ""}` : live.message;
       if (!okMc && hosting && hosting.host !== "vercel" && hosting.host !== "desconhecida") detail += ` Como o site não está na Vercel, o redirecionamento não funciona lá — use "Corrigir agora" (troca o botão no código).`;
       add("minichat_site", "Mini Chat no site", okMc, detail, live.status === "sem_site");
+    }
+    if (p.gtm_container_id && !p.github_repo) {
+      const g = await gtmMinichatStatus(id).catch(e => ({ status: "erro", message: e.message }));
+      add("gtm_botoes", "Botões do site → Mini Chat (GTM)", g.status === "ok", g.message || "Não consegui conferir o GTM.", g.status === "erro");
     }
     const cfgOk = dest === "email" ? EMAIL_RE.test(String(mc.email_destino || "")) : dest === "ambos" ? (!!mc.whatsapp_number && EMAIL_RE.test(String(mc.email_destino || ""))) : !!mc.whatsapp_number;
     add("minichat_config", "Destino dos contatos", cfgOk, cfgOk ? (dest === "email" ? `Chega por e-mail em ${mc.email_destino}.` : dest === "ambos" ? `WhatsApp ${mc.whatsapp_number} + e-mail ${mc.email_destino}.` : `Chega no WhatsApp ${mc.whatsapp_number}.`) : "Configure o WhatsApp ou o e-mail de destino no card Mini Chat.");
@@ -5542,6 +5794,77 @@ app.post("/api/admin/producers/site-audit/run", requireAuth, requireAdmin, async
 
 app.get("/api/admin/producers/site-audit/status", requireAuth, requireAdmin, async (req, res) => {
   res.json(siteAuditJob);
+});
+
+// ── Aviso no celular quando algo QUEBRA (sites na Vercel) ─────────────────────────
+// A cada 30 min confere, pra todo produtor com site na Vercel: a última publicação
+// passou? O site abre? O Mini Chat continua no site? Manda notificação pro celular do
+// admin SÓ quando algo muda — quebrou (⚠️) ou voltou a funcionar (✓). Nunca repete o
+// mesmo aviso. A primeira rodada depois que o servidor liga só anota como está (não
+// avisa), pra não disparar tudo de novo a cada atualização do servidor.
+// Mini Chat: só avisa se estava funcionando e parou (quem nunca instalou não é "quebra").
+const siteHealth = new Map(); // id -> { deploy, site, minichat } (true = ok)
+let siteHealthBaseline = false;
+let siteHealthRunning = false;
+async function notifyAdmins(title, body) {
+  const { data: admins } = await supabase.from("profiles").select("id").eq("role", "admin");
+  for (const a of (admins || [])) await sendPushToOwner(a.id, { title, body, url: "/" });
+}
+async function runSiteHealthMonitor() {
+  if (siteHealthRunning) return;
+  siteHealthRunning = true;
+  try {
+    const token = await getGithubToken();
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const { data: profiles } = await supabase.from("profiles").select("id,name,company_name,site_url,github_repo,disabled_at").not("github_repo", "is", null);
+    for (const p of (profiles || [])) {
+      if (p.disabled_at) continue;
+      const nome = p.company_name || p.name || "Produtor";
+      try {
+        const deploy = await getRepoDeployStatus(p.github_repo, headers).catch(() => null);
+        const site = p.site_url ? await detectHosting(p.site_url.replace(/\/+$/, "")) : null;
+        // Só sites na Vercel (pedido do Thomas, por enquanto).
+        const naVercel = (site && site.host === "vercel") || (deploy && deploy.state !== "desconhecido");
+        if (!naVercel) continue;
+        const live = await verifyMinichatLive(p.id).catch(() => null);
+        const agora = {
+          deploy: deploy ? !(deploy.state === "falhou" || deploy.state === "bloqueado") : true,
+          site: site ? site.ok : true,
+          minichat: live ? (live.status === "ok" || live.status === "proprio") : null,
+        };
+        const antes = siteHealth.get(p.id);
+        siteHealth.set(p.id, agora);
+        if (!siteHealthBaseline || !antes) continue;
+        if (antes.site && !agora.site) await notifyAdmins(`⚠️ ${nome}: site fora do ar`, `${p.site_url} não abriu (${site?.status || site?.error || "sem resposta"}).`);
+        else if (!antes.site && agora.site) await notifyAdmins(`✓ ${nome}: site voltou`, `${p.site_url} está abrindo de novo.`);
+        if (antes.deploy && !agora.deploy) await notifyAdmins(`⚠️ ${nome}: publicação ${deploy.state === "bloqueado" ? "bloqueada" : "falhou"}`, deploy.message);
+        else if (!antes.deploy && agora.deploy) await notifyAdmins(`✓ ${nome}: publicação voltou a funcionar`, "A última publicação na Vercel passou.");
+        if (antes.minichat === true && agora.minichat === false) await notifyAdmins(`⚠️ ${nome}: Mini Chat parou`, live?.message || "O site não abre mais o Mini Chat.");
+        else if (antes.minichat === false && agora.minichat === true) await notifyAdmins(`✓ ${nome}: Mini Chat voltou`, "O site voltou a abrir o Mini Chat.");
+      } catch (e) { console.warn("[siteHealth]", nome, e.message); }
+    }
+    siteHealthBaseline = true;
+  } catch (e) {
+    console.error("[siteHealth]", e.message);
+  } finally {
+    siteHealthRunning = false;
+  }
+}
+setTimeout(() => { runSiteHealthMonitor().catch(() => {}); }, 2 * 60 * 1000);
+setInterval(() => { runSiteHealthMonitor().catch(() => {}); }, 30 * 60 * 1000);
+
+// Botão "Enviar aviso de teste" — confere se as notificações estão chegando no celular.
+app.post("/api/admin/alerts/test", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { count } = await supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", req.user.id);
+    if (!count) return res.status(400).json({ error: "Este aparelho ainda não ativou as notificações. Ative em \"Ativar notificações no celular\" (menu) e tente de novo." });
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return res.status(503).json({ error: "Notificações não configuradas no servidor (VAPID)." });
+    await sendPushToOwner(req.user.id, { title: "✓ Avisos funcionando", body: "Você vai receber aqui quando um site quebrar ou voltar a funcionar.", url: "/" });
+    res.json({ ok: true, aparelhos: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Roda sozinho uma vez por dia, sem precisar de ninguém clicar em nada — é o "rodar em

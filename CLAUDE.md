@@ -298,3 +298,26 @@ entrava se a pessoa tocasse no botão verde. `leadSavedToCRM` garante uma vez s�
 botão depois não conta de novo). A mensagem do WhatsApp não muda. No Admin, a lista
 de produtores (`ClientesAdmin`) se atualiza sozinha ao voltar pro app e a cada 90s,
 e "Clientes do produtor" recarrega quando o número de interessados muda.
+
+## GTM: botões de WhatsApp abrem o Mini Chat (sites sem GitHub)
+
+`buildMinichatGtmTag()` + `/gtm/install-minichat` | `/gtm/minichat-status` |
+`/gtm/remove-minichat` (card "Botões do site (GTM)"). Exceção controlada da regra 7:
+a troca acontece no navegador do visitante, instalada SÓ por clique do admin, e:
+só troca link de WhatsApp do número do produtor (últimos 8 dígitos) ou sem número;
+nunca roda em página com cara de mini chat/quiz do próprio site (evita o loop da
+Lervet); respeita `data-jp-keep`; nunca publica se o GTM tiver alteração pendente de
+outra pessoa (`gtmForeignPendingChanges`). Status = tag no gtm.js PUBLICADO + GTM no
+HTML do site (prova real, regra 4). Reaproveita o trigger "JosephPay — Todas as
+páginas" (antes o sensor criava um duplicado a cada clique).
+
+## Consertar vercel.json (site com servidor próprio) e avisos no celular
+
+- `/github/vercel-fix` (card Vercel): em `unknownFramework` com a config genérica de
+  Vite, tira só as chaves genéricas (`buildCommand`/`outputDirectory`/`framework:"vite"`
+  /rewrite pra index.html), põe `framework: null` e mantém o resto (ex: `redirects`).
+  Prévia antes/depois; grava só no clique e só se o arquivo não mudou desde a prévia.
+- `runSiteHealthMonitor()` a cada 30 min, só sites na Vercel: publicação falhou/
+  bloqueou, site fora do ar, Mini Chat parou (só se estava funcionando). Push pro admin
+  SÓ na mudança (quebrou ⚠️ / voltou ✓), nunca repete; a 1ª rodada após o servidor
+  ligar só anota. Teste: "enviar teste" no checklist (`/api/admin/alerts/test`).

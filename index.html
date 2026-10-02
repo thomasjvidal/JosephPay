@@ -1365,6 +1365,70 @@ function SensorAdmin({c,onUpdated,initialOpen,done}){
   );
 }
 
+// ── Botões do site → Mini Chat via GTM (sites SEM GitHub: WordPress, Wix…) ─────
+// Uma tag no GTM faz, no navegador do visitante, os botões de WhatsApp DO PRODUTOR
+// abrirem o Mini Chat. Status sempre conferido de verdade: tag publicada no GTM +
+// GTM presente no código do site.
+function GtmBotoesAdmin({c,onStatus}){
+  const [open,setOpen]=useState(false);
+  const [st,setSt]=useState(null);
+  const [busy,setBusy]=useState("");
+  const [msg,setMsg]=useState("");
+  const [detalhes,setDetalhes]=useState(false);
+  const carregar=()=>apiCall(`/api/admin/producers/${c.id}/gtm/minichat-status`).then(d=>{if(!d?.error){setSt(d);onStatus&&onStatus(d.status==="ok");}});
+  useEffect(()=>{carregar();},[c.id]);
+  const instalar=async()=>{
+    setBusy("instalar");setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/install-minichat`,{method:'POST'});
+    setBusy("");
+    if(d?.error){setMsg(d.error);return;}
+    setMsg(`✓ ${d.updated?"Atualizado":"Instalado"} e publicado no GTM. ${d.numero?`Troca os botões do WhatsApp ${d.numero}.`:"Sem WhatsApp cadastrado: troca qualquer botão de WhatsApp."} Conferindo no site…`);
+    setTimeout(carregar,8000);
+  };
+  const remover=async()=>{
+    if(!window.confirm("Tirar do GTM? Os botões voltam a abrir o WhatsApp direto."))return;
+    setBusy("remover");setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/gtm/remove-minichat`,{method:'POST'});
+    setBusy("");
+    if(d?.error){setMsg(d.error);return;}
+    setMsg("✓ Removido do GTM.");setTimeout(carregar,5000);
+  };
+  const ok=st?.status==="ok";
+  const tone=ok?GREEN:st?.status==="gtm_fora_do_site"?"#F5A524":MUTED;
+  const linkBtn={background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px"};
+  return(
+    <div style={glassCard(ok)}>
+      <CardHeader title="Botões do site (GTM)" open={open} onToggle={()=>setOpen(o=>!o)} done={ok}/>
+      {open&&(<div style={{marginTop:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+          <div style={{width:46,height:46,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:`${tone}1F`,border:`1px solid ${tone}40`,color:tone,fontSize:20,fontWeight:700}}>{!st?"…":ok?"✓":st.publicado?"!":"+"}</div>
+          <div>
+            <div style={{color:TEXT,fontSize:17,fontWeight:600,letterSpacing:"-0.02em"}}>{!st?"Conferindo…":ok?"Funcionando":st.publicado?"Quase lá":"Não instalado"}</div>
+            <div style={{color:MUTED,fontSize:13,marginTop:2,lineHeight:1.4}}>{st?.message||"Os botões de WhatsApp do site passam a abrir o Mini Chat."}</div>
+          </div>
+        </div>
+        {!st?.publicado?(
+          <button onClick={instalar} disabled={!!busy} style={pillBtn(true,!!busy)}>{busy==="instalar"?"Publicando no GTM…":"Ativar no site"}</button>
+        ):(
+          <button onClick={instalar} disabled={!!busy} style={pillBtn(false,!!busy)}>{busy==="instalar"?"Publicando…":"Atualizar no GTM"}</button>
+        )}
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:"#F5A524",fontSize:12,marginTop:12,lineHeight:1.5,textAlign:"center"}}>{msg}</div>}
+        <div style={{display:"flex",justifyContent:"center",gap:18,marginTop:10}}>
+          <button onClick={carregar} style={linkBtn}>Verificar de novo</button>
+          <button onClick={()=>setDetalhes(d=>!d)} style={{...linkBtn,color:MUTED}}>Detalhes {detalhes?"⌃":"⌄"}</button>
+        </div>
+        {detalhes&&(<div style={{...glassInset,marginTop:12,color:MUTED,fontSize:12,lineHeight:1.6}}>
+          <div><b style={{color:TEXT,fontWeight:600}}>O que troca:</b> só botões de WhatsApp pro número do produtor (e os sem número). WhatsApp de outra pessoa continua igual.</div>
+          <div><b style={{color:TEXT,fontWeight:600}}>Nunca troca:</b> dentro de páginas de mini chat/quiz do próprio site (evita voltar pro chat em loop) e botões marcados com <code>data-jp-keep</code>.</div>
+          <div><b style={{color:TEXT,fontWeight:600}}>Segurança:</b> se o GTM tiver alteração pendente de outra pessoa, eu não publico.</div>
+          {st?.publicId&&<div><b style={{color:TEXT,fontWeight:600}}>Container:</b> {st.publicId} · publicado: {st.publicado?"sim":"não"} · no site: {st.noSite===null?"não deu pra conferir":st.noSite?"sim":"não"}</div>}
+          {st?.publicado&&<button onClick={remover} disabled={!!busy} style={{...pillBtn(false,!!busy),height:40,fontSize:13,marginTop:10,color:"#F87171"}}>{busy==="remover"?"Removendo…":"Tirar do GTM"}</button>}
+        </div>)}
+      </div>)}
+    </div>
+  );
+}
+
 // ── CARD 3: Vercel (GitHub only) ──────────────────────────────────────────────
 function VercelAdmin({c,onUpdated,initialOpen,done}){
   const [open,setOpen]=useState(false);
@@ -1385,12 +1449,41 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
   const [deploy,setDeploy]=useState(null);
   const carregarDeploy=()=>apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{if(!d?.error)setDeploy(d);});
   useEffect(()=>{if(open&&!deploy&&c.github_repo)carregarDeploy();},[open]);
+  // "Consertar": site com servidor próprio (Lovable/TanStack Start) com a configuração
+  // genérica de Vite que a JosephPay escrevia antes — prévia antes/depois, grava só no clique.
+  const [fix,setFix]=useState(null);
+  const [verFix,setVerFix]=useState(false);
+  const [consertando,setConsertando]=useState(false);
+  useEffect(()=>{if(open&&!fix&&c.github_repo)apiCall(`/api/admin/producers/${c.id}/github/vercel-fix`).then(d=>{if(!d?.error)setFix(d);});},[open]);
+  const consertar=async()=>{
+    if(!window.confirm("Gravar a configuração corrigida no repositório do site? A Vercel publica de novo em ~1 min."))return;
+    setConsertando(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/github/vercel-fix`,{method:'POST',body:JSON.stringify({sha:fix?.sha})});
+    setConsertando(false);
+    if(d?.error){setMsg(d.error);return;}
+    setFix({needed:false});setMsg("✓ Configuração consertada. Conferindo a publicação em 1 minuto…");
+    setDeploy(null);setTimeout(()=>carregarDeploy(),60000);
+  };
   const deployCor=!deploy?MUTED:deploy.state==="ok"?GREEN:deploy.state==="publicando"||deploy.state==="desconhecido"?MUTED:"#F5A524";
   return(
     <div style={glassCard(done)}>
       <CardHeader title="Vercel" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
       {open&&(<div style={{marginTop:8}}>
         <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Adiciona o arquivo de config que a Vercel precisa pra fazer o deploy (Lovable/Vite).</div>
+        {fix?.needed&&(
+          <div style={{...glassInset,marginBottom:12,borderColor:"rgba(245,165,36,0.35)"}}>
+            <div style={{color:TEXT,fontSize:13,fontWeight:600,marginBottom:4}}>Configuração errada pra esse tipo de site</div>
+            <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:10}}>Esse site (Lovable/TanStack Start) está com a configuração genérica de Vite. Eu volto pro que esse tipo de site espera e mantenho o resto.</div>
+            <button onClick={consertar} disabled={consertando} style={{...pillBtn(true,consertando),height:44,fontSize:14}}>{consertando?"Consertando…":"Consertar"}</button>
+            <button onClick={()=>setVerFix(v=>!v)} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F,marginTop:8,padding:0}}>Ver o que muda {verFix?"⌃":"⌄"}</button>
+            {verFix&&(<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8}}>
+              <div style={{color:MUTED,fontSize:11,fontWeight:600}}>Hoje</div>
+              <pre style={{margin:0,background:"rgba(0,0,0,0.3)",borderRadius:10,padding:10,color:"#f0a0a0",fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{fix.atualTxt}</pre>
+              <div style={{color:MUTED,fontSize:11,fontWeight:600}}>Depois</div>
+              <pre style={{margin:0,background:"rgba(0,0,0,0.3)",borderRadius:10,padding:10,color:"#a8d8a8",fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{fix.propostoTxt}</pre>
+            </div>)}
+          </div>
+        )}
         {deploy&&deploy.state!=="sem_repo"&&(
           <div style={{...glassInset,marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -3061,7 +3154,8 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   // de atividade real (c.conn) — clientes configurados manualmente antes dessa tela
   // existir não podem virar "pendente" só por não terem passado por aqui.
   const [minichatVerified,setMinichatVerified]=useState(null); // null = checando / não se aplica
-  const [ownMinichatPaths,setOwnMinichatPaths]=useState([]); // caminhos do mini chat próprio do site, se houver
+  const [ownMinichatPaths,setOwnMinichatPaths]=useState([]);
+  const [gtmBotoesOk,setGtmBotoesOk]=useState(false); // preenchido pelo card GtmBotoesAdmin // caminhos do mini chat próprio do site, se houver
   useEffect(()=>{
     // Roda mesmo sem caminho nosso instalado — pra reconhecer um mini chat PRÓPRIO
     // que o site já tinha (status "proprio") e contar como conectado.
@@ -3113,6 +3207,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado no site",done:minichatInstOk,cardKeys:["minichat_repo"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
+    ...(metodoAtual==="gtm"?[{id:"botoes_gtm",label:"Botões do site (GTM)",done:!!gtmBotoesOk,cardKeys:["botoes_gtm"]}]:[]),
     // É o e-mail (SMTP) do produtor pros DISPAROS em massa — não tem nada a ver com o
     // destino dos leads do Mini Chat (esse vai sozinho pelo JosephPay). O nome antigo,
     // "E-mail conectado", dava a entender que sem isso o Mini Chat por e-mail não funcionava.
@@ -3124,6 +3219,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   // "Testar tudo": prova real, etapa por etapa (site no ar, publicação, sensor, Mini Chat,
   // destino e envio de e-mail) — é isso que confirma se o cliente está ativado DE VERDADE.
   const [teste,setTeste]=useState(null);
+  const [avisoTeste,setAvisoTeste]=useState("");
   const [testando,setTestando]=useState(false);
   const testarTudo=async()=>{
     setTestando(true);setTeste(null);
@@ -3177,9 +3273,14 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
             <div style={{color:MUTED,fontSize:10,opacity:0.7}}>Testado agora · só leitura, nada é alterado</div>
           </div>
         )}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
+          <span style={{color:MUTED,fontSize:11}}>🔔 Aviso no celular quando algo quebrar:</span>
+          <button onClick={async()=>{setAvisoTeste("…");const d=await apiCall('/api/admin/alerts/test',{method:'POST'});setAvisoTeste(d?.ok?"✓ Enviado — confira o celular":(d?.error||"Não consegui enviar"));}} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0}}>enviar teste</button>
+        </div>
+        {avisoTeste&&<div style={{color:avisoTeste.startsWith("✓")?GREEN:MUTED,fontSize:11,textAlign:"center",marginTop:4,lineHeight:1.4}}>{avisoTeste}</div>}
         {!c.github_repo&&!c.gtm_container_id&&!siteOk&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Não sei ainda como o site desse cliente foi feito — comece abrindo "Instalação técnica" abaixo e escolhendo GTM ou GitHub.</div>}
         {!c.github_repo&&!c.gtm_container_id&&siteOk&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente já está funcionando de verdade (visitas reais detectadas), mas foi configurado fora do fluxo automático — não sei se é GTM ou GitHub. Vincule em "Instalação técnica" se quiser usar a instalação automática pra próximas mudanças (opcional, não é obrigatório já estando ativo).</div>}
-        {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — instalar a página do Mini Chat direto no site ainda só funciona para clientes com GitHub. Configure o Mini Chat normalmente; o link continua funcionando, só não dá pra criar a página automaticamente no site dele.</div>}
+        {metodoAtual==="gtm"&&<div style={{color:MUTED,fontSize:11,marginTop:12,lineHeight:1.5}}>Esse cliente usa Google Tag Manager — os botões de WhatsApp do site abrem o Mini Chat pelo card "Botões do site (GTM)" abaixo.</div>}
       </div>
       <SiteAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("site")} done={cardDone("site")}/>
       <SensorAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("sensor")} done={cardDone("sensor")}/>
@@ -3189,6 +3290,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       <AtivacaoAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       <PerguntasMinichatAdmin c={c} initialOpen={openCard("minichat")} done={cardDone("minichat")}/>
       {metodoAtual==="github"&&<BotoesAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("botoes")} done={cardDone("botoes")}/>}
+      {metodoAtual==="gtm"&&<GtmBotoesAdmin c={c} onStatus={setGtmBotoesOk}/>}
       <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
     </div>
   );
