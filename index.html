@@ -3840,6 +3840,142 @@ function GAIntegracao({clienteId,cliente,onUpdated}){
   );
 }
 
+function ParceirosAdmin(){
+  const [data,setData]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [sel,setSel]=useState(null);
+  const [detail,setDetail]=useState(null);
+  useEffect(()=>{
+    (async()=>{
+      const d=await apiCall("/api/admin/training");
+      if(Array.isArray(d))setData(d);
+      setLoading(false);
+    })();
+  },[]);
+  async function openDetail(u){
+    setSel(u);setDetail(null);
+    const d=await apiCall(`/api/admin/training/${u.id}`);
+    if(!d?.error)setDetail(d);
+  }
+  const thS={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",padding:"10px 14px",borderBottom:`1px solid ${BDR}`,textAlign:"left",background:CARD};
+  const tdS={padding:"10px 14px",fontSize:13,color:TEXT,borderBottom:`1px solid ${BDR}`,verticalAlign:"middle"};
+  function CkDots({t}){
+    if(!t)return <span style={{color:MUTED,fontSize:11}}>—</span>;
+    return(<span style={{display:"flex",gap:4}}>{[1,2,3,4].map(n=>(
+      <span key={n} title={`CK${n}: ${t[`ck${n}_completed_at`]?"Feito":"Pendente"}`} style={{width:8,height:8,borderRadius:"50%",background:t[`ck${n}_completed_at`]?GREEN:BDR,display:"inline-block"}}/>
+    ))}</span>);
+  }
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"18px 20px"}}>
+        <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:4}}>Treinamento de Parceiros</div>
+        <div style={{color:MUTED,fontSize:13}}>{data.length} afiliado{data.length!==1?"s":""} cadastrado{data.length!==1?"s":""}</div>
+      </div>
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,overflow:"hidden"}}>
+        {loading?<div style={{padding:32,textAlign:"center",color:MUTED}}>Carregando...</div>:
+         data.length===0?<div style={{padding:32,textAlign:"center",color:MUTED}}>Nenhum afiliado cadastrado.</div>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
+              <thead><tr>
+                <th style={thS}>Nome</th>
+                <th style={thS}>Tipo</th>
+                <th style={thS}>Módulos</th>
+                <th style={thS}>Teste Final</th>
+                <th style={thS}>Última Atividade</th>
+              </tr></thead>
+              <tbody>{data.map(u=>{
+                const tArr=Array.isArray(u.training_progress)?u.training_progress:[u.training_progress].filter(Boolean);
+                const t=tArr[0]||null;
+                return(
+                  <tr key={u.id} onClick={()=>openDetail(u)} style={{cursor:"pointer"}}
+                    onMouseEnter={e=>e.currentTarget.style.background=CARD2}
+                    onMouseLeave={e=>e.currentTarget.style.background=""}>
+                    <td style={tdS}>
+                      <div style={{fontWeight:600}}>{u.name||"—"}</div>
+                      <div style={{fontSize:11,color:MUTED}}>{u.email}</div>
+                    </td>
+                    <td style={tdS}>
+                      <span style={{background:u.partner_type==="embaixador"?`${GOLD}18`:BDR,color:u.partner_type==="embaixador"?GOLD:MUTED,padding:"2px 8px",borderRadius:100,fontSize:11,fontWeight:700,textTransform:"capitalize"}}>
+                        {u.partner_type||"afiliado"}
+                      </span>
+                    </td>
+                    <td style={tdS}><CkDots t={t}/></td>
+                    <td style={tdS}>
+                      {t?.final_test_attempts>0?
+                        <span style={{color:t.final_test_passed?GREEN:RED,fontWeight:700,fontSize:12}}>{t.final_test_passed?"✓ Aprovado":`${t.final_test_last_score}/10 (${t.final_test_attempts}×)`}</span>:
+                        <span style={{color:MUTED,fontSize:11}}>—</span>}
+                    </td>
+                    <td style={tdS}><span style={{color:MUTED,fontSize:11}}>{t?.last_activity_at?new Date(t.last_activity_at).toLocaleDateString("pt-BR"):"—"}</span></td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {sel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+          onClick={e=>{if(e.target===e.currentTarget){setSel(null);setDetail(null);}}}>
+          <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:20,padding:24,width:"100%",maxWidth:500,maxHeight:"80vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+              <div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:16}}>{sel.name||"—"}</div>
+                <div style={{color:MUTED,fontSize:12,marginTop:2}}>{sel.email}</div>
+              </div>
+              <button onClick={()=>{setSel(null);setDetail(null);}} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer",padding:4}}>✕</button>
+            </div>
+            {!detail?<div style={{textAlign:"center",color:MUTED,padding:24}}>Carregando...</div>:(()=>{
+              const pArr=Array.isArray(detail.profile?.training_progress)?detail.profile.training_progress:[detail.profile?.training_progress].filter(Boolean);
+              const p=pArr[0]||null;
+              const lbl={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",marginBottom:8};
+              const row={display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${BDR}`};
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:14}}>
+                    <div style={lbl}>Checkpoints</div>
+                    {[1,2,3,4].map(n=>(
+                      <div key={n} style={{...row,borderBottom:n<4?`1px solid ${BDR}`:"none"}}>
+                        <span style={{fontSize:13,color:TEXT}}>Módulo {n}</span>
+                        {p?.[`ck${n}_completed_at`]?
+                          <span style={{fontSize:12,color:GREEN,fontWeight:600}}>✓ {new Date(p[`ck${n}_completed_at`]).toLocaleDateString("pt-BR")}</span>:
+                          <span style={{fontSize:11,color:MUTED}}>Pendente</span>}
+                      </div>
+                    ))}
+                  </div>
+                  {p?.final_test_attempts>0&&(
+                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:14}}>
+                      <div style={lbl}>Teste Final</div>
+                      <div style={{...row}}><span style={{fontSize:13,color:MUTED}}>Tentativas</span><span style={{fontSize:13,color:TEXT,fontWeight:600}}>{p.final_test_attempts}</span></div>
+                      <div style={{...row}}><span style={{fontSize:13,color:MUTED}}>Última nota</span><span style={{fontSize:13,color:TEXT,fontWeight:600}}>{p.final_test_last_score}/10 ({p.final_test_last_pct}%)</span></div>
+                      {p.final_test_first_passed_at&&(
+                        <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}>
+                          <span style={{fontSize:13,color:MUTED}}>Aprovado em</span>
+                          <span style={{fontSize:13,color:GREEN,fontWeight:600}}>{new Date(p.final_test_first_passed_at).toLocaleDateString("pt-BR")}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {detail.attempts?.length>0&&(
+                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:14}}>
+                      <div style={lbl}>Histórico de Tentativas</div>
+                      {detail.attempts.map((a,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<detail.attempts.length-1?`1px solid ${BDR}`:"none"}}>
+                          <span style={{fontSize:12,color:MUTED}}>#{a.attempt_num} · {new Date(a.created_at).toLocaleDateString("pt-BR")}</span>
+                          <span style={{fontSize:13,color:a.passed?GREEN:RED,fontWeight:600}}>{a.score}/{a.total} ({a.pct}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GoogleAdsAdmin(){
   const [clientes,setClientes]=useState(null);
   const [clienteId,setClienteId]=useState(null);
@@ -3914,12 +4050,13 @@ function AdminPanel({onLogout,userEmail}){
     {id:"financeiro",icon:"◈",label:"Financeiro"},
     {id:"googleads",icon:"⊕",label:"Google Ads"},
     {id:"chat",icon:"✧",label:"Chat IA"},
+    {id:"parceiros",icon:"◎",label:"Parceiros"},
     {id:"integracoes",icon:"⎈",label:"Integrações"},
     {id:"config",icon:"⚙",label:"Config"},
   ];
   const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",chat:"Chat IA",parceiros:"Parceiros",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,parceiros:<ParceirosAdmin/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={onNav} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
@@ -3933,7 +4070,7 @@ function AdminPanel({onLogout,userEmail}){
   );
 }
 
-function ClientPanel({clientName,userEmail,onLogout}){
+function ClientPanel({clientName,userEmail,onLogout,userRole}){
   const [tab,setTab]=useState("dashboard");
   const [navCustomerId,setNavCustomerId]=useState(null);
   const [navSubTab,setNavSubTab]=useState(null);
@@ -3969,8 +4106,9 @@ function ClientPanel({clientName,userEmail,onLogout}){
     {id:"disparos",icon:"⚡",label:"Disparos"},
     {id:"maquina",icon:"⚙",label:"Máquina"},
     {id:"chat",icon:"✧",label:"Chat IA"},
+    ...(userRole==="afiliado"?[{id:"treinamento",icon:"◎",label:"Treinamento"}]:[]),
   ];
-  const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",disparos:"Disparos",maquina:"Máquina",chat:"Chat IA"};
+  const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",disparos:"Disparos",maquina:"Máquina",chat:"Chat IA",treinamento:"Treinamento"};
   const VIEWS={
     dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
@@ -3978,6 +4116,7 @@ function ClientPanel({clientName,userEmail,onLogout}){
     disparos:<DisparosTab onWapChange={v=>setWapConnected(v)} onEmailChange={v=>setEmailConnected(v)}/>,
     maquina:<MaquinaTab onNav={onNav}/>,
     chat:<ChatIA productName={companyName} onBack={()=>onNav("dashboard")}/>,
+    treinamento:<TreinamentoTab/>,
     saque:<Sacar/>,
     vendas:<Vendas accent={accent} isDeise={false}/>,
   };
@@ -5259,6 +5398,279 @@ function DisparosTab({onWapChange,onEmailChange}){
   );
 }
 
+function TreinamentoTab(){
+  const [prog,setProg]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [ckPhase,setCkPhase]=useState([0,0,0,0]); // 0=scenario 1=refs 2=done
+  const [ckSel,setCkSel]=useState([null,null,null,null]);
+  const [ckRes,setCkRes]=useState([null,null,null,null]);
+  const [qPhase,setQPhase]=useState("idle"); // idle|active|result
+  const [qIdx,setQIdx]=useState(0);
+  const [qAnswers,setQAnswers]=useState([]);
+  const [qSel,setQSel]=useState(null);
+  const [qResult,setQResult]=useState(null);
+  const [busy,setBusy]=useState(false);
+
+  const CK_DATA=[
+    {title:"Módulo 1 — Entendendo o JosephPay",
+     scenario:"Você está numa conversa informal com um amigo que tem uma clínica de fisioterapia. Ele diz: \"Eu já tenho Instagram e recebo bastante mensagem por lá. Para que eu precisaria do JosephPay?\" Como você responderia?",
+     points:["Reconhecer e valorizar o que ele já tem, sem atacar o Instagram","Explicar que Instagram gera atenção — o JosephPay trabalha a intenção de quem chega ao site","Mostrar que visitas vindas do Google ou de indicações saem sem deixar nome ou contato","Posicionar o JosephPay como complemento, não substituto","Não prometer quantidade de leads, clientes ou resultados garantidos"],
+     q:"O sensor instalado no site do cliente registra automaticamente...",
+     opts:["Nome e telefone de todos os visitantes do site","Origem, dispositivo e cliques — mas não identifica visitantes anônimos","O comportamento de navegação completo, com gravação de tela","Somente cliques no botão de WhatsApp e telefone"]},
+    {title:"Módulo 2 — Entendendo o Cliente Ideal",
+     scenario:"Uma conhecida que trabalha como nutricionista autônoma te manda mensagem: \"Ouvi falar do JosephPay. Atendo online, tenho site no ar, recebo consultas por WhatsApp — mas boa parte das pessoas que perguntam preço some sem dar retorno. Faz sentido pra mim?\" Como você diagnosticaria esse perfil?",
+     points:["Identificar que ela tem site — pré-requisito técnico atendido","Reconhecer que ela recebe intenção comercial (pessoas que perguntam preço)","O problema de leads que somem é exatamente o que o JosephPay aborda","Serviço recorrente com ticket razoável: perfil compatível","Provavelmente plano Normal para organizar o que já existe","Não prometer quantos clientes ela vai fechar"],
+     q:"Um negócio que diz \"não tenho site e não quero ter\" se enquadra em:",
+     opts:["Bom perfil — o Mini Chat pode ser instalado direto no Instagram","Bom perfil — o sensor funciona mesmo sem site ativo","Perfil de atenção — sensor e Mini Chat precisam de um site para funcionar","Bom perfil para Premium, pois Google Ads independe de site"]},
+    {title:"Módulo 3 — Apresentando e Vendendo",
+     scenario:"Você enviou uma abordagem inicial para um dentista pelo WhatsApp. Ele respondeu: \"Obrigado pelo contato, mas já tenho um sistema de agendamento que funciona bem.\" Como você conduziria essa conversa?",
+     points:["Não atacar o sistema que ele já usa — reconhecer que ter estrutura é ótimo","Redirecionar a conversa para o que acontece com visitantes do site que saem sem deixar contato","Posicionar o JosephPay como complemento, não como substituto","Pedir permissão para mostrar algo específico sobre o problema","Não prometer aumento de agenda, faturamento ou qualquer resultado garantido"],
+     q:"Ao apresentar o JosephPay, qual das afirmações abaixo é correta para o Embaixador?",
+     opts:["Pode prometer aumento de faturamento se o cliente investir no plano Premium","Deve enfatizar que o JosephPay substitui HubSpot e ActiveCampaign com vantagem","Apresenta as capacidades do produto; resultados dependem de variáveis além da plataforma","Pode garantir ao menos 10 leads por mês no plano Normal"]},
+    {title:"Módulo 4 — Papéis e Responsabilidades",
+     scenario:"Um cliente acabou de pagar pelo plano Normal e te manda mensagem: \"Paguei! O que você precisa de mim agora? Quando começa a implementação?\" O que você responde e como conduz esse momento?",
+     points:["Confirmar o recebimento e transmitir segurança e profissionalismo","Informar o prazo: até 2 dias úteis após pagamento e envio das informações","Explicar que a implementação é feita pela equipe Novarks — ele não precisa fazer nada técnico","Apresentar o cliente à equipe Novarks ou criar o grupo de comunicação","Não prometer além do prazo confirmado ou inventar detalhes técnicos"],
+     q:"Após o fechamento de uma venda, qual é a responsabilidade do Embaixador/Afiliado?",
+     opts:["Realizar pessoalmente a instalação do sensor no site do cliente","Criar as campanhas de Google Ads enquanto aguarda o cliente fornecer informações","Facilitar a comunicação entre o cliente e a equipe Novarks e manter o relacionamento comercial","Configurar o Mini Chat e o CRM diretamente no painel do cliente"]},
+  ];
+
+  const QUIZ_Q=[
+    {q:"Qual é o problema central que o JosephPay resolve para os negócios?",opts:["A falta de um site profissional para empresas locais","A perda de intenção comercial — visitantes que chegam e saem sem deixar contato","A dificuldade de aceitar pagamentos digitais no Brasil","A ausência de gestão financeira integrada para pequenos negócios"]},
+    {q:"Qual é o posicionamento oficial do JosephPay?",opts:["Plataforma de pagamentos e cobranças recorrentes","CRM para gestão de clientes e funil de vendas","Business Growth Platform","Ferramenta de automação de marketing digital"]},
+    {q:"O sensor.js instalado no site do cliente é capaz de...",opts:["Identificar automaticamente o nome e telefone de todos os visitantes","Registrar origem, dispositivo e cliques — mas não identifica visitantes anônimos","Gravar vídeo da navegação de cada visitante para análise posterior","Enviar mensagens automáticas para quem acessa páginas específicas do site"]},
+    {q:"Qual é o limite operacional de disparos de WhatsApp por dia?",opts:["10 disparos por dia","100 disparos por dia","50 disparos por dia","Sem limite definido — o cliente decide quanto enviar"]},
+    {q:"Qual é a principal diferença entre o plano Normal e o Premium?",opts:["O Premium tem mais usuários, parcelas no cartão e suporte 24h","O Normal não inclui Mini Chat; o Premium inclui com recursos avançados","O Premium inclui gestão completa de Google Ads realizada pela equipe Novarks","O Premium tem checkout ilimitado; o Normal tem limite de vendas mensais"]},
+    {q:"A verba de Google Ads do plano Premium...",opts:["Está incluída na mensalidade mensal do plano","É parcialmente coberta pela Novarks nos primeiros R$200","É paga pelo cliente diretamente ao Google, separadamente da mensalidade","A Novarks recebe e repassa ao Google mensalmente"]},
+    {q:"Qual é o prazo de implementação do JosephPay após o pagamento?",opts:["Até 24 horas após a confirmação do pagamento","Até 2 dias úteis após pagamento e envio das informações","Entre 5 e 7 dias úteis conforme a complexidade do site","Até 30 dias — a equipe agenda conforme disponibilidade"]},
+    {q:"Como funcionam as automações de aniversário e cashback no JosephPay?",opts:["São disparadas automaticamente assim que ativadas no painel, sem mais configuração","O cliente configura as campanhas com auxílio da IA; não são executadas automaticamente sem configuração","São recursos exclusivos do plano Premium, indisponíveis no Normal","São geradas por IA sem necessidade de qualquer ação do cliente"]},
+    {q:"O que um Afiliado pode e o que não pode prometer a um potencial cliente?",opts:["Pode prometer posição garantida no Google se o cliente investir em anúncios","Pode prometer que o cliente terá mais vendas nos primeiros 30 dias","Pode apresentar as capacidades do produto; não pode prometer resultados garantidos de leads, vendas ou ROI","Pode garantir ROI mínimo baseado em dados históricos do segmento"]},
+    {q:"O Google Review Stories, bônus exclusivo do Premium, é...",opts:["Uma automação que publica avaliações do Google no Instagram do cliente","Um software que responde avaliações do Google Meu Negócio automaticamente","Um serviço da equipe Novarks que transforma avaliações reais do Google em artes profissionais para Story","Uma integração com Canva para criação de posts de avaliações"]},
+  ];
+
+  useEffect(()=>{load();},[]);
+
+  async function load(){
+    setLoading(true);
+    const d=await apiCall("/api/training/progress");
+    if(!d?.error){
+      setProg(d);
+      const ph=[0,0,0,0];
+      [1,2,3,4].forEach((n,i)=>{if(d[`ck${n}_completed_at`])ph[i]=2;});
+      setCkPhase(ph);
+    }
+    setLoading(false);
+  }
+
+  async function verifyCk(idx){
+    const sel=ckSel[idx];
+    if(sel===null)return;
+    setBusy(true);
+    const d=await apiCall("/api/training/checkpoint",{method:"POST",body:JSON.stringify({ck_index:idx,selected_index:sel})});
+    if(!d?.error){
+      setCkRes(prev=>{const n=[...prev];n[idx]=d;return n;});
+      setCkPhase(prev=>{const n=[...prev];n[idx]=2;return n;});
+      await load();
+    }
+    setBusy(false);
+  }
+
+  function advanceQ(){
+    if(qSel===null)return;
+    const ans=[...qAnswers];
+    ans[qIdx]=qSel;
+    setQAnswers(ans);
+    if(qIdx===QUIZ_Q.length-1){submitTest(ans);}
+    else{setQIdx(qIdx+1);setQSel(null);}
+  }
+
+  async function submitTest(ans){
+    setBusy(true);
+    const d=await apiCall("/api/training/test",{method:"POST",body:JSON.stringify({answers:ans})});
+    if(!d?.error){setQResult(d);setQPhase("result");await load();}
+    setBusy(false);
+  }
+
+  const cksDone=[1,2,3,4].filter(n=>prog?.[`ck${n}_completed_at`]).length;
+  const testPassed=!!prog?.final_test_passed;
+  const totalPct=(cksDone*20)+(testPassed?20:0);
+  const lbl={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",marginBottom:8};
+  const optSt=(active)=>({display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?`${GOLD}12`:CARD2,border:`1px solid ${active?GOLD:BDR}`,borderRadius:10,cursor:"pointer"});
+  const btnSt=(dis)=>({background:dis?BDR:GOLD,color:dis?MUTED:"#0D0D0D",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:dis?"not-allowed":"pointer"});
+
+  if(loading)return <div style={{color:MUTED,padding:40,textAlign:"center"}}>Carregando treinamento...</div>;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* Barra de progresso */}
+      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:15}}>Progresso do Treinamento</div>
+          <div style={{color:GOLD,fontWeight:800,fontSize:16}}>{totalPct}%</div>
+        </div>
+        <div style={{height:5,background:BDR,borderRadius:3,overflow:"hidden",marginBottom:12}}>
+          <div style={{height:"100%",width:`${totalPct}%`,background:`linear-gradient(90deg,${GOLD},${GOLD2})`,transition:"width .4s"}}/>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+          {[1,2,3,4].map(n=>(
+            <span key={n} style={{fontSize:12,color:prog?.[`ck${n}_completed_at`]?GREEN:MUTED,display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:13}}>{prog?.[`ck${n}_completed_at`]?"✓":"○"}</span>Módulo {n}
+            </span>
+          ))}
+          <span style={{fontSize:12,color:testPassed?GREEN:MUTED,display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+            <span style={{fontSize:13}}>{testPassed?"✓":"○"}</span>Teste Final
+          </span>
+        </div>
+      </div>
+
+      {/* Módulos com Checkpoints */}
+      {CK_DATA.map((ck,idx)=>{
+        const done=ckPhase[idx]===2;
+        const res=ckRes[idx];
+        return(
+          <div key={idx} style={{background:CARD,border:`1px solid ${done?GOLD+"50":BDR}`,borderRadius:16,overflow:"hidden"}}>
+            <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:done?GOLD:BDR,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:done?"#0D0D0D":MUTED,fontWeight:700,flexShrink:0}}>{done?"✓":idx+1}</div>
+              <div style={{flex:1,color:TEXT,fontWeight:600,fontSize:14}}>{ck.title}</div>
+              {done&&<span style={{fontSize:11,color:GREEN,fontWeight:700,letterSpacing:.06,textTransform:"uppercase"}}>Concluído</span>}
+            </div>
+            {!done&&(
+              <div style={{padding:"0 20px 20px"}}>
+                {ckPhase[idx]===0&&(
+                  <div>
+                    <div style={lbl}>Situação</div>
+                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:14,fontSize:14,color:TEXT,lineHeight:1.7,marginBottom:14}}>{ck.scenario}</div>
+                    <div style={lbl}>Como você responderia?</div>
+                    <textarea style={{width:"100%",minHeight:80,background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,color:TEXT,fontSize:14,padding:"10px 12px",resize:"vertical",fontFamily:F,outline:"none",boxSizing:"border-box",lineHeight:1.6}} placeholder="Escreva seu raciocínio livremente. Na próxima etapa você compara com pontos de referência."/>
+                    <div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}>
+                      <button style={btnSt(false)} onClick={()=>setCkPhase(prev=>{const n=[...prev];n[idx]=1;return n;})}>Ver referências →</button>
+                    </div>
+                  </div>
+                )}
+                {ckPhase[idx]===1&&(
+                  <div>
+                    <div style={lbl}>Pontos de uma boa resposta</div>
+                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"12px 14px",marginBottom:16}}>
+                      {ck.points.map((p,pi)=>(
+                        <div key={pi} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:pi<ck.points.length-1?`1px solid ${BDR}`:"none"}}>
+                          <span style={{color:GOLD,flexShrink:0}}>·</span>
+                          <span style={{fontSize:13,color:TEXT,lineHeight:1.5}}>{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{height:1,background:BDR,margin:"0 0 16px"}}/>
+                    <div style={lbl}>Pergunta rápida</div>
+                    <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:12,lineHeight:1.5}}>{ck.q}</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {ck.opts.map((o,oi)=>(
+                        <div key={oi} onClick={()=>setCkSel(prev=>{const n=[...prev];n[idx]=oi;return n;})} style={optSt(ckSel[idx]===oi)}>
+                          <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${ckSel[idx]===oi?GOLD:MUTED}`,background:ckSel[idx]===oi?GOLD:"transparent",flexShrink:0}}/>
+                          <span style={{fontSize:14,color:TEXT}}>{o}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",justifyContent:"flex-end",marginTop:14}}>
+                      <button style={btnSt(ckSel[idx]===null||busy)} disabled={ckSel[idx]===null||busy} onClick={()=>verifyCk(idx)}>Verificar →</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {done&&res&&(
+              <div style={{padding:"0 20px 20px"}}>
+                <div style={{background:res.correct?`${GREEN}12`:`${GOLD}10`,border:`1px solid ${res.correct?GREEN+"40":GOLD+"40"}`,borderRadius:10,padding:"10px 14px",fontSize:13}}>
+                  {res.correct?<span style={{color:GREEN,fontWeight:700}}>✓ Correto</span>:<span style={{color:GOLD,fontWeight:700}}>Concluído</span>}
+                  {!res.correct&&<span style={{color:MUTED,marginLeft:8}}>— a resposta correta foi opção {res.correct_index+1}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Teste Final */}
+      <div style={{background:CARD,border:`1px solid ${testPassed?GOLD+"50":BDR}`,borderRadius:16,overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:28,height:28,borderRadius:"50%",background:testPassed?GOLD:BDR,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:testPassed?"#0D0D0D":MUTED,fontWeight:700,flexShrink:0}}>{testPassed?"✓":"★"}</div>
+          <div style={{flex:1,color:TEXT,fontWeight:600,fontSize:14}}>Teste Final de Certificação</div>
+          {testPassed&&<span style={{fontSize:11,color:GREEN,fontWeight:700,letterSpacing:.06,textTransform:"uppercase"}}>Aprovado</span>}
+        </div>
+
+        {cksDone<4&&!testPassed&&(
+          <div style={{padding:"0 20px 20px",color:MUTED,fontSize:13}}>Complete os 4 módulos para desbloquear o Teste Final.</div>
+        )}
+
+        {cksDone>=4&&!testPassed&&qPhase==="idle"&&(
+          <div style={{padding:"0 20px 20px"}}>
+            <div style={{color:MUTED,fontSize:13,marginBottom:12}}>10 perguntas · mínimo 80% para aprovação · tentativas ilimitadas</div>
+            {prog?.final_test_attempts>0&&(
+              <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13}}>
+                <span style={{color:MUTED}}>Última tentativa: </span>
+                <span style={{color:TEXT,fontWeight:600}}>{prog.final_test_last_score}/10 ({prog.final_test_last_pct}%)</span>
+                <span style={{marginLeft:8,color:RED,fontWeight:600,fontSize:11,textTransform:"uppercase"}}>Reprovado</span>
+              </div>
+            )}
+            <button style={btnSt(false)} onClick={()=>{setQPhase("active");setQIdx(0);setQAnswers([]);setQSel(null);setQResult(null);}}>
+              {prog?.final_test_attempts>0?"↺ Tentar novamente":"Iniciar Teste"}
+            </button>
+          </div>
+        )}
+
+        {qPhase==="active"&&(
+          <div style={{padding:"0 20px 20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.1,textTransform:"uppercase"}}>Pergunta {qIdx+1} de {QUIZ_Q.length}</div>
+              <div style={{height:4,width:100,background:BDR,borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${(qIdx+1)/QUIZ_Q.length*100}%`,background:GOLD,transition:"width .3s"}}/>
+              </div>
+            </div>
+            <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:14,lineHeight:1.6}}>{QUIZ_Q[qIdx].q}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {QUIZ_Q[qIdx].opts.map((o,oi)=>(
+                <div key={oi} onClick={()=>setQSel(oi)} style={optSt(qSel===oi)}>
+                  <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${qSel===oi?GOLD:MUTED}`,background:qSel===oi?GOLD:"transparent",flexShrink:0}}/>
+                  <span style={{fontSize:14,color:TEXT}}>{o}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:14}}>
+              <button style={btnSt(qSel===null||busy)} disabled={qSel===null||busy} onClick={advanceQ}>
+                {qIdx===QUIZ_Q.length-1?"Finalizar Teste":"Próxima pergunta"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {qPhase==="result"&&qResult&&(
+          <div style={{padding:"0 20px 20px"}}>
+            <div style={{background:qResult.passed?`${GREEN}12`:`${GOLD}10`,border:`1px solid ${qResult.passed?GREEN+"40":GOLD+"40"}`,borderRadius:12,padding:"16px 18px",textAlign:"center",marginBottom:14}}>
+              <div style={{fontSize:34,fontWeight:800,color:qResult.passed?GREEN:TEXT}}>{qResult.score}/{qResult.total}</div>
+              <div style={{fontSize:14,color:MUTED,marginTop:2}}>{qResult.pct}%</div>
+              <div style={{marginTop:8,fontWeight:700,color:qResult.passed?GREEN:RED,fontSize:14}}>{qResult.passed?"Parabéns! Você está aprovado.":"Abaixo do mínimo de 80%. Revise e tente novamente."}</div>
+            </div>
+            {!qResult.passed&&(
+              <div style={{display:"flex",justifyContent:"center"}}>
+                <button style={btnSt(false)} onClick={()=>setQPhase("idle")}>↺ Tentar novamente</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {testPassed&&(
+          <div style={{padding:"0 20px 20px"}}>
+            <div style={{background:`${GREEN}10`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"14px 16px",display:"flex",gap:10,alignItems:"center"}}>
+              <span style={{fontSize:22,flexShrink:0}}>🎓</span>
+              <div>
+                <div style={{color:GREEN,fontWeight:700,fontSize:14,marginBottom:2}}>Treinamento Concluído</div>
+                <div style={{color:MUTED,fontSize:12}}>Aprovado com {prog?.final_test_last_score}/10{prog?.final_test_first_passed_at?" · "+new Date(prog.final_test_first_passed_at).toLocaleDateString("pt-BR"):""}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MaquinaTab({onNav}){
   const [analytics,setAnalytics]=React.useState(null);
   const [loadingAnalytics,setLoadingAnalytics]=React.useState(true);
@@ -5838,7 +6250,7 @@ function App(){
     <div style={{background:BG,minHeight:"100vh",fontFamily:F}}>
       {!user&&<Login onLogin={handleLogin}/>}
       {user?.role==="admin"&&<AdminPanel onLogout={handleLogout} userEmail={user.email}/>}
-      {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout}/>}
+      {(user?.role==="client"||user?.role==="afiliado")&&<ClientPanel clientName={user.name} userEmail={user.email} onLogout={handleLogout} userRole={user.role}/>}
       {user&&<Paywall/>}
     </div>
   );

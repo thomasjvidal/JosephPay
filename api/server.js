@@ -4605,6 +4605,162 @@ async function ensureBuckets() {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TREINAMENTO DE PARCEIROS (Embaixadores/Afiliados)
+// Todas as validações de resposta ocorrem aqui — o frontend envia apenas
+// os índices selecionados e nunca recebe as respostas corretas.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Gabaritos — apenas no servidor
+const CK_ANSWERS = [1, 2, 2, 2]; // ck1..ck4: índice da opção correta
+const Q_ANSWERS  = [1, 2, 1, 2, 2, 2, 1, 1, 2, 2]; // Teste Final q0..q9
+
+// GET /api/training/progress — progresso do usuário autenticado
+app.get("/api/training/progress", requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("training_progress")
+      .select("*")
+      .eq("user_id", req.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    res.json(data || {});
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/training/checkpoint — valida resposta de checkpoint no servidor
+app.post("/api/training/checkpoint", requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { ck_index, selected_index } = req.body;
+    if (typeof ck_index !== "number" || ck_index < 0 || ck_index > 3 || typeof selected_index !== "number") {
+      return res.status(400).json({ error: "Parâmetros inválidos" });
+    }
+    const correct = selected_index === CK_ANSWERS[ck_index];
+    const n = ck_index + 1;
+    const now = new Date().toISOString();
+    const update = {
+      [`ck${n}_completed_at`]: now,
+      [`ck${n}_answer_correct`]: correct,
+      last_activity_at: now,
+    };
+    const { data: existing } = await supabase
+      .from("training_progress")
+      .select("id")
+      .eq("user_id", uid)
+      .maybeSingle();
+    if (existing) {
+      await supabase.from("training_progress").update(update).eq("user_id", uid);
+    } else {
+      await supabase.from("training_progress").insert({ user_id: uid, ...update });
+    }
+    res.json({ correct, correct_index: CK_ANSWERS[ck_index] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/training/test — recebe respostas brutas, calcula nota no servidor
+app.post("/api/training/test", requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { answers } = req.body;
+    if (!Array.isArray(answers) || answers.length !== Q_ANSWERS.length) {
+      return res.status(400).json({ error: "Respostas inválidas" });
+    }
+    const total = Q_ANSWERS.length;
+    const score = answers.reduce((acc, a, i) => acc + (a === Q_ANSWERS[i] ? 1 : 0), 0);
+    const pct   = parseFloat((score / total * 100).toFixed(2));
+    const passed = score / total >= 0.80; // 80% mínimo para aprovação
+    const now   = new Date().toISOString();
+
+    const { data: existing } = await supabase
+      .from("training_progress")
+      .select("id, final_test_attempts, final_test_first_passed_at, final_test_passed")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    const attempt_num = (existing?.final_test_attempts || 0) + 1;
+    const answersDetail = answers.map((selected, i) => ({
+      q: i, selected, correct: Q_ANSWERS[i], ok: selected === Q_ANSWERS[i],
+    }));
+
+    await supabase.from("training_test_attempts").insert({
+      user_id: uid, attempt_num, score, total, pct, passed, answers: answersDetail,
+    });
+
+    const progressUpdate = {
+      final_test_attempts: attempt_num,
+      final_test_last_score: score,
+      final_test_last_pct: pct,
+      final_test_passed: existing?.final_test_passed || passed,
+      final_test_last_at: now,
+      last_activity_at: now,
+    };
+    if (passed && !existing?.final_test_first_passed_at) {
+      progressUpdate.final_test_first_passed_at = now;
+    }
+    if (existing) {
+      await supabase.from("training_progress").update(progressUpdate).eq("user_id", uid);
+    } else {
+      await supabase.from("training_progress").insert({ user_id: uid, ...progressUpdate });
+    }
+
+    res.json({ score, total, pct, passed, attempt_num });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/training — todos os afiliados com dados de treinamento
+app.get("/api/admin/training", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(`id, name, email, role, partner_type, disabled_at, created_at,
+        training_progress (
+          ck1_completed_at, ck1_answer_correct,
+          ck2_completed_at, ck2_answer_correct,
+          ck3_completed_at, ck3_answer_correct,
+          ck4_completed_at, ck4_answer_correct,
+          final_test_attempts, final_test_last_score, final_test_last_pct,
+          final_test_passed, final_test_last_at, final_test_first_passed_at,
+          last_activity_at
+        )`)
+      .eq("role", "afiliado")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/training/:userId — detalhe + histórico completo de tentativas
+app.get("/api/admin/training/:userId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [profileRes, attemptsRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, name, email, role, partner_type, created_at, training_progress(*)")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase
+        .from("training_test_attempts")
+        .select("id, attempt_num, score, total, pct, passed, created_at")
+        .eq("user_id", userId)
+        .order("attempt_num", { ascending: true }),
+    ]);
+    if (profileRes.error) throw profileRes.error;
+    res.json({ profile: profileRes.data, attempts: attemptsRes.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);
