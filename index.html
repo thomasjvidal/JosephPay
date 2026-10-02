@@ -2732,9 +2732,15 @@ function AtivacaoAdmin({c,initialOpen,done}){
     };
     reader.readAsDataURL(file);
   };
+  const emailValido=v=>/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(String(v||"").trim());
+  const [erroSalvar,setErroSalvar]=useState("");
+  // E-mail encontrado no site do cliente — sugerido quando o salvo está errado.
+  const [emailDoSite,setEmailDoSite]=useState("");
   const salvarMinichat=async()=>{
-    if(destinoTipo!=="email"&&!wapNum.trim())return;
-    if(destinoTipo!=="whatsapp"&&!emailDestino.trim())return;
+    setErroSalvar("");
+    if(destinoTipo!=="email"&&!wapNum.trim()){setErroSalvar("Preencha o número de WhatsApp.");return;}
+    if(destinoTipo!=="whatsapp"&&!emailDestino.trim()){setErroSalvar("Preencha o e-mail de destino.");return;}
+    if(destinoTipo!=="whatsapp"&&!emailValido(emailDestino)){setErroSalvar(`"${emailDestino.trim()}" não é um e-mail válido — falta a parte antes do @ (ex: nome@gmail.com).`);return;}
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({
       whatsapp_number:wapNum.trim(),
       brand_name:brandName.trim(),
@@ -2751,7 +2757,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       bg_color:corFundo,
       accent_color:corDestaque,
     })});
-    if(!d.error)setMiniSaved(true);
+    if(d.error){setErroSalvar(d.error);return;}
+    setMiniSaved(true);
   };
   const resetarSenha=async()=>{
     if(!window.confirm(`Gerar uma nova senha para ${c.name}? A senha antiga deixa de funcionar.`))return;
@@ -2784,6 +2791,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     const mc=c.minichat_config||{};
     importarMinichatDoSite(c.id).then(d=>{
       const st=d?.settings||{};if(!d?.found)return;
+      if(st.email_destino&&emailValido(st.email_destino)&&mc.email_destino&&!emailValido(mc.email_destino))setEmailDoSite(st.email_destino);
       const feitos=[];
       // Destino, idioma e visual só pra Mini Chat que nunca foi configurado — produtor
       // que já usa (WhatsApp/e-mail salvo) nunca tem isso trocado sem querer.
@@ -2817,7 +2825,9 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {!c.phone&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Para onde os leads serão redirecionados no WhatsApp.</div>}
       </>)}
       {destinoTipo!=="whatsapp"&&(<>
-      <input value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads (ex: nome@gmail.com)" style={{width:"100%",background:CARD2,border:`1px solid ${emailDestino.trim()&&!emailValido(emailDestino)?"#F87171":BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
+      {emailDestino.trim()&&!emailValido(emailDestino)&&<div style={{color:"#F87171",fontSize:11,marginBottom:6,lineHeight:1.4}}>Isso não é um e-mail — falta a parte antes do @ (ex: nome@gmail.com). Os contatos não vão chegar assim.</div>}
+      {emailDoSite&&emailDoSite!==emailDestino.trim()&&<button onClick={()=>setEmailDestino(emailDoSite)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:8,display:"block"}}>↑ Usar {emailDoSite} (achei no site do cliente)</button>}
       <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Assim que a pessoa termina o Mini Chat, o diagnóstico (respostas + nome, e-mail e telefone dela) chega <b style={{color:TEXT}}>sozinho</b> neste endereço — enviado pelo JosephPay, sem a pessoa precisar ter app de e-mail. O contato também entra em "Clientes do produtor" (filtro "Mini Chat"). Dica: confira a caixa de spam no primeiro teste.</div>
       {miniSaved&&emailDestino.trim()&&<button onClick={enviarEmailTeste} disabled={enviandoTeste} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:enviandoTeste?"default":"pointer",fontFamily:F,marginBottom:testeEmail?6:12}}>{enviandoTeste?"Enviando…":"✉️ Enviar e-mail de teste"}</button>}
       {testeEmail&&<div style={{color:testeEmail.startsWith("✓")?GREEN:RED,fontSize:11,marginBottom:12,lineHeight:1.4}}>{testeEmail}</div>}
@@ -2901,6 +2911,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{height:14}}/>
       </>)}
 
+      {erroSalvar&&<div style={{color:"#F87171",fontSize:12,marginBottom:8,lineHeight:1.4}}>{erroSalvar}</div>}
+      {!miniSaved&&!erroSalvar&&<div style={{color:GOLD,fontSize:11,marginBottom:8}}>Alterações ainda não salvas — toque em "Salvar Mini Chat".</div>}
       <div style={{display:"flex",gap:8}}>
         <button onClick={salvarMinichat} style={{flex:1,background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
         <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:100,padding:"11px 16px",color:MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F,textDecoration:"none",whiteSpace:"nowrap"}}>Testar ↗</a>
@@ -3146,7 +3158,11 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   // aparecer como "pendente" se já estão funcionando na prática.
   const siteOk=!!((c.github_repo&&c.github_file_path)||c.gtm_container_id||c.conn?.site);
   const sensorOk=!!(c.github_sensor_installed_at||c.gtm_sensor_installed_at||c.conn?.site);
-  const configOk=!!(c.minichat_config?.whatsapp_number||c.minichat_config?.email_destino||c.conn?.minichat);
+  // E-mail de destino só conta se for um e-mail de verdade (ex: "caarenovations.com"
+  // não é — os contatos não chegavam e o card ficava verde mesmo assim).
+  const _mc=c.minichat_config||{};
+  const _emailOk=/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(String(_mc.email_destino||""));
+  const configOk=_mc.destination_type==="email"?_emailOk:_mc.destination_type==="ambos"?(_emailOk&&!!_mc.whatsapp_number):!!(_mc.whatsapp_number||_emailOk||c.conn?.minichat);
   const emailOk=!!c.conn?.email;
   // Ter dado commit não prova que o site publicado usa o NOSSO Mini Chat — o caso da
   // Lervet foi um commit certo, mas o botão de verdade do site ainda caía num mini

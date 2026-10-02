@@ -2752,6 +2752,11 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
+    // E-mail inválido (ex: "caarenovations.com", sem o nome antes do @) fazia o envio
+    // automático falhar e cair no app de e-mail do visitante com destinatário errado.
+    if (email_destino !== undefined && minichat_config.email_destino && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(minichat_config.email_destino)) {
+      return res.status(400).json({ error: `"${minichat_config.email_destino}" não é um e-mail válido — falta a parte antes do @ (ex: nome@gmail.com).` });
+    }
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
     // Corrige o link do minichat no repositório do produtor de forma assíncrona (não bloqueia)
@@ -5565,7 +5570,7 @@ app.get("/api/admin/producers/:id/activation-test", requireAuth, requireAdmin, a
       add("gtm_botoes", "Botões do site → Mini Chat (GTM)", g.status === "ok", g.message || "Não consegui conferir o GTM.", g.status === "erro");
     }
     const cfgOk = dest === "email" ? EMAIL_RE.test(String(mc.email_destino || "")) : dest === "ambos" ? (!!mc.whatsapp_number && EMAIL_RE.test(String(mc.email_destino || ""))) : !!mc.whatsapp_number;
-    add("minichat_config", "Destino dos contatos", cfgOk, cfgOk ? (dest === "email" ? `Chega por e-mail em ${mc.email_destino}.` : dest === "ambos" ? `WhatsApp ${mc.whatsapp_number} + e-mail ${mc.email_destino}.` : `Chega no WhatsApp ${mc.whatsapp_number}.`) : "Configure o WhatsApp ou o e-mail de destino no card Mini Chat.");
+    add("minichat_config", "Destino dos contatos", cfgOk, cfgOk ? (dest === "email" ? `Chega por e-mail em ${mc.email_destino}.` : dest === "ambos" ? `WhatsApp ${mc.whatsapp_number} + e-mail ${mc.email_destino}.` : `Chega no WhatsApp ${mc.whatsapp_number}.`) : (dest !== "whatsapp" && mc.email_destino && !EMAIL_RE.test(String(mc.email_destino)) ? `"${mc.email_destino}" não é um e-mail válido — corrija no card Mini Chat (ex: nome@gmail.com).` : "Configure o WhatsApp ou o e-mail de destino no card Mini Chat."));
     if (dest !== "whatsapp") add("email_envio", "Envio automático de e-mail", !!resend, resend ? "Servidor pronto pra enviar. Use \"Enviar e-mail de teste\" no card Mini Chat pra conferir a caixa de entrada." : "RESEND_API_KEY não configurada no servidor — o Mini Chat cai no jeito antigo (abrir o e-mail do visitante).");
     const okCount = checks.filter(c => c.ok).length;
     res.json({ checks, okCount, total: checks.length, allOk: okCount === checks.length, testedAt: new Date().toISOString() });
