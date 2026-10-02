@@ -479,7 +479,11 @@
             retryClick: 'Se não abrir, clique no botão novamente.', continueBtn: '↗ Continuar', openWhatsappBtn: '📱 Abrir WhatsApp',
             openingEmail: '✓ Abrindo e-mail…', retryEmail: 'Se não abrir, clique novamente.',
             emailSent: '✓ Enviado!', emailSentAmbos: '✓ Também enviado por e-mail', emailSentStatus: name => `Recebemos suas respostas. ${name} vai entrar em contato em breve.`,
-            emailSubject: name => `Pré-diagnóstico digital — ${name}`,
+            emailSubject: name => `Pré-diagnóstico — ${name}`,
+            msgHello: n => `Olá, ${n}! 👋`,
+            msgIntro: n => `Sou ${n} e acabei de fazer o pré-diagnóstico no seu site.`,
+            msgIntroNoName: 'Acabei de fazer o pré-diagnóstico no seu site.',
+            msgProfile: 'Meu perfil', msgPhone: 'Telefone',
             invalidEmail: 'Hmm, esse e-mail não parece válido. Pode conferir e digitar de novo?',
             invalidDate: 'Não entendi a data 🙂 Pode digitar assim: 09/08/2000',
             invalidPhone: 'Esse número parece incompleto. Pode digitar com DDD? Ex: (21) 99999-9999',
@@ -503,8 +507,6 @@
                 { id: 'telefone', text: "Ótimo.",                              subtext: "E qual seu telefone?",     label: "Telefone", type: 'text', placeholder: '(21) 99999-9999' },
                 { id: 'nascimento', text: "Última pergunta.",                  subtext: "Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)", label: "Data de nascimento", type: 'text', placeholder: 'DD/MM/AAAA' },
             ],
-            defaultMessage: d => `Olá, tudo bem? Segue meu diagnóstico para avaliação:\n\nNome: ${d.nome||''}\nTelefone: ${d.telefone||''}\nData de nascimento: ${d.nascimento||''}\nProcedimento de interesse: ${d.produto||''}\nObjetivo: ${d.objetivo||''}\nMomento para iniciar: ${d.quando||''}\n\nAguardo orientações 🤍`,
-            customMessage: (name, linhas, closing) => `Olá ${name},\n\nAcabei de fazer o pré diagnóstico digital.\n\n*Meu perfil:*\n${linhas}\n\n${closing}`,
             defaultClosing: "Podemos conversar?",
         },
         en: {
@@ -521,6 +523,10 @@
             openingEmail: '✓ Opening e-mail…', retryEmail: "Didn't open? Tap again.",
             emailSent: '✓ Sent!', emailSentAmbos: '✓ Also sent by e-mail', emailSentStatus: name => `We got your answers. ${name} will get back to you shortly.`,
             emailSubject: name => `Pre-diagnosis — ${name}`,
+            msgHello: n => `Hi ${n}! 👋`,
+            msgIntro: n => `I'm ${n} and I just finished the pre-diagnosis on your website.`,
+            msgIntroNoName: 'I just finished the pre-diagnosis on your website.',
+            msgProfile: 'My profile', msgPhone: 'Phone',
             invalidEmail: "Hmm, that e-mail doesn't look right. Could you check and type it again?",
             invalidDate: "I didn't get that date 🙂 Could you type it like this: 08/09/2000",
             invalidPhone: "That number looks incomplete. Could you type it with the area code?",
@@ -544,8 +550,6 @@
                 { id: 'telefone', text: "Great.",                    subtext: "And your phone number?",     label: "Phone",  type: 'text', placeholder: '(555) 123-4567' },
                 { id: 'nascimento', text: "Last question.",          subtext: "What's your date of birth? (so we can send you a little gift on your birthday 🎁)", label: "Date of birth", type: 'text', placeholder: 'MM/DD/YYYY' },
             ],
-            defaultMessage: d => `Hi! Here is my pre-diagnosis:\n\nName: ${d.nome||''}\nPhone: ${d.telefone||''}\nDate of birth: ${d.nascimento||''}\nInterest: ${d.produto||''}\nGoal: ${d.objetivo||''}\nTimeline: ${d.quando||''}\n\nLooking forward to hearing from you.`,
-            customMessage: (name, linhas, closing) => `Hi ${name},\n\nI just completed the pre-diagnosis on your website.\n\n*My profile:*\n${linhas}\n\n${closing}`,
             defaultClosing: "Can we talk?",
         },
     };
@@ -848,7 +852,6 @@
         const answers = questions
             .filter(q => !contato.includes(q.id))
             .map(q => ({ question: q.label || q.subtext || q.text || "", answer: userData[q.id] || "" }));
-        if (userData.nascimento) answers.push({ question: (T().contact.find(q => q.id === 'nascimento') || {}).label || "", answer: userData.nascimento });
         leadEmailPromise = fetch(`${JOSEPHPAY_API}/api/minichat/lead-email`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -862,10 +865,13 @@
         return leadEmailPromise;
     }
 
+    // Envio automático deu certo: avisa a pessoa, mas o botão continua ativo — tocar nele
+    // abre o app de e-mail DELA com a mensagem pronta (pedido do Thomas), sem duplicar o
+    // envio automático (que só acontece uma vez).
     function markEmailSent() {
-        emailBtn.innerHTML = DESTINATION_TYPE === "ambos" ? T().emailSentAmbos : T().emailSent;
-        emailBtn.classList.add("done");
-        emailBtn.style.pointerEvents = 'none';
+        emailBtn.innerHTML = T().emailBtn;
+        emailBtn.classList.remove("done");
+        emailBtn.style.pointerEvents = 'auto';
         // Em "Ambos" o botão do WhatsApp continua ali embaixo — a frase de "vamos entrar
         // em contato" só faz sentido quando o e-mail é o único caminho.
         if (DESTINATION_TYPE !== "ambos") {
@@ -1061,12 +1067,36 @@
         }
     }
 
-    function buildMessage() {
-        if (usingDefaultFlow) {
-            return T().defaultMessage(userData);
-        }
-        const linhas = questions.map(q => `• ${q.subtext || q.text}: ${userData[q.id] || ''}`).join('\n');
-        return T().customMessage(GREETING_NAME, linhas, CLOSING_MESSAGE);
+    // Mensagem final (WhatsApp e e-mail): curta, organizada, com negrito no WhatsApp.
+    // Leva o nome e as respostas — NÃO repete telefone, e-mail nem aniversário (no
+    // WhatsApp o número já chega junto; tudo isso continua salvo no CRM). No e-mail vai
+    // também o telefone, pra empresa poder ligar. Ex:
+    //   Olá, *Clínica X*! 👋
+    //   Sou *Maria* e acabei de fazer o pré-diagnóstico no seu site.
+    //
+    //   *Meu perfil*
+    //   - *Interesse principal:* Limpeza de pele
+    //
+    //   Podemos conversar?
+    const CONTATO_IDS = ['nome', 'telefone', 'nascimento', 'email'];
+    function buildMessage(formato) {
+        const t = T();
+        const email = formato === 'email';
+        const b = s => email ? s : `*${s}*`;
+        const nome = String(userData.nome || '').trim();
+        const linhas = questions
+            .filter(q => !CONTATO_IDS.includes(q.id) && userData[q.id])
+            .map(q => {
+                let rotulo = String((usingDefaultFlow ? (q.label || q.subtext) : (q.subtext || q.label)) || q.text || '').trim();
+                if (!/[?:]$/.test(rotulo)) rotulo += ':';
+                return `- ${b(rotulo)} ${userData[q.id]}`;
+            }).join('\n');
+        const partes = [t.msgHello(b(GREETING_NAME)), nome ? t.msgIntro(b(nome)) : t.msgIntroNoName];
+        if (email && userData.telefone) partes.push(`${t.msgPhone}: ${userData.telefone}`);
+        let msg = partes.join('\n');
+        if (linhas) msg += `\n\n${b(t.msgProfile)}\n${linhas}`;
+        if (CLOSING_MESSAGE) msg += `\n\n${CLOSING_MESSAGE}`;
+        return msg;
     }
 
     function sendToWhatsApp() {
@@ -1099,23 +1129,20 @@
         }, 600);
     }
 
-    // Botão de e-mail: primeiro tenta mandar direto pelo servidor (chega no produtor
-    // sem depender do visitante); só se o servidor não conseguir, cai no jeito antigo
-    // de abrir o app de e-mail do visitante com a mensagem pronta (mailto).
+    // Botão de e-mail: abre o app de e-mail da PRÓPRIA pessoa com a mensagem pronta pra
+    // ela enviar (pedido do Thomas). O envio automático pelo servidor continua rodando
+    // em paralelo (uma vez só) — garante que a empresa recebe mesmo se a pessoa não
+    // apertar "enviar" no app dela.
     function sendToEmail() {
-        emailBtn.textContent = T().sending;
-        emailBtn.style.pointerEvents = 'none';
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
-        sendLeadEmail().then(ok => {
-            if (ok) { markEmailSent(); return; }
-            openMailtoFallback();
-        });
+        sendLeadEmail();
+        openMailto();
     }
 
-    function openMailtoFallback() {
-        const subject = T().emailSubject(GREETING_NAME);
-        const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage())}`;
+    function openMailto() {
+        const subject = T().emailSubject(String(userData.nome || '').trim() || GREETING_NAME);
+        const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage('email'))}`;
         setTimeout(() => {
             emailBtn.innerHTML = T().openingEmail;
             redirectStatus.textContent = T().retryEmail;

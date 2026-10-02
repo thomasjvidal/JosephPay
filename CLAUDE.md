@@ -189,6 +189,13 @@ não só o caso que gerou a reclamação.
 - **Modo só-WhatsApp não passa por nada disso.** Os textos em `I18N.pt` do
   `minichat.html` são exatamente os de antes — mudar qualquer um deles muda o Mini
   Chat (e a mensagem do WhatsApp) de TODO produtor atual.
+- **Mensagem final (02/10, pedido do Thomas):** `buildMessage()` monta "Olá, *Marca*! 👋 /
+  Sou *Nome*… / *Meu perfil* / - *pergunta* resposta / fechamento". Só nome + respostas —
+  telefone, e-mail e nascimento NÃO entram no WhatsApp (já vão pro CRM). No e-mail
+  (`buildMessage('email')`, sem asteriscos) entra o telefone, nunca e-mail/nascimento.
+  Só o 👋 de emoji; marcador é traço "-". O e-mail do lead (Resend) mostra só nome + telefone.
+- **Botão "Enviar por e-mail" abre o app de e-mail da pessoa** (`mailto:` com a mensagem
+  pronta) — o envio automático pelo servidor continua em paralelo, uma vez só.
 - `minichat_config.language` (`pt`|`en`, padrão `pt`) muda só o Mini Chat (textos
   fixos, perguntas de contato, e-mail do lead) e o idioma das perguntas geradas por
   IA. `minichat_config.template` (`whatsapp`|`email`, padrão `whatsapp`) +
