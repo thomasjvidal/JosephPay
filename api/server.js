@@ -7406,7 +7406,13 @@ app.get("/sensor.js", async (req, res) => {
   // causa disso (try/catch, campos continuam opcionais pro cliente).
   let convSnippet = "";
   try {
-    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_minichat_path").eq("id", uid).maybeSingle();
+    // O sensor nunca esperava banco nenhum antes disso — um banco lento não pode
+    // passar a atrasar o sensor de TODO produtor (mesmo quem não configurou
+    // conversão). 1.2s é de sobra pra uma consulta normal e curto o bastante pra
+    // nunca segurar a resposta do script de verdade.
+    const consulta = supabase.from("profiles").select("minichat_config,github_minichat_path").eq("id", uid).maybeSingle();
+    const limite = new Promise(resolve => setTimeout(() => resolve({ data: null, timeout: true }), 1200));
+    const { data: profile } = await Promise.race([consulta, limite]);
     const cid = profile?.minichat_config?.google_ads_conversion_id;
     const clabel = profile?.minichat_config?.google_ads_conversion_label;
     if (cid && clabel && AW_ID_RE.test(cid)) {
