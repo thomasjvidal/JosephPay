@@ -326,6 +326,61 @@ const glassSurface={background:"linear-gradient(180deg,rgba(255,255,255,0.07),rg
 const glassSheet={background:"linear-gradient(180deg,rgba(40,38,34,0.88),rgba(22,21,19,0.94))",backdropFilter:"blur(28px) saturate(160%)",WebkitBackdropFilter:"blur(28px) saturate(160%)",borderTop:"1px solid rgba(255,255,255,0.12)",boxShadow:"0 -12px 40px rgba(0,0,0,0.45)"};
 // Fundo do app com um brilho dourado bem sutil — é ele que faz o vidro "aparecer".
 const APP_BG="radial-gradient(1100px 600px at 12% -8%, rgba(212,175,55,0.13), transparent 60%), radial-gradient(900px 520px at 110% 18%, rgba(91,141,239,0.07), transparent 60%), radial-gradient(800px 600px at 50% 110%, rgba(212,175,55,0.06), transparent 60%), #131312";
+// Ícones (traço fino, estilo SF Symbols/Apple) — usar no lugar de emoji em botões e
+// rótulos da interface: <Ic n="copy"/>. Emoji só em CONTEÚDO de mensagem (WhatsApp, Mini Chat).
+const IC={
+  copy:[{r:[9,9,13,13,2]},"M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"],
+  paste:["M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2",{r:[8,2,8,4,1]},"M9 13h6","M9 17h4"],
+  trash:["M3 6h18","M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2","M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6","M10 11v6","M14 11v6"],
+  pencil:["M12 20h9","M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z"],
+  search:[{c:[11,11,7.5]},"M21 21l-4.6-4.6"],
+  sparkles:["M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8z","M19 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z","M5 3.5l.6 1.4 1.4.6-1.4.6L5 7.5l-.6-1.4L3 5.5l1.4-.6z"],
+  download:["M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4","M7 10l5 5 5-5","M12 15V3"],
+  mail:[{r:[2.5,4.5,19,15,2.5]},"M3 7l9 6 9-6"],
+  wrench:["M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"],
+  camera:["M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z",{c:[12,13,4]}],
+  image:[{r:[3,3,18,18,3]},{c:[8.5,8.5,1.5]},"M21 15l-5-5L5 21"],
+  chart:["M18 20V10","M12 20V4","M6 20v-6"],
+  zap:["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
+  flame:["M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 002.5 2.5z"],
+  alert:["M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z","M12 9v4","M12 17h.01"],
+  phone:["M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"],
+  message:["M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"],
+  eye:["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z",{c:[12,12,3]}],
+  lock:[{r:[3,11,18,11,2.5]},"M7 11V7a5 5 0 0110 0v4"],
+  bell:["M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 01-3.46 0"],
+  settings:[{c:[12,12,3]},"M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"],
+  plug:["M9 2v6","M15 2v6","M6 8h12v3a6 6 0 01-12 0z","M12 17v5"],
+  cake:["M20 21v-8a2 2 0 00-2-2H6a2 2 0 00-2 2v8","M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1","M2 21h20","M7 8v3","M12 8v3","M17 8v3","M7 4h.01","M12 4h.01","M17 4h.01"],
+  gift:["M20 12v10H4V12","M2 7h20v5H2z","M12 22V7","M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z","M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"],
+  repeat:["M17 1l4 4-4 4","M3 11V9a4 4 0 014-4h14","M7 23l-4-4 4-4","M21 13v2a4 4 0 01-4 4H3"],
+  refresh:["M21 12a9 9 0 11-2.64-6.36L21 8","M21 3v5h-5"],
+  link:["M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71","M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"],
+  smartphone:[{r:[5,2,14,20,3]},"M12 18h.01"],
+  monitor:[{r:[2,3,20,14,2.5]},"M8 21h8","M12 17v4"],
+  store:["M3 9l1.5-5h15L21 9","M4 9v11h16V9","M3 9h18","M9 20v-6h6v6"],
+  car:["M5 17h14v-5l-2-5H7l-2 5z","M5 12h14",{c:[7.5,17,1.5]},{c:[16.5,17,1.5]}],
+  globe:[{c:[12,12,10]},"M2 12h20","M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"],
+  box:["M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z","M3.27 6.96L12 12.01l8.73-5.05","M12 22.08V12"],
+  list:["M8 6h13","M8 12h13","M8 18h13","M3 6h.01","M3 12h.01","M3 18h.01"],
+  checkCircle:["M22 11.08V12a10 10 0 11-5.93-9.14","M22 4L12 14.01l-3-3"],
+  note:["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z","M14 2v6h6","M16 13H8","M16 17H8"],
+  dollar:["M12 1v22","M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"],
+  x:["M18 6L6 18","M6 6l12 12"],
+  arrowUp:["M12 19V5","M5 12l7-7 7 7"],
+  arrowDown:["M12 5v14","M19 12l-7 7-7-7"],
+  home:["M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z","M9 21V12h6v9"],
+  users:["M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2",{c:[9,7,4]},"M23 21v-2a4 4 0 00-3-3.87","M16 3.13a4 4 0 010 7.75"],
+  card:[{r:[2,6,20,14,2]},"M2 10h20","M6 15h4"],
+  target:[{c:[12,12,9]},{c:[12,12,4.5]}],
+  star:["M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"],
+};
+function Ic({n,s=16,w=1.7,style}){
+  const p=IC[n];if(!p)return null;
+  return(<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0,display:"inline-block",verticalAlign:"-0.15em",...style}}>{p.map((e,i)=>typeof e==="string"?<path key={i} d={e}/>:e.c?<circle key={i} cx={e.c[0]} cy={e.c[1]} r={e.c[2]}/>:<rect key={i} x={e.r[0]} y={e.r[1]} width={e.r[2]} height={e.r[3]} rx={e.r[4]}/>)}</svg>);
+}
+// Botão só de ícone, de vidro (copiar, lixeira, editar, mover...).
+const iconBtn=(color,disabled)=>({width:30,height:30,borderRadius:100,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.10)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",color:disabled?"rgba(255,255,255,0.18)":(color||MUTED),display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:disabled?"default":"pointer",padding:0,flexShrink:0,boxSizing:"border-box"});
 const glassInset={background:"rgba(255,255,255,0.045)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px"};
 const pillBtn=(primary,disabled)=>({width:"100%",height:50,borderRadius:100,border:primary?"none":"1px solid rgba(255,255,255,0.14)",background:primary?`linear-gradient(180deg,${GOLD2},${GOLD})`:"rgba(255,255,255,0.06)",color:primary?"#0C0C0C":TEXT,fontWeight:600,fontSize:15,letterSpacing:"-0.01em",cursor:disabled?"default":"pointer",opacity:disabled?0.55:1,fontFamily:F,backdropFilter:primary?"none":"blur(12px)",WebkitBackdropFilter:primary?"none":"blur(12px)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,textDecoration:"none",boxSizing:"border-box"});
 
@@ -379,7 +434,7 @@ function Pill({label,value,accent,sub}){
 function Btn({children,onClick,color,outline,sm,disabled}){
   const c=color||GOLD;
   return(
-    <button onClick={onClick} disabled={disabled} style={{background:outline?"transparent":c,border:`1.5px solid ${outline?c+"70":"transparent"}`,borderRadius:100,padding:sm?"8px 22px":"15px 28px",color:outline?c:(c===GOLD?"#0C0C0C":TEXT),fontWeight:600,fontSize:sm?13:14,cursor:disabled?"default":"pointer",opacity:disabled?0.5:1,width:(outline||sm)?"auto":"100%",fontFamily:F,letterSpacing:"0.01em"}}>
+    <button onClick={onClick} disabled={disabled} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,background:outline?"transparent":c,border:`1.5px solid ${outline?c+"70":"transparent"}`,borderRadius:100,padding:sm?"8px 22px":"15px 28px",color:outline?c:(c===GOLD?"#0C0C0C":TEXT),fontWeight:600,fontSize:sm?13:14,cursor:disabled?"default":"pointer",opacity:disabled?0.5:1,width:(outline||sm)?"auto":"100%",fontFamily:F,letterSpacing:"0.01em"}}>
       {children}
     </button>
   );
@@ -523,7 +578,7 @@ function VisitorChart({analytics,loadingAnalytics}){
           <span style={{color:GOLD,fontSize:13,fontWeight:600}}>{saved}</span>
           <div style={{display:"flex",gap:5}}>
             <button onClick={()=>navigator.clipboard?.writeText(saved||"")} title="Copiar link" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:14,cursor:"pointer"}}>⎘</button>
-            <button onClick={()=>setEditing(true)} title="Editar site" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer"}}>✎</button>
+            <button onClick={()=>setEditing(true)} title="Editar site" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer"}}><Ic n="pencil" s={14}/></button>
           </div>
         </div>
       )}
@@ -643,11 +698,11 @@ function FunilClienteAdmin({ownerId}){
       {!loading&&((funnel?.cliquesLigar||0)>0||(funnel?.cliquesWhatsapp||0)>0)&&(
         <div style={{display:"flex",gap:8,marginTop:14,paddingTop:14,borderTop:`1px solid ${BDR}`}}>
           <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>📞 Cliques em Ligar</div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}><Ic n="phone" s={11}/> Cliques em Ligar</div>
             <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesLigar||0}</div>
           </div>
           <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>💬 Cliques em WhatsApp</div>
+            <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}><Ic n="message" s={11}/> Cliques em WhatsApp</div>
             <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesWhatsapp||0}</div>
           </div>
         </div>
@@ -656,7 +711,7 @@ function FunilClienteAdmin({ownerId}){
   );
 }
 
-const QQ=["📊 Vendas hoje?","💰 Receita da semana?","🔗 Gerar link de afiliado","📈 Minha conversão?","❓ Configurar checkout","🆘 Suporte"];
+const QQ=["Vendas hoje?","Receita da semana?","Gerar link de afiliado","Minha conversão?","Configurar checkout","Suporte"];
 // AR removido — chat IA sempre chama a API real (Anthropic), respostas hardcoded não são usadas
 
 function ChatIA({productName, onBack}){
@@ -1045,7 +1100,7 @@ function SearchSelect({value,onChange,options,placeholder,loading,marginBottom})
   const filtered=(options||[]).filter(o=>o.toLowerCase().includes(query.toLowerCase()));
   return(
     <div style={{position:"relative",marginBottom:marginBottom??10}}>
-      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MUTED,fontSize:12,pointerEvents:"none"}}>🔍</span>
+      <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:MUTED,fontSize:12,pointerEvents:"none"}}><Ic n="search" s={14}/></span>
       <input
         value={openList?query:(value||"")}
         onFocus={()=>{setOpenList(true);setQuery("");}}
@@ -1111,7 +1166,7 @@ function BotoesAdmin({c,onUpdated,initialOpen,done}){
             {links===null&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Lendo o repositório…</div>}
             {links&&links.length===0&&!msg&&<div style={{color:MUTED,fontSize:12,marginBottom:8}}>Nenhum link encontrado nesse arquivo nem no restante do código.</div>}
             {links&&links.filter(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href)).length>0&&(
-              <div style={{background:`${RED}12`,border:`1px solid ${RED}30`,borderRadius:10,padding:"9px 12px",marginBottom:10,color:RED,fontSize:11,lineHeight:1.4}}>⚠️ Tem {links.filter(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href)).length} link(s) de WhatsApp ainda apontando direto pra fora — marque também esses abaixo e clique em Aplicar, senão esse(s) botão(ões) continuam indo pro WhatsApp em vez do Mini Chat.</div>
+              <div style={{background:`${RED}12`,border:`1px solid ${RED}30`,borderRadius:10,padding:"9px 12px",marginBottom:10,color:RED,fontSize:11,lineHeight:1.4}}><Ic n="alert" s={13}/> Tem {links.filter(l=>l.href!==minichatLink&&/wa\.me|api\.whatsapp\.com/i.test(l.href)).length} link(s) de WhatsApp ainda apontando direto pra fora — marque também esses abaixo e clique em Aplicar, senão esse(s) botão(ões) continuam indo pro WhatsApp em vez do Mini Chat.</div>
             )}
             {links&&links.length>0&&(
               <button onClick={()=>setSelected(Object.fromEntries(links.filter(l=>l.href!==minichatLink).map(l=>[linkKey(l),true])))} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:10}}>Marcar todos</button>
@@ -1216,7 +1271,7 @@ function SiteAdmin({c,onUpdated,initialOpen,done}){
   };
   const gtmOk=!!c.gtm_container_id;
   const ghOk=!!c.github_repo;
-  const PencilBtn=({onClick})=><button onClick={onClick} title="Editar" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}>✏️</button>;
+  const PencilBtn=({onClick})=><button onClick={onClick} title="Editar" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}><Ic n="pencil" s={14}/></button>;
   const DoneRow=({label,onEdit})=>(
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:CARD2,borderRadius:12,padding:"10px 14px"}}>
       <span style={{color:GREEN,fontSize:12,fontWeight:600}}>✓ {label}</span>
@@ -1499,7 +1554,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
         {readyAt&&!editing?(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:CARD2,borderRadius:12,padding:"10px 14px"}}>
             <span style={{color:GREEN,fontSize:12,fontWeight:600}}>✓ Preparado em {new Date(readyAt).toLocaleDateString('pt-BR')}</span>
-            <button onClick={()=>setEditing(true)} title="Preparar de novo" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}>✏️</button>
+            <button onClick={()=>setEditing(true)} title="Preparar de novo" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:"2px 6px",opacity:0.7,lineHeight:1}}><Ic n="pencil" s={14}/></button>
           </div>
         ):(
           <>
@@ -1785,7 +1840,7 @@ function FotosDoSiteAdmin({c,initialOpen,done}){
             {images.map(img=>(
               <div key={img.path} onMouseEnter={()=>carregarPreview(img.path)} style={{display:"flex",alignItems:"center",gap:10,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px"}}>
                 <div style={{width:44,height:44,borderRadius:8,background:"#0d0d0c",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                  {previews[img.path]?<img src={previews[img.path]} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:MUTED,fontSize:16}}>🖼</span>}
+                  {previews[img.path]?<img src={previews[img.path]} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:MUTED,display:"flex"}}><Ic n="image" s={18}/></span>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{color:TEXT,fontSize:12,fontWeight:600,wordBreak:"break-all"}}>{img.path}</div>
@@ -2014,7 +2069,7 @@ function DashAdmin({onNav}){
       {comentarios?.length>0&&(
         <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
           <div style={{padding:"16px 18px",borderBottom:`1px solid ${BDR}`}}>
-            <span style={{color:TEXT,fontWeight:700,fontSize:14}}>💬 Comentários nos relatórios</span>
+            <span style={{color:TEXT,fontWeight:700,fontSize:14,display:"inline-flex",alignItems:"center",gap:7}}><Ic n="message" s={15}/> Comentários nos relatórios</span>
           </div>
           {comentarios.map((c,i)=>(
             <div key={c.id} onClick={()=>abrirComentario(c)} style={{padding:"14px 18px",borderBottom:i<comentarios.length-1?`1px solid ${BDR}`:"none",cursor:"pointer"}}>
@@ -2113,7 +2168,7 @@ function NotaProdutorAdmin({ownerId}){
     <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:15}}>📝</span>
+          <span style={{display:"flex",color:GOLD}}><Ic n="note" s={16}/></span>
           <span style={{color:TEXT,fontWeight:700,fontSize:14}}>Nota privada</span>
           {note&&!open&&<span style={{color:MUTED,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>{note.slice(0,36)}{note.length>36?"…":""}</span>}
         </div>
@@ -2151,15 +2206,15 @@ function AniversariosClienteAdmin({ownerId}){
   return(
     <div style={{...glassSurface,borderRadius:20,padding:"16px 18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <span style={{color:TEXT,fontWeight:700,fontSize:14}}>🎂 Próximos aniversários</span>
-        {hoje>0&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🎉 {hoje} hoje</span>}
+        <span style={{color:TEXT,fontWeight:700,fontSize:14,display:"inline-flex",alignItems:"center",gap:7}}><Ic n="cake" s={15}/> Próximos aniversários</span>
+        {hoje>0&&<span style={{background:`${GOLD}15`,color:GOLD,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><Ic n="gift" s={11}/> {hoje} hoje</span>}
       </div>
       <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:4}}>
         {anivs.map((a,i)=>(
           <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0}}>
             <div style={{width:44,height:44,borderRadius:"50%",background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,position:"relative"}}>
               {a.inits}
-              <span style={{position:"absolute",bottom:-4,right:-4,fontSize:12}}>🎂</span>
+              <span style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:100,background:"rgba(30,29,27,0.9)",border:"1px solid rgba(255,255,255,0.12)",color:GOLD,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="cake" s={10} w={2}/></span>
             </div>
             <div style={{fontSize:11,fontWeight:600,color:TEXT,whiteSpace:"nowrap"}}>{a.name.split(' ')[0]}</div>
             <div style={{fontSize:10,color:a.dias===0?GOLD:MUTED,fontWeight:a.dias===0?700:400}}>{a.label}</div>
@@ -2196,7 +2251,7 @@ function DisparosClienteAdmin({ownerId}){
   return(
     <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 18px",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
-        <span style={{color:TEXT,fontWeight:700,fontSize:14}}>⚡ Disparos automáticos</span>
+        <span style={{color:TEXT,fontWeight:700,fontSize:14,display:"inline-flex",alignItems:"center",gap:7}}><Ic n="zap" s={15}/> Disparos automáticos</span>
         <div style={{display:"flex",alignItems:"center",gap:8}} onClick={e=>e.stopPropagation()}>
           {open&&<button onClick={addDisparo} title="Novo disparo" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:GOLD,fontSize:16,cursor:"pointer",lineHeight:1}}>+</button>}
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{flexShrink:0,opacity:.4,transition:"transform .2s",transform:open?"rotate(180deg)":"rotate(0deg)"}} onClick={()=>setOpen(o=>!o)}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2216,7 +2271,7 @@ function DisparosClienteAdmin({ownerId}){
                 <span style={{background:(d.live&&d.on)?`${GREEN}15`:CARD2,color:(d.live&&d.on)?GREEN:MUTED,border:`1px solid ${(d.live&&d.on)?GREEN+"30":BDR}`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,flexShrink:0}}>
                   {(d.live&&d.on)?'Ativo':'Inativo'}
                 </span>
-                <button onClick={e=>{e.stopPropagation();upd(i,{_open:!d._open});}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:12,cursor:"pointer",flexShrink:0}}>✎</button>
+                <button onClick={e=>{e.stopPropagation();upd(i,{_open:!d._open});}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:12,cursor:"pointer",flexShrink:0}}><Ic n="pencil" s={14}/></button>
               </div>
               {d._open&&(
                 <div style={{padding:"0 18px 14px",display:"flex",flexDirection:"column",gap:10}}>
@@ -2316,7 +2371,7 @@ function ProdutosDoCliente({ownerId,nome}){
               <div style={{color:MUTED,fontSize:11,marginTop:2}}>{fmtBRL(p.price)} · {p.totalVendas||0} venda(s) · {fmtBRL(p.receitaMes)} este mês</div>
             </div>
             <button onClick={()=>copiar(p.id)} style={{background:copiedId===p.id?`${GREEN}18`:CARD2,border:`1px solid ${copiedId===p.id?GREEN+"40":BDR}`,color:copiedId===p.id?GREEN:MUTED,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{copiedId===p.id?"✓ Copiado":"Copiar link"}</button>
-            <button onClick={()=>abrirEditar(p)} title="Editar produto" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
+            <button onClick={()=>abrirEditar(p)} title="Editar produto" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}><Ic n="pencil" s={14}/></button>
           </div>
           {editId===p.id&&(
             <div style={{padding:"0 18px 14px",display:"flex",flexDirection:"column",gap:8}}>
@@ -2443,7 +2498,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
             <div>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>{editForm.name||sel.name}</div>
               <div style={{color:MUTED,fontSize:11,marginTop:2}}>{stLabel(sel.status)} · {srcLabel(sel.source)} · desde {sel.created_at?new Date(sel.created_at).toLocaleDateString('pt-BR'):"—"}</div>
-              <div style={{color:editForm.birthday?GOLD:MUTED,fontSize:11,marginTop:2}}>🎂 {editForm.birthday?new Date(editForm.birthday+'T00:00:00').toLocaleDateString('pt-BR'):"aniversário não informado"}</div>
+              <div style={{color:editForm.birthday?GOLD:MUTED,fontSize:11,marginTop:2}}><Ic n="cake" s={11}/> {editForm.birthday?new Date(editForm.birthday+'T00:00:00').toLocaleDateString('pt-BR'):"aniversário não informado"}</div>
             </div>
           </div>
           {sales!==null&&sales.length>0&&(
@@ -2510,11 +2565,11 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
             {(semNove?.candidates>0||semNove?.duplicates?.length>0||msgNove)&&(
               <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}35`,borderRadius:12,padding:"10px 12px",marginBottom:12}}>
                 {semNove?.candidates>0&&(<>
-                  <div style={{color:TEXT,fontSize:12,fontWeight:700,marginBottom:4}}>📱 {semNove.candidates} celular(es) sem o 9 na frente</div>
+                  <div style={{color:TEXT,fontSize:12,fontWeight:700,marginBottom:4}}><Ic n="smartphone" s={12}/> {semNove.candidates} celular(es) sem o 9 na frente</div>
                   <div style={{color:MUTED,fontSize:11,lineHeight:1.4,marginBottom:8}}>Número antigo (ex: 21 8494-1200) pode falhar nos disparos de WhatsApp. Fixos não são alterados.</div>
                   <button onClick={corrigirNove} disabled={corrigindoNove} style={{background:GOLD,border:"none",borderRadius:100,padding:"7px 14px",color:"#0C0C0C",fontWeight:700,fontSize:12,cursor:corrigindoNove?"default":"pointer",fontFamily:F}}>{corrigindoNove?"Corrigindo…":"Corrigir agora"}</button>
                 </>)}
-                {semNove?.duplicates?.length>0&&<div style={{color:MUTED,fontSize:11,lineHeight:1.4,marginTop:semNove?.candidates>0?8:0}}>⚠️ {semNove.duplicates.length} contato(s) sem o 9 já existem com o 9 em outro cadastro — não mexi neles. Confira: {semNove.duplicates.slice(0,3).map(x=>`${x.name} (${x.phone}) = ${x.other}`).join("; ")}{semNove.duplicates.length>3?"…":""}</div>}
+                {semNove?.duplicates?.length>0&&<div style={{color:MUTED,fontSize:11,lineHeight:1.4,marginTop:semNove?.candidates>0?8:0}}><Ic n="alert" s={12}/> {semNove.duplicates.length} contato(s) sem o 9 já existem com o 9 em outro cadastro — não mexi neles. Confira: {semNove.duplicates.slice(0,3).map(x=>`${x.name} (${x.phone}) = ${x.other}`).join("; ")}{semNove.duplicates.length>3?"…":""}</div>}
                 {msgNove&&<div style={{color:msgNove.startsWith("✓")?GREEN:RED,fontSize:11,fontWeight:700,marginTop:6}}>{msgNove}</div>}
               </div>
             )}
@@ -2528,14 +2583,14 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:TEXT,fontWeight:600,fontSize:13}}>{c.name||"—"}</div>
                     <div style={{color:MUTED,fontSize:11,marginTop:2}}>{[c.phone,c.email].filter(Boolean).join(" · ")||"sem contato"}</div>
-                    <div style={{color:bl&&bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}>{bl?`🎂 ${bl}`:"🎂 não informado"}</div>
+                    <div style={{color:bl&&bl.includes('hoje')?GOLD:MUTED,fontSize:10,marginTop:2}}><Ic n="cake" s={10}/> {bl||"não informado"}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginRight:4}}>
                     <div style={{color:MUTED,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{stLabel(c.status)}</div>
                     <div style={{color:MUTED,fontSize:10,marginTop:2}}>{c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"}</div>
-                    {c.times_seen>1&&<div style={{color:GOLD,fontSize:9,fontWeight:700,marginTop:2}}>🔁 veio {c.times_seen}x</div>}
+                    {c.times_seen>1&&<div style={{color:GOLD,fontSize:9,fontWeight:700,marginTop:2}}><Ic n="repeat" s={9} w={2}/> veio {c.times_seen}x</div>}
                   </div>
-                  <button onClick={e=>{e.stopPropagation();abrirEdicao(c);}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}>✎</button>
+                  <button onClick={e=>{e.stopPropagation();abrirEdicao(c);}} title="Editar" style={{background:"none",border:`1px solid ${BDR}`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:MUTED,fontSize:13,cursor:"pointer",flexShrink:0}}><Ic n="pencil" s={14}/></button>
                 </div>
                 );
               })}
@@ -2809,12 +2864,12 @@ function AtivacaoAdmin({c,initialOpen,done}){
   return(
     <div style={glassCard(done)}>
       <CardHeader title="Mini Chat" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
-      {open&&preenchidoDoSite&&<div style={{...glassInset,marginTop:10,marginBottom:4,color:MUTED,fontSize:12,lineHeight:1.5}}><span style={{color:GOLD,fontWeight:600}}>✨ Lido do site. </span>{preenchidoDoSite}</div>}
+      {open&&preenchidoDoSite&&<div style={{...glassInset,marginTop:10,marginBottom:4,color:MUTED,fontSize:12,lineHeight:1.5}}><span style={{color:GOLD,fontWeight:600}}><Ic n="sparkles" s={12}/> Lido do site. </span>{preenchidoDoSite}</div>}
       {open&&(<div style={{marginTop:8}}>
       <div style={{marginBottom:14}}>
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Destino dos leads</div>
         <div style={{display:"flex",gap:6}}>
-          {[["whatsapp","📱 WhatsApp"],["email","✉️ E-mail"],["ambos","Ambos"]].map(([t,label])=>(
+          {[["whatsapp",<><Ic n="message" s={13}/> WhatsApp</>],["email",<><Ic n="mail" s={13}/> E-mail</>],["ambos","Ambos"]].map(([t,label])=>(
             <button key={t} onClick={()=>setDestinoTipo(t)} style={{flex:1,background:destinoTipo===t?GOLD:"none",border:`1px solid ${destinoTipo===t?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:destinoTipo===t?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
           ))}
         </div>
@@ -2829,7 +2884,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {emailDestino.trim()&&!emailValido(emailDestino)&&<div style={{color:"#F87171",fontSize:11,marginBottom:6,lineHeight:1.4}}>Isso não é um e-mail — falta a parte antes do @ (ex: nome@gmail.com). Os contatos não vão chegar assim.</div>}
       {emailDoSite&&emailDoSite!==emailDestino.trim()&&<button onClick={()=>setEmailDestino(emailDoSite)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:8,display:"block"}}>↑ Usar {emailDoSite} (achei no site do cliente)</button>}
       <div style={{color:MUTED,fontSize:11,marginBottom:10,lineHeight:1.4}}>Assim que a pessoa termina o Mini Chat, o diagnóstico (respostas + nome, e-mail e telefone dela) chega <b style={{color:TEXT}}>sozinho</b> neste endereço — enviado pelo JosephPay, sem a pessoa precisar ter app de e-mail. O contato também entra em "Clientes do produtor" (filtro "Mini Chat"). Dica: confira a caixa de spam no primeiro teste.</div>
-      {miniSaved&&emailDestino.trim()&&<button onClick={enviarEmailTeste} disabled={enviandoTeste} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:enviandoTeste?"default":"pointer",fontFamily:F,marginBottom:testeEmail?6:12}}>{enviandoTeste?"Enviando…":"✉️ Enviar e-mail de teste"}</button>}
+      {miniSaved&&emailDestino.trim()&&<button onClick={enviarEmailTeste} disabled={enviandoTeste} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:MUTED,fontWeight:700,fontSize:12,cursor:enviandoTeste?"default":"pointer",fontFamily:F,marginBottom:testeEmail?6:12}}>{enviandoTeste?"Enviando…":<><Ic n="mail" s={13}/> Enviar e-mail de teste</>}</button>}
       {testeEmail&&<div style={{color:testeEmail.startsWith("✓")?GREEN:RED,fontSize:11,marginBottom:12,lineHeight:1.4}}>{testeEmail}</div>}
       </>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Idioma do Mini Chat</div>
@@ -2841,7 +2896,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Muda só o Mini Chat (botões, perguntas de contato e o e-mail que chega). As perguntas personalizadas ficam como você escrever — a IA de "Perguntas do Mini Chat" passa a gerar no idioma escolhido depois de salvar.</div>
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Visual do Mini Chat</div>
       <div style={{display:"flex",gap:6,marginBottom:modelo==="email"?10:14}}>
-        {[["whatsapp","💬 Estilo WhatsApp"],["email","✉️ Estilo E-mail"]].map(([v,label])=>(
+        {[["whatsapp",<><Ic n="message" s={13}/> Estilo WhatsApp</>],["email",<><Ic n="mail" s={13}/> Estilo E-mail</>]].map(([v,label])=>(
           <button key={v} onClick={()=>setModelo(v)} style={{flex:1,background:modelo===v?GOLD:"none",border:`1px solid ${modelo===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:modelo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
         ))}
       </div>
@@ -2890,7 +2945,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${normalizeWhatsappDigits(wapNum)}`}/></div>}
       {c.minichat_config&&(<div style={{marginBottom:14}}>
-        <Btn sm outline color={GOLD} onClick={gerarPrompt}>{gerandoSugestoes?"Pensando…":"✨ Sugerir melhorias com IA"}</Btn>
+        <Btn sm outline color={GOLD} onClick={gerarPrompt}>{gerandoSugestoes?"Pensando…":<><Ic n="sparkles" s={14}/> Sugerir melhorias com IA</>}</Btn>
         {promptText&&(
           <div style={{background:"#0d0d0c",borderRadius:10,padding:"12px 14px",position:"relative",marginTop:8}}>
             <pre style={{color:"#a8d8a8",fontSize:11,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,paddingRight:60}}>{promptText}</pre>
@@ -2906,7 +2961,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
         <button onClick={()=>{
           const msg=`*_Segue acesso completo_*:\n\n*Aplicativo*: https://josephpay.com\n*Entrar como*: 'Sou Produtor'\n\n*Credenciais de acesso*:\n*E-mail*: ${c.email||""}\n*Senha*: ${resetResult}`;
           navigator.clipboard?.writeText(msg);
-        }} style={{width:"100%",background:"transparent",border:`1px solid ${GOLD}40`,borderRadius:100,padding:11,color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,marginTop:8}}>📋 Copiar mensagem de acesso pra mandar pro produtor</button>
+        }} style={{width:"100%",background:"transparent",border:`1px solid ${GOLD}40`,borderRadius:100,padding:11,color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,marginTop:8,display:"inline-flex",alignItems:"center",gap:6}}><Ic n="copy" s={13}/> Copiar mensagem de acesso pra mandar pro produtor</button>
       )}
       <div style={{height:14}}/>
       </>)}
@@ -3022,9 +3077,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nicho / setor deste negócio</div>
         <textarea value={nicho} onChange={e=>setNicho(e.target.value)} placeholder="Ex: clínica veterinária, atende cães e gatos, diferencial é atendimento 24h e entrega de remédio em casa" rows={2} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,resize:"vertical"}}/>
         <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-          <button onClick={copiarPromptPerguntas} style={{background:`linear-gradient(180deg,${GOLD2},${GOLD})`,border:"none",borderRadius:100,padding:"9px 16px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{promptCopiado?"✓ Prompt copiado":"📋 Copiar prompt"}</button>
-          <button onClick={()=>{setShowJsonImport(o=>!o);setJsonErr("");}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"9px 16px",color:TEXT,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{showJsonImport?"▲ Fechar":"📥 Colar resposta"}</button>
-          {c.github_repo&&<Btn sm outline color={GOLD} onClick={()=>importarDoSite(false)}>{importando?"Lendo o site…":"⬇️ Ler perguntas do site de novo"}</Btn>}
+          <button onClick={copiarPromptPerguntas} style={{background:`linear-gradient(180deg,${GOLD2},${GOLD})`,border:"none",borderRadius:100,padding:"9px 16px",color:"#0C0C0C",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F,display:"inline-flex",alignItems:"center",gap:6}}>{promptCopiado?<><Ic n="checkCircle" s={14}/> Prompt copiado</>:<><Ic n="copy" s={14}/> Copiar prompt</>}</button>
+          <button onClick={()=>{setShowJsonImport(o=>!o);setJsonErr("");}} style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${BDR}`,borderRadius:100,padding:"9px 16px",color:TEXT,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F,display:"inline-flex",alignItems:"center",gap:6}}>{showJsonImport?<><Ic n="x" s={14}/> Fechar</>:<><Ic n="paste" s={14}/> Colar resposta</>}</button>
+          {c.github_repo&&<Btn sm outline color={GOLD} onClick={()=>importarDoSite(false)}>{importando?"Lendo o site…":<><Ic n="download" s={14}/> Ler perguntas do site de novo</>}</Btn>}
         </div>
         <div style={{color:MUTED,fontSize:11,margin:"2px 0 10px",lineHeight:1.4}}>Copie o prompt, cole no chat da ferramenta que já conhece o cliente e cole a resposta aqui em "Colar resposta". Só vira definitivo ao clicar "Salvar perguntas".</div>
         {importInfo&&<div style={{background:`${GREEN}12`,border:`1px solid ${GREEN}30`,borderRadius:8,padding:"7px 12px",marginBottom:8,color:GREEN,fontSize:11,lineHeight:1.4}}>{importInfo}</div>}
@@ -3059,7 +3114,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
         <button onClick={()=>setShowAvancadoPerguntas(a=>!a)} style={{background:"none",border:"none",color:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,margin:"4px 0 10px",display:"flex",alignItems:"center",gap:4}}>Mais opções (gerar com a IA do JosephPay) {showAvancadoPerguntas?"▲":"▼"}</button>
         {showAvancadoPerguntas&&(<>
           <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-            <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":"✨ Gerar com IA"}</Btn>
+            <Btn sm outline color={GOLD} onClick={gerarTodas}>{gerandoTudo?"Gerando…":<><Ic n="sparkles" s={14}/> Gerar com IA</>}</Btn>
           </div>
           <div style={{color:MUTED,fontSize:11,margin:"6px 0 14px",lineHeight:1.4}}>Usa o nicho acima (salva sozinho ao gerar) pra montar as {questions.length} perguntas de uma vez, com coerência sobre serviços e público. Substitui as perguntas atuais — só vira definitivo se você clicar "Salvar perguntas" depois.</div>
         </>)}
@@ -3067,11 +3122,11 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           <div key={qi} style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:14,padding:"12px",marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <span style={{color:MUTED,fontSize:11,fontWeight:700}}>Pergunta {qi+1}</span>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <button onClick={()=>moveQuestion(qi,-1)} disabled={qi===0} title="Mover pergunta para cima" style={{background:"none",border:"none",color:qi===0?BDR:MUTED,fontSize:14,cursor:qi===0?"default":"pointer",padding:"0 2px",lineHeight:1}}>↑</button>
-                <button onClick={()=>moveQuestion(qi,1)} disabled={qi===questions.length-1} title="Mover pergunta para baixo" style={{background:"none",border:"none",color:qi===questions.length-1?BDR:MUTED,fontSize:14,cursor:qi===questions.length-1?"default":"pointer",padding:"0 2px",lineHeight:1}}>↓</button>
-                <button onClick={()=>regenerarPergunta(qi)} disabled={regenerating[qi]} title="Gerar com IA, com base nos dados deste cliente" style={{background:"none",border:"none",color:regenerating[qi]?MUTED:GOLD,fontSize:13,fontWeight:700,cursor:regenerating[qi]?"default":"pointer",fontFamily:F,padding:0,lineHeight:1}}>{regenerating[qi]?"…":"↻"}</button>
-                <button onClick={()=>removeQuestion(qi)} style={{background:"none",border:"none",color:RED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F}}>Remover</button>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <button onClick={()=>moveQuestion(qi,-1)} disabled={qi===0} title="Mover pergunta para cima" style={iconBtn(MUTED,qi===0)}><Ic n="arrowUp" s={14}/></button>
+                <button onClick={()=>moveQuestion(qi,1)} disabled={qi===questions.length-1} title="Mover pergunta para baixo" style={iconBtn(MUTED,qi===questions.length-1)}><Ic n="arrowDown" s={14}/></button>
+                <button onClick={()=>regenerarPergunta(qi)} disabled={regenerating[qi]} title="Gerar com IA, com base nos dados deste cliente" style={iconBtn(GOLD,regenerating[qi])}>{regenerating[qi]?"…":<Ic n="refresh" s={14}/>}</button>
+                <button onClick={()=>removeQuestion(qi)} title="Remover pergunta" style={iconBtn(RED)}><Ic n="trash" s={14}/></button>
               </div>
             </div>
             <textarea value={q.text} onChange={e=>updateQuestion(qi,"text",e.target.value)} placeholder="Texto da mensagem (ex: Vamos fazer um diagnóstico rápido)" rows={2} style={{width:"100%",background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"9px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F,marginBottom:8,resize:"vertical"}}/>
@@ -3079,9 +3134,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             {q.options.map((opt,oi)=>(
               <div key={oi} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
                 <input value={opt} onChange={e=>updateOption(qi,oi,e.target.value)} placeholder={`Opção ${oi+1}`} style={{flex:1,background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 11px",color:TEXT,fontSize:12,outline:"none",fontFamily:F}}/>
-                <button onClick={()=>moveOption(qi,oi,-1)} disabled={oi===0} title="Mover opção para cima" style={{background:"none",border:"none",color:oi===0?BDR:MUTED,fontSize:13,cursor:oi===0?"default":"pointer",padding:"0 2px",lineHeight:1}}>↑</button>
-                <button onClick={()=>moveOption(qi,oi,1)} disabled={oi===q.options.length-1} title="Mover opção para baixo" style={{background:"none",border:"none",color:oi===q.options.length-1?BDR:MUTED,fontSize:13,cursor:oi===q.options.length-1?"default":"pointer",padding:"0 2px",lineHeight:1}}>↓</button>
-                {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} style={{background:"none",border:"none",color:MUTED,fontSize:14,cursor:"pointer",padding:"0 2px"}}>✕</button>}
+                <button onClick={()=>moveOption(qi,oi,-1)} disabled={oi===0} title="Mover opção para cima" style={iconBtn(MUTED,oi===0)}><Ic n="arrowUp" s={13}/></button>
+                <button onClick={()=>moveOption(qi,oi,1)} disabled={oi===q.options.length-1} title="Mover opção para baixo" style={iconBtn(MUTED,oi===q.options.length-1)}><Ic n="arrowDown" s={13}/></button>
+                {q.options.length>2&&<button onClick={()=>removeOption(qi,oi)} title="Remover opção" style={iconBtn(MUTED)}><Ic n="x" s={13}/></button>}
               </div>
             ))}
             <button onClick={()=>addOption(qi)} style={{background:"none",border:`1px dashed ${BDR}`,borderRadius:8,padding:"5px 10px",color:MUTED,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,marginTop:2}}>+ Opção</button>
@@ -3104,7 +3159,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
             ))}
           </div>
         </div>
-        {destinoMc==="email"&&<div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 14px",marginBottom:16,color:MUTED,fontSize:11,lineHeight:1.5}}>Destino deste cliente é <b style={{color:TEXT}}>E-mail</b>: as respostas chegam por e-mail, não pelo WhatsApp. Pra ver como fica, use "✉️ Enviar e-mail de teste" no card Mini Chat.</div>}
+        {destinoMc==="email"&&<div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"12px 14px",marginBottom:16,color:MUTED,fontSize:11,lineHeight:1.5}}>Destino deste cliente é <b style={{color:TEXT}}>E-mail</b>: as respostas chegam por e-mail, não pelo WhatsApp. Pra ver como fica, use "Enviar e-mail de teste" no card Mini Chat.</div>}
         {/* Preview da mensagem WhatsApp */}
         {destinoMc!=="email"&&<div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${BDR}`,borderRadius:14,padding:"14px",marginBottom:16}}>
           <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Preview da mensagem no WhatsApp do produtor</div>
@@ -3266,7 +3321,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
             );
           })}
         </div>
-        <button onClick={testarTudo} disabled={testando} style={{...pillBtn(false,testando),height:44,fontSize:14,marginTop:14}}>{testando?"Testando no site de verdade…":"🔍 Testar tudo"}</button>
+        <button onClick={testarTudo} disabled={testando} style={{...pillBtn(false,testando),height:44,fontSize:14,marginTop:14}}>{testando?"Testando no site de verdade…":<><Ic n="checkCircle" s={15}/> Testar tudo</>}</button>
         {teste?.error&&<div style={{color:"#F5A524",fontSize:12,marginTop:10}}>{teste.error}</div>}
         {teste?.checks&&(
           <div style={{...glassInset,marginTop:12,display:"flex",flexDirection:"column",gap:10}}>
@@ -3284,7 +3339,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
           </div>
         )}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
-          <span style={{color:MUTED,fontSize:11}}>🔔 Aviso no celular quando algo quebrar:</span>
+          <span style={{color:MUTED,fontSize:11}}><Ic n="bell" s={12}/> Aviso no celular quando algo quebrar:</span>
           <button onClick={async()=>{setAvisoTeste("…");const d=await apiCall('/api/admin/alerts/test',{method:'POST'});setAvisoTeste(d?.ok?"✓ Enviado — confira o celular":(d?.error||"Não consegui enviar"));}} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,padding:0}}>enviar teste</button>
         </div>
         {avisoTeste&&<div style={{color:avisoTeste.startsWith("✓")?GREEN:MUTED,fontSize:11,textAlign:"center",marginTop:4,lineHeight:1.4}}>{avisoTeste}</div>}
@@ -3408,7 +3463,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
         <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:14}}>
           <label style={{position:"relative",cursor:uploadingAvatar?"default":"pointer",flexShrink:0}}>
             <Avatar url={avatarPreview||c.avatar_url} name={nome} size={54} radius={17} fontSize={22}/>
-            <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,border:`2px solid #111`}}>{uploadingAvatar?"…":"✎"}</div>
+            <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,border:`2px solid #111`}}>{uploadingAvatar?"…":<Ic n="pencil" s={10} w={2}/>}</div>
             <input type="file" accept="image/*" onChange={enviarFotoPerfil} disabled={uploadingAvatar} style={{display:"none"}}/>
           </label>
           <div style={{flex:1,minWidth:0}}>
@@ -3461,7 +3516,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={()=>{setContatosVersao(v=>v+1);onUpdated&&onUpdated();}}/>}
       <Btn sm outline color={GOLD} onClick={()=>setShowContatos(true)}>+ Adicionar contatos</Btn>
       <div style={{display:"flex",gap:6}}>
-        {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:"⚡ Ativação"},{id:"minichat",label:"📊 Mini Chat"}].map(t=>(
+        {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:<><Ic n="zap" s={13}/> Ativação</>},{id:"minichat",label:<><Ic n="chart" s={13}/> Mini Chat</>}].map(t=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)} style={{flex:1,padding:"11px",borderRadius:14,border:`1px solid ${t.id===subTab?GOLD+"55":BDR}`,background:t.id===subTab?`${GOLD}14`:CARD,color:t.id===subTab?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
         ))}
       </div>
@@ -3502,7 +3557,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
                 <div style={{width:38,height:38,borderRadius:12,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:TEXT,flexShrink:0}}>{nome2[0]}</div>
                 <div style={{flex:1}}><div style={{color:TEXT,fontWeight:600,fontSize:13}}>{nome2}</div><div style={{color:MUTED,fontSize:11,marginTop:2}}>{dt} {hora}</div></div>
                 <div style={{textAlign:"right"}}><div style={{color:TEXT,fontWeight:700,fontSize:13}}>{fmtBRL(s.amount)}</div><div style={{marginTop:4}}><Tag status={s.status}/></div></div>
-                <button onClick={()=>excluirVenda(s)} disabled={deletingSale===s.id} title="Excluir venda (só teste)" style={{background:"none",border:`1px solid ${RED}30`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:RED,fontSize:13,cursor:deletingSale===s.id?"default":"pointer",flexShrink:0,marginLeft:4}}>{deletingSale===s.id?"…":"🗑"}</button>
+                <button onClick={()=>excluirVenda(s)} disabled={deletingSale===s.id} title="Excluir venda (só teste)" style={{background:"none",border:`1px solid ${RED}30`,borderRadius:8,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:RED,fontSize:13,cursor:deletingSale===s.id?"default":"pointer",flexShrink:0,marginLeft:4}}>{deletingSale===s.id?"…":<Ic n="trash" s={13}/>}</button>
               </div>
               );
             })}
@@ -3565,7 +3620,7 @@ function MinichatMetricasAdmin({c}){
       {chips}
       <div style={glassCard()}>
         <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-          <div style={{fontSize:26}}>📊</div>
+          <div style={{color:GOLD,display:"flex"}}><Ic n="chart" s={26}/></div>
           <div><div style={{color:TEXT,fontWeight:700,fontSize:15}}>Ainda sem conversas neste período</div><div style={{color:MUTED,fontSize:12,marginTop:4,lineHeight:1.5}}>Assim que alguém responder o Mini Chat deste produtor, as porcentagens de cada resposta aparecem aqui. Experimente um período maior.</div></div>
         </div>
       </div>
@@ -3614,7 +3669,7 @@ function MinichatMetricasAdmin({c}){
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:(d.insights||[]).length?14:0}}>
           {[
             {l:"Conversas",v:d.conversas,s:variacao(d.conversas,d.conversasAnterior)},
-            {l:"🔥 Quentes",v:`${d.quentes?.pct||0}%`,s:<span style={{color:MUTED,fontSize:11}}>{d.quentes?.total||0} pessoas</span>},
+            {l:<><Ic n="flame" s={11}/> Quentes</>,v:`${d.quentes?.pct||0}%`,s:<span style={{color:MUTED,fontSize:11}}>{d.quentes?.total||0} pessoas</span>},
             {l:"Google Ads",v:temOrigem?`${d.origem.pctAds}%`:"—",s:<span style={{color:MUTED,fontSize:11}}>{temOrigem?`${d.origem.ads} conversas`:"aguardando dados"}</span>},
           ].map((k,i)=>(
             <div key={i} style={{...glassInset,padding:"12px"}}>
@@ -3626,7 +3681,7 @@ function MinichatMetricasAdmin({c}){
         </div>
         {(d.insights||[]).length>0&&(
           <div>
-            <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>✨ Resumo da IA</div>
+            <div style={{color:GOLD,fontSize:11,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}><Ic n="sparkles" s={12}/> Resumo da IA</div>
             <ul style={{margin:0,padding:"0 0 0 18px",color:TEXT,fontSize:13,lineHeight:1.7}}>{d.insights.map((s,i)=>(<li key={i}>{s}</li>))}</ul>
           </div>
         )}
@@ -3657,8 +3712,8 @@ function MinichatMetricasAdmin({c}){
         {temOrigem?(
           <>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Google Ads</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.ads}</div><div style={{color:MUTED,fontSize:11}}>🔥 {d.origem.quentesAds} quentes</div></div>
-              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Orgânico</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.organico}</div><div style={{color:MUTED,fontSize:11}}>🔥 {d.origem.quentesOrganico} quentes</div></div>
+              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Google Ads</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.ads}</div><div style={{color:MUTED,fontSize:11}}><Ic n="flame" s={11}/> {d.origem.quentesAds} quentes</div></div>
+              <div style={{...glassInset,padding:"12px"}}><div style={{color:MUTED,fontSize:11,fontWeight:600}}>Orgânico</div><div style={{color:TEXT,fontWeight:700,fontSize:20,marginTop:4}}>{d.origem.organico}</div><div style={{color:MUTED,fontSize:11}}><Ic n="flame" s={11}/> {d.origem.quentesOrganico} quentes</div></div>
             </div>
             {(d.origem.canais||[]).map((o,i)=>(
               <div key={i} style={{marginBottom:9}}>
@@ -3678,7 +3733,7 @@ function MinichatMetricasAdmin({c}){
 
       {/* Interessados quentes */}
       <div style={glassCard()}>
-        {titulo("🔥 Interessados quentes",`Responderam algo como "Quanto antes" ou "Este mês". ${d.quentes?.total||0} no período${d.quentes?.totalAnterior!=null?` (antes: ${d.quentes.totalAnterior})`:""}.`)}
+        {titulo(<><Ic n="flame" s={15} style={{color:GOLD}}/> Interessados quentes</>,`Responderam algo como "Quanto antes" ou "Este mês". ${d.quentes?.total||0} no período${d.quentes?.totalAnterior!=null?` (antes: ${d.quentes.totalAnterior})`:""}.`)}
         {(d.quentes?.lista||[]).length===0?<div style={{color:MUTED,fontSize:12}}>Nenhum neste período.</div>:
         d.quentes.lista.map((q,i)=>(
           <div key={i} style={{...glassInset,padding:"12px 14px",marginBottom:8}}>
@@ -3691,7 +3746,7 @@ function MinichatMetricasAdmin({c}){
             {q.origem&&<div style={{color:MUTED,fontSize:11,marginTop:4}}>Veio de: {q.origem}</div>}
           </div>
         ))}
-        {d.origemDisponivel&&<div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.45}}>Você recebe um aviso 🔥 no celular quando entra um interessado quente (se as notificações estiverem ativadas).</div>}
+        {d.origemDisponivel&&<div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.45}}>Você recebe um aviso no celular quando entra um interessado quente (se as notificações estiverem ativadas).</div>}
       </div>
 
       {/* Funil */}
@@ -3713,13 +3768,13 @@ function MinichatMetricasAdmin({c}){
           {d.desistencia.map((x,i)=>{const pq=perguntas.find(p=>p.texto===x.texto);const s=sug[x.texto];return(
             <div key={i} style={{...glassInset,padding:"12px 14px",marginBottom:8,border:x.alerta?`1px solid ${RED}55`:glassInset.border}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                <span style={{color:TEXT,fontSize:12.5,lineHeight:1.4}}>{x.alerta?"⚠️ ":""}{x.texto}</span>
+                <span style={{color:TEXT,fontSize:12.5,lineHeight:1.4}}>{x.alerta&&<Ic n="alert" s={13} style={{color:RED,marginRight:4}}/>}{x.texto}</span>
                 <span style={{color:x.alerta?RED:MUTED,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{x.pct}%</span>
               </div>
               <div style={{color:MUTED,fontSize:11,marginTop:3}}>{x.chegaram} chegaram · {x.responderam} responderam</div>
               {x.alerta&&(
                 <div style={{marginTop:8}}>
-                  {!s&&<button onClick={()=>sugerir(pq||{texto:x.texto},x.pct)} style={{background:"none",border:`1px solid ${GOLD}55`,borderRadius:100,padding:"6px 12px",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F}}>✨ Sugerir outra pergunta</button>}
+                  {!s&&<button onClick={()=>sugerir(pq||{texto:x.texto},x.pct)} style={{background:"none",border:`1px solid ${GOLD}55`,borderRadius:100,padding:"6px 12px",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,display:"inline-flex",alignItems:"center",gap:6}}><Ic n="sparkles" s={13}/> Sugerir outra pergunta</button>}
                   {s?.loading&&<div style={{color:MUTED,fontSize:12}}>A IA está pensando…</div>}
                   {s?.erro&&<div style={{color:RED,fontSize:12}}>{s.erro}</div>}
                   {s?.lista&&s.lista.map((o,k)=>(
@@ -3904,12 +3959,12 @@ function SiteAuditModal({onClose,onAbrirCliente}){
                   <div key={"f"+i} style={{color:GREEN,fontSize:11,lineHeight:1.5}}>✓ Corrigido — {AUDIT_LABELS[f.tipo]||f.tipo}{f.detalhe?`: ${f.detalhe}`:""}</div>
                 ))}
                 {(p.issues||[]).map((iss,i)=>(
-                  <div key={"i"+i} style={{color:RED,fontSize:11,lineHeight:1.5}}>⚠️ {AUDIT_LABELS[iss.tipo]||iss.tipo}{iss.detalhe?` — ${iss.detalhe}`:""}</div>
+                  <div key={"i"+i} style={{color:RED,fontSize:11,lineHeight:1.5}}><Ic n="alert" s={12}/> {AUDIT_LABELS[iss.tipo]||iss.tipo}{iss.detalhe?` — ${iss.detalhe}`:""}</div>
                 ))}
                 {corrigidoMsg[p.id]&&<div style={{color:corrigidoMsg[p.id].startsWith("✓")?GREEN:RED,fontSize:11,lineHeight:1.5,marginTop:4}}>{corrigidoMsg[p.id]}</div>}
                 {(p.issues||[]).some(iss=>iss.tipo==="botoes_whatsapp_pendentes")&&!corrigidoMsg[p.id]?.startsWith("✓")&&(
                   <button onClick={e=>corrigirBotoesAgora(p,e)} disabled={corrigindo[p.id]} style={{marginTop:8,background:`${GOLD}15`,border:`1px solid ${GOLD}40`,borderRadius:100,padding:"8px 16px",color:GOLD,fontWeight:700,fontSize:12,cursor:corrigindo[p.id]?"default":"pointer",fontFamily:F}}>
-                    {corrigindo[p.id]?"Corrigindo…":"🔧 Corrigir botão agora"}
+                    {corrigindo[p.id]?"Corrigindo…":<><Ic n="wrench" s={14}/> Corrigir botão agora</>}
                   </button>
                 )}
               </div>
@@ -4001,7 +4056,7 @@ function ClientesAdmin(){
       <ClientesSubTabs subTab={subTab} setSubTab={setSubTab}/>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:0}}><Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn></div>
-        <button onClick={()=>setShowAudit(true)} title="Diagnóstico técnico de todos os produtores" style={{width:34,height:34,borderRadius:"50%",background:"transparent",border:`1.5px solid ${BDR}`,color:MUTED,fontSize:14,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
+        <button onClick={()=>setShowAudit(true)} title="Diagnóstico técnico de todos os produtores" style={{width:34,height:34,borderRadius:"50%",background:"transparent",border:`1.5px solid ${BDR}`,color:MUTED,fontSize:14,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="search" s={15}/></button>
       </div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
         {FILTROS.map(f=>(
@@ -4207,7 +4262,7 @@ function RelatoriosOverviewAdmin({onAbrir}){
           <div style={{display:"flex",gap:6,fontSize:10.5,flexWrap:"wrap"}}>
             <span style={{background:CARD2,color:TEXT,padding:"4px 10px",borderRadius:20,fontWeight:700}}>{p.total_relatorios} relatório(s)</span>
             <span style={{background:`${GREEN}14`,color:GREEN,padding:"4px 10px",borderRadius:20,fontWeight:700}}>{p.total_vistos} visualização(ões)</span>
-            {p.total_comentarios>0&&<span style={{background:`${GOLD}14`,color:GOLD,padding:"4px 10px",borderRadius:20,fontWeight:700}}>💬 {p.total_comentarios}</span>}
+            {p.total_comentarios>0&&<span style={{background:`${GOLD}14`,color:GOLD,padding:"4px 10px",borderRadius:20,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><Ic n="message" s={11}/> {p.total_comentarios}</span>}
           </div>
         </div>
       ))}
@@ -4262,7 +4317,7 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {views.map(v=>(
                     <div key={v.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
-                      <span style={{color:TEXT,fontWeight:700}}>👁 {v.nome}</span>
+                      <span style={{color:TEXT,fontWeight:700}}><Ic n="eye" s={12}/> {v.nome}</span>
                       <span style={{color:MUTED,fontSize:10,flexShrink:0}}>{fmtDataHora(v.last_viewed_at)}</span>
                     </div>
                   ))}
@@ -4278,7 +4333,7 @@ function RelatoriosDetalheAdmin({ownerId,nome,onBack}){
                         <span style={{color:TEXT,fontWeight:700,fontSize:12}}>{c.autor||"Anônimo"}</span>
                         <span style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                           <span style={{color:MUTED,fontSize:10}}>{fmtDataHora(c.created_at)}</span>
-                          <button onClick={()=>excluirComentario(r.id,c)} title="Excluir comentário" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:0,lineHeight:1}}>🗑</button>
+                          <button onClick={()=>excluirComentario(r.id,c)} title="Excluir comentário" style={{background:"none",border:"none",color:MUTED,fontSize:13,cursor:"pointer",padding:0,lineHeight:1}}><Ic n="trash" s={14}/></button>
                         </span>
                       </div>
                       <div style={{color:TEXT,fontSize:12,lineHeight:1.4}}>{c.texto}</div>
@@ -4540,7 +4595,7 @@ function Sidebar({tab,setTab,nav,userName,initial}){
           const a=tab===n.id;
           return(
             <button key={n.id} onClick={()=>setTab(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:11,padding:"11px 12px",borderRadius:12,background:a?`${GOLD}15`:"transparent",border:"none",cursor:"pointer",textAlign:"left",transition:"background 0.15s"}}>
-              <span style={{fontSize:15,flexShrink:0,width:20,textAlign:"center",color:a?GOLD:"rgba(255,255,255,0.35)",fontWeight:a?700:400}}>{n.icon}</span>
+              <span style={{fontSize:15,flexShrink:0,width:20,display:"flex",justifyContent:"center",color:a?GOLD:"rgba(255,255,255,0.35)",fontWeight:a?700:400}}>{n.icon}</span>
               <span className="lbl" style={{display:"none",color:a?"white":"rgba(255,255,255,0.55)",fontSize:13,fontWeight:a?600:400,letterSpacing:"0em",fontFamily:F}}>{n.label}</span>
             </button>
           );
@@ -4811,14 +4866,14 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
     setSaving(false);
   };
   const contaItems=[
-    {icon:"📧",label:email||"—",onClick:null},
-    {icon:"🔒",label:senhaMsg||"Alterar senha",onClick:handleSenha},
-    {icon:"🔔",label:pushLoading?"…":pushErro?pushErro:pushAtivo?"Notificações ativadas":"Ativar notificações no celular",onClick:handlePush},
+    {icon:<Ic n="mail" s={17}/>,label:email||"—",onClick:null},
+    {icon:<Ic n="lock" s={17}/>,label:senhaMsg||"Alterar senha",onClick:handleSenha},
+    {icon:<Ic n="bell" s={17}/>,label:pushLoading?"…":pushErro?pushErro:pushAtivo?"Notificações ativadas":"Ativar notificações no celular",onClick:handlePush},
     ...(isAdmin?[
-      {icon:"⚙",label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")},
-      {icon:"⎈",label:"Integrações",onClick:()=>onNavigate&&onNavigate("integracoes")},
+      {icon:<Ic n="settings" s={17}/>,label:"Taxas da plataforma",onClick:()=>onNavigate&&onNavigate("config")},
+      {icon:<Ic n="plug" s={17}/>,label:"Integrações",onClick:()=>onNavigate&&onNavigate("integracoes")},
     ]:[]),
-    {icon:"📞",label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
+    {icon:<Ic n="phone" s={17}/>,label:"Suporte",onClick:()=>window.open("https://wa.me/5524999828918","_blank")},
   ];
   const initials=(profile?.name||"P")[0].toUpperCase();
   return(
@@ -4833,7 +4888,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
             {avatarPreview
               ?<img src={avatarPreview} style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:`2px solid ${GOLD}40`}}/>
               :<div style={{width:56,height:56,borderRadius:"50%",background:CARD3,border:`2px solid ${GOLD}30`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:TEXT}}>{initials}</div>}
-            {editing&&<div style={{position:"absolute",inset:0,borderRadius:"50%",background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>📷</div>}
+            {editing&&<div style={{position:"absolute",inset:0,borderRadius:"50%",background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:MUTED}}><Ic n="camera" s={18}/></div>}
           </div>
           <input id="avatar-file-input" type="file" accept="image/*" style={{display:"none"}} onChange={handleAvatarChange}/>
           <div style={{flex:1,minWidth:0}}>
@@ -4869,7 +4924,7 @@ function PerfilModal({profile,email,onClose,onLogout,wapConnected,emailConnected
         <div style={{background:CARD2,borderRadius:16,overflow:"hidden",marginBottom:24}}>
           {contaItems.map((item,i,arr)=>(
             <div key={i} onClick={item.onClick||undefined} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderBottom:i<arr.length-1?`1px solid ${BDR}`:"none",cursor:item.onClick?"pointer":"default"}}>
-              <span style={{fontSize:15,flexShrink:0}}>{item.icon}</span>
+              <span style={{fontSize:15,flexShrink:0,display:"flex",color:MUTED}}>{item.icon}</span>
               <span style={{color:item.onClick?TEXT:MUTED,fontSize:13}}>{item.label}</span>
               {item.onClick&&<span style={{color:MUTED,fontSize:16,marginLeft:"auto"}}>›</span>}
             </div>
@@ -4983,7 +5038,7 @@ function GAInvestimentoManualAdmin({clienteId,presetDias,overview,onSalvo}){
   };
   if(!open)return(
     <button onClick={()=>setOpen(true)} style={{background:"none",border:"none",color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,padding:0,textDecoration:"underline"}}>
-      {overview?.investimentoManual?"🖊️ Atualizar investimento manualmente":"🖊️ Inserir investimento manualmente"}
+      <Ic n="pencil" s={14}/> {overview?.investimentoManual?"Atualizar investimento manualmente":"Inserir investimento manualmente"}
     </button>
   );
   return(
@@ -5095,7 +5150,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
       {overview&&(<>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD,sub:overview.investimentoManual?`🖊️ manual, ${new Date(overview.investimentoManualAt).toLocaleDateString('pt-BR')}`:null},
+            {label:"Investimento",v:overview.investimento!=null?fmtBRL(overview.investimento):"—",c:GOLD,sub:overview.investimentoManual?`manual, ${new Date(overview.investimentoManualAt).toLocaleDateString('pt-BR')}`:null},
             {label:"Contatos",v:String(a.contatos),c:GOLD},
             {label:"Interessados",v:String(a.interessados),c:GOLD},
             {label:"Clientes",v:String(a.clientes),c:GREEN},
@@ -5143,7 +5198,7 @@ function GAVisaoGeral({clientes,clienteId,setClienteId,cliente,presetDias,setPre
       </>)}
       {comentarios?.length>0&&(
         <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{color:GOLD,fontWeight:700,fontSize:12}}>💬 Comentários no relatório</div>
+          <div style={{color:GOLD,fontWeight:700,fontSize:12}}><Ic n="message" s={13}/> Comentários no relatório</div>
           {comentarios.map(c=>(
             <div key={c.id} onClick={()=>onNav("historico")} style={{cursor:"pointer"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:2}}>
@@ -5223,7 +5278,7 @@ function GACampanhas({clienteId,cliente,presetDias,onNav,onSelect}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Campanhas · {cliente?.name}</div>
-      {data.manual&&<div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"10px 14px",color:MUTED,fontSize:12,lineHeight:1.4}}>🖊️ Dados inseridos manualmente em {new Date(data.manualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado.</div>}
+      {data.manual&&<div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}30`,borderRadius:14,padding:"10px 14px",color:MUTED,fontSize:12,lineHeight:1.4}}><Ic n="pencil" s={12}/> Dados inseridos manualmente em {new Date(data.manualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado.</div>}
       {data.campaigns.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:20}}>Nenhuma campanha encontrada ainda.</div>}
       {data.campaigns.map((camp,i)=>(
         <div key={camp.id||i} onClick={()=>data.manual?null:onSelect(camp)} style={{...glassSurface,borderRadius:16,padding:16,cursor:data.manual?"default":"pointer"}}>
@@ -5390,7 +5445,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
             )}
             {shareInfo&&!shareInfo.error&&(
               <div style={{color:shareInfo.viewed_at?GREEN:MUTED,fontSize:10,marginTop:4}}>
-                {shareInfo.viewed_at?`👁 Última visualização${shareInfo.viewed_by?`: ${shareInfo.viewed_by}`:""} em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')} (lista completa em Clientes → Relatórios)`:"Ainda não visualizado"}
+                {shareInfo.viewed_at?`Última visualização${shareInfo.viewed_by?`: ${shareInfo.viewed_by}`:""} em ${new Date(shareInfo.viewed_at).toLocaleDateString('pt-BR')} (lista completa em Clientes → Relatórios)`:"Ainda não visualizado"}
               </div>
             )}
             {shareInfo?.error&&(
@@ -5469,12 +5524,12 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
 
       {report.acoesLocais&&(()=>{
         const AL=[
-          {label:"Visitas à loja",v:report.acoesLocais.visitas_loja,icon:"🏪"},
-          {label:"Chamadas",v:report.acoesLocais.chamadas,icon:"📞"},
-          {label:"Visualizações de rota",v:report.acoesLocais.visualizacoes_rota,icon:"🚗"},
-          {label:"Visitas ao site",v:report.acoesLocais.visitas_site,icon:"🌐"},
-          {label:"Pedidos",v:report.acoesLocais.pedidos,icon:"📦"},
-          {label:"Visualizações do menu",v:report.acoesLocais.visualizacoes_menu,icon:"📋"},
+          {label:"Visitas à loja",v:report.acoesLocais.visitas_loja,icon:<Ic n="store" s={11}/>},
+          {label:"Chamadas",v:report.acoesLocais.chamadas,icon:<Ic n="phone" s={11}/>},
+          {label:"Visualizações de rota",v:report.acoesLocais.visualizacoes_rota,icon:<Ic n="car" s={11}/>},
+          {label:"Visitas ao site",v:report.acoesLocais.visitas_site,icon:<Ic n="globe" s={11}/>},
+          {label:"Pedidos",v:report.acoesLocais.pedidos,icon:<Ic n="box" s={11}/>},
+          {label:"Visualizações do menu",v:report.acoesLocais.visualizacoes_menu,icon:<Ic n="list" s={11}/>},
         ].filter(x=>x.v!=null);
         if(!AL.length)return null;
         return(
@@ -5530,7 +5585,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
       {report.publico?.perguntas?.length>0&&(
         <div style={{...glassSurface,borderRadius:20,padding:"18px"}}>
           <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:4}}>O que seu público respondeu</div>
-          <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{report.publico.conversas} conversas no Mini Chat{report.publico.quentes?` · 🔥 ${report.publico.quentes} com pressa`:""}{report.publico.origem?` · ${report.publico.origem.pctAds}% pelo Google Ads`:""}</div>
+          <div style={{color:MUTED,fontSize:11,marginBottom:12}}>{report.publico.conversas} conversas no Mini Chat{report.publico.quentes?` · ${report.publico.quentes} com pressa`:""}{report.publico.origem?` · ${report.publico.origem.pctAds}% pelo Google Ads`:""}</div>
           {report.publico.perguntas.map((p,i)=>(
             <div key={i} style={{marginBottom:i<report.publico.perguntas.length-1?14:0}}>
               <div style={{color:TEXT,fontSize:12.5,fontWeight:600,marginBottom:6}}>{p.texto}</div>
@@ -5557,7 +5612,7 @@ function GARelatorioGerado({clienteId,cliente,presetDias,tipoRelatorio}){
         </div>
       )}
 
-      {report.investimentoManual&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5,padding:"0 4px"}}>🖊️ Investimento inserido manualmente em {new Date(report.investimentoManualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado pra esse cliente.</div>}
+      {report.investimentoManual&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5,padding:"0 4px"}}><Ic n="pencil" s={12}/> Investimento inserido manualmente em {new Date(report.investimentoManualAt).toLocaleDateString('pt-BR')} — Google Ads ainda não conectado pra esse cliente.</div>}
       {report.investimento==null&&<div style={{color:MUTED,fontSize:11,lineHeight:1.5,padding:"0 4px"}}>Investimento aparece aqui depois de conectar o Google Ads ou inserir manualmente (Visão geral).</div>}
 
       <div style={{textAlign:"center",padding:"8px 4px 4px",color:MUTED,fontSize:10,lineHeight:1.6}}>
@@ -5584,7 +5639,7 @@ function GAIntegracao({clienteId,cliente}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Integração · Google Ads</div>
       <div style={{...glassSurface,borderRadius:20,padding:"20px 18px",color:MUTED,fontSize:13,lineHeight:1.6}}>
-        O Google Ads de <b style={{color:TEXT}}>{cliente?.name||"esse produtor"}</b> funciona só por inserção manual agora — sem conexão automática. Volte pra "Visão geral" e use "🖊️ Inserir investimento manualmente".
+        O Google Ads de <b style={{color:TEXT}}>{cliente?.name||"esse produtor"}</b> funciona só por inserção manual agora — sem conexão automática. Volte pra "Visão geral" e use "Inserir investimento manualmente".
       </div>
     </div>
   );
@@ -5632,8 +5687,8 @@ function GAHistorico({clienteId,cliente}){
                   <div style={{color:MUTED,fontSize:11}}>{TIPO_LABEL[r.tipo]||r.tipo} · {new Date(r.periodo_from).toLocaleDateString('pt-BR')} — {new Date(r.periodo_to).toLocaleDateString('pt-BR')}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,fontWeight:600}}>{r.viewed_at?`👁 Último: ${r.viewed_by||"—"}`:"Não visto"}</div>
-                  {r.comment_count>0&&<div style={{color:GOLD,fontSize:11,marginTop:2}}>💬 {r.comment_count}</div>}
+                  <div style={{color:r.viewed_at?GREEN:MUTED,fontSize:11,fontWeight:600}}>{r.viewed_at?<><Ic n="eye" s={12}/> Último: {r.viewed_by||"—"}</>:"Não visto"}</div>
+                  {r.comment_count>0&&<div style={{color:GOLD,fontSize:11,marginTop:2}}><Ic n="message" s={12}/> {r.comment_count}</div>}
                 </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -5710,13 +5765,13 @@ function AdminPanel({onLogout,userEmail}){
   const [finSubTab,setFinSubTab]=useState(null);
   const onNav=(t,sub=null)=>{setFinSubTab(sub);setTab(t);};
   const NAV=[
-    {id:"dashboard",icon:"⌂",label:"Dashboard"},
-    {id:"clientes",icon:"◻",label:"Clientes"},
-    {id:"financeiro",icon:"◈",label:"Financeiro"},
-    {id:"googleads",icon:"⊕",label:"Google Ads"},
-    {id:"chat",icon:"✧",label:"Chat IA"},
-    {id:"integracoes",icon:"⎈",label:"Integrações"},
-    {id:"config",icon:"⚙",label:"Config"},
+    {id:"dashboard",icon:<Ic n="home" s={17}/>,label:"Dashboard"},
+    {id:"clientes",icon:<Ic n="users" s={17}/>,label:"Clientes"},
+    {id:"financeiro",icon:<Ic n="card" s={17}/>,label:"Financeiro"},
+    {id:"googleads",icon:<Ic n="target" s={17}/>,label:"Google Ads"},
+    {id:"chat",icon:<Ic n="star" s={17}/>,label:"Chat IA"},
+    {id:"integracoes",icon:<Ic n="plug" s={17}/>,label:"Integrações"},
+    {id:"config",icon:<Ic n="settings" s={17}/>,label:"Config"},
   ];
   const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes");
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
@@ -5764,12 +5819,12 @@ function ClientPanel({clientName,userEmail,onLogout}){
   const companyName=profile.company_name||"JosephPay";
   const email=userEmail||"—";
   const NAV=[
-    {id:"dashboard",icon:"⌂",label:"Início"},
-    {id:"produtos",icon:"◈",label:"Produtos"},
-    {id:"clientes",icon:"◻",label:"Clientes"},
-    {id:"disparos",icon:"⚡",label:"Disparos"},
-    {id:"maquina",icon:"⚙",label:"Máquina"},
-    {id:"chat",icon:"✧",label:"Chat IA"},
+    {id:"dashboard",icon:<Ic n="home" s={17}/>,label:"Início"},
+    {id:"produtos",icon:<Ic n="box" s={17}/>,label:"Produtos"},
+    {id:"clientes",icon:<Ic n="users" s={17}/>,label:"Clientes"},
+    {id:"disparos",icon:<Ic n="zap" s={17}/>,label:"Disparos"},
+    {id:"maquina",icon:<Ic n="chart" s={17}/>,label:"Máquina"},
+    {id:"chat",icon:<Ic n="star" s={17}/>,label:"Chat IA"},
   ];
   const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",disparos:"Disparos",maquina:"Máquina",chat:"Chat IA"};
   const VIEWS={
@@ -6286,7 +6341,7 @@ function ProdutosTab({accent,isDeise}){
                   <div style={{color:TEXT,fontWeight:800,fontSize:18,letterSpacing:"-0.01em"}}>{p.name}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-                    <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>🔗 josephpay.com/checkout.html?p={p.id}</span>
+                    <span style={{color:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}><Ic n="link" s={11}/> josephpay.com/checkout.html?p={p.id}</span>
                     <button onClick={e=>{e.stopPropagation();navigator.clipboard?.writeText(`https://josephpay.com/checkout.html?p=${p.id}`).then(()=>{setCopiedIdx(i);setTimeout(()=>setCopiedIdx(null),2000);});}} style={{flexShrink:0,background:copiedIdx===i?`${GREEN}18`:"rgba(212,175,55,0.12)",border:copiedIdx===i?`1px solid ${GREEN}40`:`1px solid ${GOLD}30`,borderRadius:20,padding:"3px 10px",color:copiedIdx===i?GREEN:GOLD,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F,whiteSpace:"nowrap",transition:"all 0.2s"}}>{copiedIdx===i?"✓ Copiado":"Copiar link"}</button>
                   </div>
               </div>
@@ -6503,7 +6558,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
         <div className="det">
           <div className="back" onClick={()=>{setSel(null);setEditing(false);}}><svg width="8" height="13" viewBox="0 0 8 13" fill="none"><path d="M7 1L1 6.5L7 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>&nbsp;Voltar</div>
           <div className="pc">
-            <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<>🎂 {af}</>}</div></div></div>
+            <div className="ptop"><div className="pav">{inits(c.name)}</div><div><div className="pn">{c.name}</div><div className="pct">{c.phone&&<>{c.phone}<br/></>}{c.email&&<>{c.email}<br/></>}{c.birthday&&<><Ic n="cake" s={11}/> {af}</>}</div></div></div>
             <div className="ptags"><span className="ptag hi">{stLabel(c.status||'cliente')}</span><span className="ptag">Origem: {srcLabel(c.source||'checkout')}</span></div>
           </div>
           <div className="qr">
@@ -6639,11 +6694,11 @@ function ClientesTab({targetCustomerId,navSubTab}){
           {/* Aniversários */}
           {anivs.length>0&&(
             <div className="bday-msgs-card" style={{marginBottom:12}}>
-              <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
+              <div className="bm-header"><div className="bm-title"><Ic n="cake" s={15}/> Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
               <div className="bday-circles">
                 {anivs.map((a,i)=>(
                   <div key={i} className="bday-circle-wrap" onClick={()=>{const idx=(clientes||[]).findIndex(c=>c.id===a.id);if(idx!==-1){setSel(idx);setTab(0);}}}>
-                    <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
+                    <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge"><Ic n="cake" s={10} w={2}/></div></div>
                     <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
                     <div className="bday-circle-date">{a.label}</div>
                   </div>
@@ -6656,7 +6711,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
             <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
               <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
-                  <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
+                  <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}><Ic n="cake" s={16}/> Todos os aniversários</div>
                   <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
                 </div>
                 {(clientes||[]).filter(c=>c.birthday).map(c=>{
@@ -6676,7 +6731,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
                       <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
                     </div>
                     <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>
-                      🎂 {c.label}
+                      <Ic n="cake" s={11}/> {c.label}
                     </div>
                   </div>
                 ))}
@@ -6758,7 +6813,7 @@ function ClientesTab({targetCustomerId,navSubTab}){
               <div className="bubble-out"><div className="btxt">{b.text}</div><div className="btm"><span style={{fontSize:10}}>{b.time}</span><svg className="ck" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#c8a84b" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg></div></div>
               {b.sent>0
                 ?<div className="sent-ok">✓ Enviado para {b.sent} {b.sent===1?'pessoa':'pessoas'}{b.failed>0?` · ${b.failed} falha`:''}</div>
-                :<div className="sent-ok" style={{color:'var(--rd)'}}>⚠ Nenhuma mensagem enviada{b.failed>0?` (${b.failed} erro${b.failed>1?'s':''})`:''} — verifique se o {b.channel==='email'?'e-mail':'WhatsApp'} está conectado</div>
+                :<div className="sent-ok" style={{color:'var(--rd)'}}><Ic n="alert" s={13}/> Nenhuma mensagem enviada{b.failed>0?` (${b.failed} erro${b.failed>1?'s':''})`:''} — verifique se o {b.channel==='email'?'e-mail':'WhatsApp'} está conectado</div>
               }
             </div>
           ))}
@@ -6945,11 +7000,11 @@ function DisparosTab({onWapChange,onEmailChange}){
         <div style={{marginBottom:12}}/>
         {anivs.length>0&&(
           <div className="bday-msgs-card" style={{marginBottom:12}}>
-            <div className="bm-header"><div className="bm-title">🎂 Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
+            <div className="bm-header"><div className="bm-title"><Ic n="cake" s={15}/> Próximos aniversários</div><button onClick={()=>setShowAllBdays(true)} style={{background:'transparent',border:'1px solid var(--ln)',borderRadius:8,padding:'3px 10px',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>Ver todos</button></div>
             <div className="bday-circles">
               {anivs.map((a,i)=>(
                 <div key={i} className="bday-circle-wrap">
-                  <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge">🎂</div></div>
+                  <div className="bday-circle"><span>{a.inits}</span><div className="bday-circle-badge"><Ic n="cake" s={10} w={2}/></div></div>
                   <div className="bday-circle-name">{a.name.split(' ')[0]}</div>
                   <div className="bday-circle-date">{a.label}</div>
                 </div>
@@ -7023,7 +7078,7 @@ function DisparosTab({onWapChange,onEmailChange}){
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)',zIndex:300,display:'flex',flexDirection:'column'}} onClick={()=>setShowAllBdays(false)}>
           <div style={{flex:1,overflowY:'auto',padding:'56px 20px 32px'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24}}>
-              <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}>🎂 Todos os aniversários</div>
+              <div style={{fontSize:17,fontWeight:700,color:'var(--tx)'}}><Ic n="cake" s={16}/> Todos os aniversários</div>
               <button onClick={()=>setShowAllBdays(false)} style={{background:'transparent',border:'none',color:'var(--t2)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
             </div>
             {(clientes||[]).filter(c=>c.birthday).map(c=>{
@@ -7040,7 +7095,7 @@ function DisparosTab({onWapChange,onEmailChange}){
                   <div style={{fontSize:14,fontWeight:600,color:'var(--tx)',marginBottom:2}}>{c.name}</div>
                   <div style={{fontSize:12,color:'var(--t3)'}}>{new Date(c.birthday+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>
                 </div>
-                <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}>🎂 {c.label}</div>
+                <div style={{fontSize:12,fontWeight:700,color:c.dias===0?'#f5c842':c.dias<=7?'#e07b39':'var(--gd)',textAlign:'right'}}><Ic n="cake" s={11}/> {c.label}</div>
               </div>
             ))}
           </div>
@@ -7150,7 +7205,7 @@ function MaquinaTab({onNav}){
           <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${BDR}`,display:"flex",gap:10}}>
             {analytics.devices.map(d=>(
               <div key={d.device} style={{flex:1,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px"}}>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{d.device==="mobile"?"📱 Mobile":"💻 Desktop"}</div>
+                <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{d.device==="mobile"?<><Ic n="smartphone" s={11}/> Mobile</>:<><Ic n="monitor" s={11}/> Desktop</>}</div>
                 <div style={{color:TEXT,fontWeight:700,fontSize:20}}>{d.pct}%</div>
                 <div style={{color:MUTED,fontSize:10,marginTop:2}}>{d.count} visita{d.count!==1?"s":""}</div>
               </div>
@@ -7198,11 +7253,11 @@ function MaquinaTab({onNav}){
         {!loadingFunnel&&((funnel?.cliquesLigar||0)>0||(funnel?.cliquesWhatsapp||0)>0)&&(
           <div style={{display:"flex",gap:8,marginTop:14,paddingTop:14,borderTop:`1px solid ${BDR}`}}>
             <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>📞 Cliques em Ligar</div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}><Ic n="phone" s={11}/> Cliques em Ligar</div>
               <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesLigar||0}</div>
             </div>
             <div style={{flex:1,background:CARD2,borderRadius:12,padding:"10px 12px"}}>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>💬 Cliques em WhatsApp</div>
+              <div style={{color:MUTED,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}><Ic n="message" s={11}/> Cliques em WhatsApp</div>
               <div style={{color:TEXT,fontWeight:700,fontSize:15,marginTop:3}}>{funnel.cliquesWhatsapp||0}</div>
             </div>
           </div>
@@ -7274,7 +7329,7 @@ function MaquinaTab({onNav}){
               </div>
               {miniRev>0&&(
                 <div style={{background:`${GOLD}10`,border:`1px solid ${GOLD}25`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:15}}>💰</span>
+                  <span style={{display:"flex",color:GOLD}}><Ic n="dollar" s={16}/></span>
                   <span style={{color:TEXT,fontSize:12}}>R$ {Number(miniRev).toFixed(2).replace(".",",")} gerados pelo MiniChat</span>
                 </div>
               )}
@@ -7288,7 +7343,7 @@ function MaquinaTab({onNav}){
       {!loadingFunnel&&(funnel?.leads||0)>0&&(
         <div style={{...glassSurface,border:`1px solid ${GOLD}30`,borderRadius:20,padding:"18px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-            <span style={{fontSize:16}}>⚡</span>
+            <span style={{display:"flex",color:GOLD}}><Ic n="zap" s={16}/></span>
             <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{funnel.leads} interessado{funnel.leads!==1?"s":""} ainda sem mensagem</div>
           </div>
           <div style={{color:MUTED,fontSize:12,marginBottom:12}}>Escolha um modelo e envie agora:</div>
@@ -7470,7 +7525,7 @@ function Login({onLogin}){
             {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13,fontWeight:500}}>{error}</div>}
             <button onClick={doLogin} disabled={loading} style={{background:loading?"rgba(212,175,55,0.5)":GOLD,border:"none",borderRadius:100,padding:"16px",color:"#0C0C0C",fontWeight:600,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:F,letterSpacing:"0.01em",transition:"background 0.2s"}}>{loading?"Entrando…":"Entrar →"}</button>
             {!_sb&&<div style={{textAlign:"center",background:"rgba(212,175,55,0.06)",border:`1px solid ${GOLD}20`,borderRadius:10,padding:"8px 12px",color:MUTED,fontSize:11}}>Modo demonstração · Configure o Supabase para acesso real</div>}
-            <div style={{textAlign:"center",color:MUTED,fontSize:11}}>🔒 Acesso seguro · JosephPay</div>
+            <div style={{textAlign:"center",color:MUTED,fontSize:11}}><Ic n="lock" s={11}/> Acesso seguro · JosephPay</div>
           </div>
         )}
       </div>
@@ -7534,7 +7589,7 @@ function Paywall(){
       <div style={box} onClick={e=>e.stopPropagation()}>
         {paid?(
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:44}}>✅</div>
+            <div style={{color:GREEN,display:"flex",justifyContent:"center"}}><Ic n="checkCircle" s={44} w={1.5}/></div>
             <div style={{fontSize:20,fontWeight:700,marginTop:10}}>Pagamento confirmado!</div>
             <div style={{color:MUTED,marginTop:6,fontSize:14}}>Liberando seu acesso…</div>
           </div>
@@ -7570,7 +7625,7 @@ function Paywall(){
               {pix.pixQrCode&&<img src={`data:image/png;base64,${pix.pixQrCode}`} alt="QR Code PIX" style={{width:220,height:220,borderRadius:10,background:"#fff",padding:8}}/>}
               {pix.pixCopyCola&&(
                 <button style={{...btn(CARD3),color:TEXT,fontSize:13}} onClick={()=>{navigator.clipboard?.writeText(pix.pixCopyCola);}}>
-                  📋 Copiar código PIX (copia e cola)
+                  <Ic n="copy" s={15}/> Copiar código PIX (copia e cola)
                 </button>
               )}
               <div style={{color:MUTED,fontSize:13,textAlign:"center"}}>Aguardando pagamento… o acesso libera sozinho assim que o PIX cair.</div>

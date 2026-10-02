@@ -1,5 +1,16 @@
 # JosephPay — Regras para o Claude
 
+## REGRA CRÍTICA: nunca subir pra main sem o Thomas aprovar
+
+Antes de qualquer push/merge na `main`, mostre o que mudou (prints/resumo) e espere o
+Thomas dizer que pode. Trabalhe num ramo `claude/...` até lá.
+
+## Visual: ícones, nunca emoji em botão
+
+Botões e rótulos da interface usam `<Ic n="copy"/>` (traço fino estilo Apple, `IC` em
+`index.html`) e `iconBtn()` pra botão só de ícone (vidro). Emoji só em CONTEÚDO de
+mensagem (WhatsApp, Mini Chat, e-mail).
+
 ## REGRA CRÍTICA: IDs de botões são permanentes
 
 Os botões abaixo têm IDs fixos usados pelo GTM para rastreamento de conversões.
