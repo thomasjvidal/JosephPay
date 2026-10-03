@@ -7024,6 +7024,19 @@ app.get("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req
     res.status(500).json({ error: err.message });
   }
 });
+// "Testar conexão": manda { cliente, teste: true } — o xPosts confirma sem criar contato de verdade.
+app.post("/api/admin/producers/:id/xposts/test", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
+    const token = prof?.minichat_config?.xposts_token;
+    if (!token) return res.status(400).json({ error: "Salve o token do xPosts primeiro." });
+    const r = await postarXposts({ cliente: token, teste: true });
+    if (!r.ok) return res.status(502).json({ error: r.erro });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.patch("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req, res) => {
   try {
     const token = limparTokenXposts(req.body?.token);

@@ -3450,6 +3450,13 @@ function XpostsAdmin({c}){
   const [valor,setValor]=useState("");
   const [salvando,setSalvando]=useState(false);
   const [msg,setMsg]=useState("");
+  const [testando,setTestando]=useState(false);
+  const testar=async()=>{
+    setTestando(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/xposts/test`,{method:"POST"});
+    setTestando(false);
+    setMsg(d?.ok?"✓ Conexão confirmada: o xPosts recebeu o teste (aparece como confirmado no perfil do cliente lá).":`Não funcionou: ${d?.error||"sem resposta"}`);
+  };
   const carregar=()=>apiCall(`/api/admin/producers/${c.id}/xposts`).then(d=>{if(d&&!d.error){setSt(d);setValor(v=>v||d.token||"");}});
   useEffect(()=>{carregar();},[c.id]);
   const salvar=async()=>{
@@ -3467,6 +3474,7 @@ function XpostsAdmin({c}){
         <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:10}}>Todo contato captado pelo Mini Chat também aparece no xPosts. Cole o link do <b style={{color:TEXT}}>formulário do cliente</b> no xPosts (…/f/…/<b style={{color:TEXT}}>token</b>) ou só o token.</div>
         <input value={valor} onChange={e=>{setValor(e.target.value);setMsg("");}} placeholder="https://socialmediax.vercel.app/f/…/token" autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{width:"100%",boxSizing:"border-box",...glassInset,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
         <button onClick={salvar} disabled={salvando} style={pillBtn(true,salvando)}>{salvando?"Salvando…":"Salvar"}</button>
+        {ligado&&<button onClick={testar} disabled={testando} style={{...pillBtn(false,testando),marginTop:8}}>{testando?"Testando…":<><Ic n="checkCircle" s={15}/> Testar conexão</>}</button>}
         {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:8,lineHeight:1.4}}>{msg}</div>}
         {st&&(<div style={{...glassInset,marginTop:12,fontSize:12,color:MUTED,lineHeight:1.6}}>
           {!st.chaveConfigurada&&<div style={{color:RED}}><Ic n="alert" s={12}/> Falta a chave XPOSTS_KEY no servidor (Railway). Sem ela nada é enviado — fica guardado pra enviar depois.</div>}
