@@ -3437,6 +3437,44 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
       {metodoAtual==="gtm"&&<GtmBotoesAdmin c={c} onStatus={setGtmBotoesOk}/>}
       <GoogleAdsConversionAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("google_ads_conversion")} done={cardDone("google_ads_conversion")}/>
       <EmailAdmin c={c} onUpdated={onUpdated} initialOpen={openCard("email")} done={cardDone("email")}/>
+      <XpostsAdmin c={c}/>
+    </div>
+  );
+}
+
+// Card "xPosts": token do cliente no xPosts (app de gestão de tráfego). Com ele, todo
+// contato que o Mini Chat capta é avisado pelo servidor ao xPosts — não muda o Mini Chat.
+function XpostsAdmin({c}){
+  const [open,setOpen]=useState(false);
+  const [st,setSt]=useState(null);
+  const [valor,setValor]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const [msg,setMsg]=useState("");
+  const carregar=()=>apiCall(`/api/admin/producers/${c.id}/xposts`).then(d=>{if(d&&!d.error){setSt(d);setValor(v=>v||d.token||"");}});
+  useEffect(()=>{carregar();},[c.id]);
+  const salvar=async()=>{
+    setSalvando(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/xposts`,{method:"PATCH",body:JSON.stringify({token:valor})});
+    setSalvando(false);
+    if(d?.error){setMsg(d.error);return;}
+    setValor(d.token||"");setMsg(d.token?"✓ Salvo. Os próximos contatos do Mini Chat vão pro xPosts.":"✓ Desligado: os contatos não vão mais pro xPosts.");carregar();
+  };
+  const ligado=!!st?.token;
+  return(
+    <div style={glassCard(ligado&&st?.chaveConfigurada)}>
+      <CardHeader title="xPosts (tráfego)" open={open} onToggle={()=>setOpen(o=>!o)} done={ligado&&st?.chaveConfigurada}/>
+      {open&&(<div style={{marginTop:8}}>
+        <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:10}}>Todo contato captado pelo Mini Chat também aparece no xPosts. Cole o link do <b style={{color:TEXT}}>formulário do cliente</b> no xPosts (…/f/…/<b style={{color:TEXT}}>token</b>) ou só o token.</div>
+        <input value={valor} onChange={e=>{setValor(e.target.value);setMsg("");}} placeholder="https://socialmediax.vercel.app/f/…/token" autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{width:"100%",boxSizing:"border-box",...glassInset,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+        <button onClick={salvar} disabled={salvando} style={pillBtn(true,salvando)}>{salvando?"Salvando…":"Salvar"}</button>
+        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:8,lineHeight:1.4}}>{msg}</div>}
+        {st&&(<div style={{...glassInset,marginTop:12,fontSize:12,color:MUTED,lineHeight:1.6}}>
+          {!st.chaveConfigurada&&<div style={{color:RED}}><Ic n="alert" s={12}/> Falta a chave XPOSTS_KEY no servidor (Railway). Sem ela nada é enviado — fica guardado pra enviar depois.</div>}
+          {!st.tabela&&<div style={{color:"#F5A524"}}><Ic n="alert" s={12}/> Falta rodar o SQL da migration_v45 — sem ele, o reenvio automático não sobrevive a reinício do servidor.</div>}
+          <div>{st.enviados} contato(s) enviados{st.ultimoEnvio?` · último em ${new Date(st.ultimoEnvio).toLocaleString('pt-BR')}`:""}</div>
+          {st.pendentes>0&&<div style={{color:"#F5A524"}}>{st.pendentes} aguardando reenvio{st.ultimoErro?` (${st.ultimoErro})`:""}</div>}
+        </div>)}
+      </div>)}
     </div>
   );
 }

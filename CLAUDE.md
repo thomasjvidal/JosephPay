@@ -361,3 +361,15 @@ páginas" (antes o sensor criava um duplicado a cada clique).
 Pedido do Thomas: ele usa outra ferramenta (social media) que já conhece cada cliente. Ação
 principal do card = "📋 Copiar prompt" (idioma segue `minichat_config.language`) + "📥 Colar
 resposta" (JSON). "✨ Gerar com IA" continua existindo, só foi pra "Mais opções" (nunca remover).
+
+## Aviso pro xPosts quando o Mini Chat capta um contato
+
+- `/api/leads/create` → `avisarXposts()` (depois de responder, nunca muda o Mini Chat): POST em
+  `XPOSTS_LEAD_URL` (padrão `https://socialmediax.vercel.app/api/lead-minichat`) com `x-xposts-key:
+  XPOSTS_KEY` (só variável de ambiente do servidor) e `{ cliente, id, nome, contato, mensagem, quando }`.
+  `cliente` = token do xPosts do produtor (`minichat_config.xposts_token`, card "xPosts (tráfego)" na
+  Ativação, aceita o link `/f/<id>/<token>`); `id` = `customers.id` (o xPosts não duplica);
+  `mensagem` = respostas do Mini Chat sem os dados de contato.
+- Resposta ≠ 200 → fica em `xposts_avisos` (migration_v45) e `reenviarAvisosXposts()` tenta de novo a
+  cada 5 min com espera crescente (até 6 h, 40 tentativas). Sem a tabela, o reenvio fica só na memória.
+- O PATCH do Mini Chat só MANTÉM `xposts_token` (quem grava é `/xposts`), pra salvar o Mini Chat não apagar o token.

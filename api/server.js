@@ -3039,6 +3039,8 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       // nunca injetar CSS arbitrário na página pública do Mini Chat.
       accent_color: accent_color !== undefined ? cleanHexColor(accent_color) : (existing.accent_color ?? null),
       bg_color: bg_color !== undefined ? cleanHexColor(bg_color) : (existing.bg_color ?? null),
+      // Token do xPosts (card "xPosts") — salvo por /xposts; aqui só é mantido.
+      xposts_token: existing.xposts_token ?? null,
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
@@ -6899,6 +6901,143 @@ app.options("/api/leads/create", (req, res) => {
   res.header("Access-Control-Allow-Methods", "POST");
   res.sendStatus(204);
 });
+// ── Aviso pro xPosts (app de gestão de tráfego do Thomas) ─────────────────────
+// Todo contato que o Mini Chat captura é avisado ao xPosts PELO SERVIDOR (a chave
+// nunca vai pro navegador). Só avisa — não muda nada no fluxo do Mini Chat: roda
+// depois que /api/leads/create já respondeu. Cada produtor tem o seu "token do
+// xPosts" (o do link do formulário do cliente lá: /f/<id>/<token>), salvo em
+// minichat_config.xposts_token. Mesmo id (= customers.id) não duplica no xPosts.
+// Se o xPosts não responder 200, o aviso fica em xposts_avisos (migration_v45) e
+// é reenviado sozinho mais tarde; sem a tabela, a reenvio fica só na memória.
+const XPOSTS_LEAD_URL = process.env.XPOSTS_LEAD_URL || "https://socialmediax.vercel.app/api/lead-minichat";
+const XPOSTS_KEY = process.env.XPOSTS_KEY || "";
+const XPOSTS_TOKEN_RE = /^[A-Za-z0-9_-]{6,120}$/;
+const xpostsMemoria = new Map(); // id -> { owner_id, payload, tentativas, proximo_em } (só sem a tabela)
+function limparTokenXposts(v) {
+  let t = String(v || "").trim();
+  if (!t) return null;
+  // Aceita o link inteiro do formulário (https://.../f/<id>/<token>) ou só o token.
+  const m = t.match(/\/f\/[^/\s]+\/([^/?#\s]+)/);
+  if (m) t = m[1];
+  t = t.replace(/[/?#].*$/, "");
+  return XPOSTS_TOKEN_RE.test(t) ? t : undefined;
+}
+function proximaTentativaXposts(tentativas) {
+  const min = Math.min(360, Math.pow(2, Math.max(0, tentativas))); // 1, 2, 4… até 6 h
+  return new Date(Date.now() + min * 60000).toISOString();
+}
+async function postarXposts(payload) {
+  if (!XPOSTS_KEY) return { ok: false, erro: "XPOSTS_KEY não configurada no servidor" };
+  try {
+    const r = await axios.post(XPOSTS_LEAD_URL, payload, {
+      headers: { "x-xposts-key": XPOSTS_KEY, "Content-Type": "application/json" },
+      timeout: 10000,
+      validateStatus: () => true,
+    });
+    if (r.status === 200) return { ok: true };
+    return { ok: false, erro: `xPosts respondeu ${r.status}${r.data?.error ? `: ${String(r.data.error).slice(0, 160)}` : ""}` };
+  } catch (e) {
+    return { ok: false, erro: e.code || e.message || "falha de rede" };
+  }
+}
+async function avisarXposts(ownerId, customer, visitorId) {
+  try {
+    if (!ownerId || !customer?.id) return;
+    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", ownerId).maybeSingle();
+    const token = prof?.minichat_config?.xposts_token;
+    if (!token) return; // produtor sem token do xPosts: nada a avisar
+    // Mensagem = as respostas do Mini Chat (sem nome/telefone/e-mail/nascimento, que já vão separados).
+    let mensagem = "";
+    if (visitorId) {
+      const { data: sessao } = await supabase.from("minichat_sessions").select("answers").eq("owner_id", ownerId).eq("visitor_id", String(visitorId).slice(0, 100)).maybeSingle();
+      mensagem = splitMinichatAnswers(sessao?.answers).respostas
+        .filter(a => a?.answer).map(a => `${String(a.question || "").trim()} ${String(a.answer).trim()}`.trim()).join("\n");
+    }
+    const payload = {
+      cliente: token,
+      id: String(customer.id),
+      nome: customer.name || "",
+      contato: customer.phone || customer.email || "",
+      mensagem,
+      quando: new Date().toISOString(),
+    };
+    const agora = new Date().toISOString();
+    const { error: errFila } = await supabase.from("xposts_avisos").upsert({ id: payload.id, owner_id: ownerId, payload, tentativas: 0, enviado_em: null, proximo_em: agora, ultimo_erro: null, updated_at: agora }, { onConflict: "id" });
+    const res = await postarXposts(payload);
+    if (!errFila) {
+      await supabase.from("xposts_avisos").update(res.ok
+        ? { enviado_em: new Date().toISOString(), tentativas: 1, ultimo_erro: null, updated_at: new Date().toISOString() }
+        : { tentativas: 1, proximo_em: proximaTentativaXposts(1), ultimo_erro: res.erro, updated_at: new Date().toISOString() }).eq("id", payload.id);
+    } else if (!res.ok) {
+      xpostsMemoria.set(payload.id, { owner_id: ownerId, payload, tentativas: 1, proximo_em: proximaTentativaXposts(1), ultimo_erro: res.erro });
+    }
+    if (!res.ok) console.warn("[xposts] aviso não entregue, tenta de novo depois:", res.erro);
+  } catch (e) {
+    console.warn("[xposts] aviso falhou:", e.message);
+  }
+}
+let xpostsReenviando = false;
+async function reenviarAvisosXposts() {
+  if (xpostsReenviando || !XPOSTS_KEY) return;
+  xpostsReenviando = true;
+  try {
+    const agora = new Date().toISOString();
+    const { data: pendentes, error } = await supabase.from("xposts_avisos").select("id,payload,tentativas")
+      .is("enviado_em", null).lte("proximo_em", agora).lt("tentativas", 40).order("proximo_em").limit(50);
+    for (const p of (error ? [] : pendentes || [])) {
+      const res = await postarXposts(p.payload);
+      const n = (p.tentativas || 0) + 1;
+      await supabase.from("xposts_avisos").update(res.ok
+        ? { enviado_em: new Date().toISOString(), tentativas: n, ultimo_erro: null, updated_at: new Date().toISOString() }
+        : { tentativas: n, proximo_em: proximaTentativaXposts(n), ultimo_erro: res.erro, updated_at: new Date().toISOString() }).eq("id", p.id);
+    }
+    for (const [id, p] of xpostsMemoria) {
+      if (p.proximo_em > agora) continue;
+      const res = await postarXposts(p.payload);
+      if (res.ok || p.tentativas >= 40) xpostsMemoria.delete(id);
+      else xpostsMemoria.set(id, { ...p, tentativas: p.tentativas + 1, proximo_em: proximaTentativaXposts(p.tentativas + 1), ultimo_erro: res.erro });
+    }
+  } catch (e) {
+    console.warn("[xposts] reenvio falhou:", e.message);
+  } finally {
+    xpostsReenviando = false;
+  }
+}
+setInterval(() => { reenviarAvisosXposts().catch(() => {}); }, 5 * 60 * 1000);
+setTimeout(() => { reenviarAvisosXposts().catch(() => {}); }, 60 * 1000);
+
+// Token do xPosts por produtor (card "xPosts" na Ativação) — só mexe nesse campo.
+app.get("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
+    const token = prof?.minichat_config?.xposts_token || null;
+    let enviados = 0, pendentes = 0, ultimoEnvio = null, ultimoErro = null, tabela = true;
+    const { data: avisos, error } = await supabase.from("xposts_avisos").select("enviado_em,ultimo_erro,updated_at").eq("owner_id", req.params.id).order("updated_at", { ascending: false }).limit(500);
+    if (error) tabela = false;
+    else {
+      (avisos || []).forEach(a => { if (a.enviado_em) { enviados++; if (!ultimoEnvio || a.enviado_em > ultimoEnvio) ultimoEnvio = a.enviado_em; } else pendentes++; });
+      ultimoErro = (avisos || []).find(a => !a.enviado_em && a.ultimo_erro)?.ultimo_erro || null;
+    }
+    pendentes += [...xpostsMemoria.values()].filter(p => p.owner_id === req.params.id).length;
+    res.json({ token, chaveConfigurada: !!XPOSTS_KEY, tabela, enviados, pendentes, ultimoEnvio, ultimoErro });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.patch("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = limparTokenXposts(req.body?.token);
+    if (token === undefined) return res.status(400).json({ error: "Não reconheci o token. Cole o link do formulário do cliente no xPosts (…/f/<id>/<token>) ou só o token." });
+    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
+    const minichat_config = { ...(prof?.minichat_config || {}), xposts_token: token };
+    const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/leads/create", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
@@ -6967,6 +7106,7 @@ app.post("/api/leads/create", (req, res, next) => {
       const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ ...completar, times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
       if (errUpd) return res.status(500).json({ error: errUpd.message });
       linkMinichatSessionToCustomer(ownerKey, req.body.visitor_id, atualizado);
+      avisarXposts(ownerKey, atualizado, req.body.visitor_id);
       return res.json(atualizado);
     }
   }
@@ -6988,6 +7128,7 @@ app.post("/api/leads/create", (req, res, next) => {
   if (error) return res.status(500).json({ error: error.message });
   sendPushToOwner(profile.id, { title: "Novo interessado!", body: name.trim(), url: "/" });
   linkMinichatSessionToCustomer(profile.id, req.body.visitor_id, data);
+  avisarXposts(profile.id, data, req.body.visitor_id);
   res.json(data);
 });
 
