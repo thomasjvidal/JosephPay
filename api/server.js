@@ -27,20 +27,15 @@ app.options("/api/track/visit", (req, res) => {
   res.sendStatus(204);
 });
 
-// Domínios Vercel conhecidos do JosephPay (deploy e previews) — whitelist explícita
-// em vez de *.vercel.app para evitar que qualquer outro app Vercel faça requests autenticados.
-const ALLOWED_VERCEL = (process.env.ALLOWED_VERCEL_ORIGINS || "")
-  .split(",").map(s => s.trim()).filter(Boolean);
-
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     const ok =
       origin === process.env.FRONTEND_ORIGIN ||
+      origin.endsWith(".vercel.app") ||
       origin.startsWith("http://localhost") ||
       origin === "https://josephpay.com" ||
-      origin === "https://www.josephpay.com" ||
-      ALLOWED_VERCEL.includes(origin);
+      origin === "https://www.josephpay.com";
     cb(null, ok);
   },
   credentials: true,
@@ -694,26 +689,7 @@ app.post("/api/asaas/webhook", async (req, res) => res.json({ received: true }))
 //   URL: https://josephpay-production.up.railway.app/api/mp/webhook
 //   Eventos: payment (created, updated)
 // ══════════════════════════════════════════════════════════════════════════════
-const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
-
-function verifyMpSignature(req) {
-  if (!MP_WEBHOOK_SECRET) return true; // sem segredo configurado: aceita (modo dev)
-  const xSignature  = req.headers["x-signature"]   || "";
-  const xRequestId  = req.headers["x-request-id"]  || "";
-  const dataId      = req.query["data.id"]          || req.body?.data?.id || "";
-  const ts          = (xSignature.match(/ts=([^,]+)/) || [])[1] || "";
-  const v1          = (xSignature.match(/v1=([^,]+)/) || [])[1] || "";
-  if (!ts || !v1) return false;
-  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
-  const expected = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifest).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
-}
-
 app.post("/api/mp/webhook", async (req, res) => {
-  if (!verifyMpSignature(req)) {
-    console.warn("[mp/webhook] assinatura inválida — rejeitado");
-    return res.status(401).json({ error: "Assinatura inválida" });
-  }
   res.json({ received: true }); // responde imediatamente para evitar retry do MP
   try {
     const { type, action, data: eventData } = req.body;
@@ -923,8 +899,8 @@ app.get("/api/asaas/balance", requireAuth, async (req, res) => {
   }
 });
 
-// ── Teste de e-mail (admin-only) ──
-app.get("/api/test-email", requireAuth, requireAdmin, async (req, res) => {
+// ── Teste de e-mail (não toca em nada crítico — dados fictícios via Resend real) ──
+app.get("/api/test-email", async (req, res) => {
   const to = req.query.to;
   if (!to) return res.status(400).json({ error: "Passe ?to=seuemail@gmail.com" });
   if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: "RESEND_API_KEY não configurada" });
@@ -1552,24 +1528,10 @@ app.get("/api/admin/sales", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// Exclui uma venda — a pedido do Thomas, pra limpar vendas de teste do painel do
-// produtor. Some do banco de vez (não é estorno, é remover um registro de teste),
-// os totais/KPIs recalculam sozinhos porque são somados direto da tabela sales.
-app.delete("/api/admin/sales/:saleId", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { error } = await supabase.from("sales").delete().eq("id", req.params.saleId);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[admin/sales delete]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from("profiles")
-      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_minichat_verified_ok,github_vercel_ready_at,google_ads_customer_id,disabled_at")
+      .select("id,name,role,created_at,email,phone,company_name,site_url,whatsapp_instance,email_connected,minichat_config,last_login_at,avatar_url,gtm_account_id,gtm_container_id,gtm_container_name,gtm_sensor_installed_at,github_repo,github_file_path,github_sensor_installed_at,github_minichat_path,github_minichat_installed_at,github_vercel_ready_at,google_ads_customer_id,disabled_at")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -1592,22 +1554,8 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
     // Interessados (lead) x Clientes convertidos (cliente/assinante) do CRM de cada produtor.
-    // Paginado: o Supabase devolve no máximo 1000 linhas por consulta, e essa conta pega
-    // os contatos de TODOS os produtores — sem paginar, os números do painel começam a
-    // sair menores que a realidade assim que a plataforma passa de 1000 contatos.
-    // Também ignora contato excluído (deleted_at), igual a lista "Clientes do produtor"
-    // já faz — senão painel e lista nunca batem depois que alguém apaga um contato.
-    const customerRows = [];
-    for (let from = 0; ; from += 1000) {
-      const { data: page, error: customerErr } = await supabase.from("customers")
-        .select("owner_id,status,created_at")
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-        .range(from, from + 999);
-      if (customerErr) { console.error("[admin/clients] customers query error:", customerErr.message, customerErr.details); break; }
-      customerRows.push(...(page || []));
-      if (!page || page.length < 1000) break;
-    }
+    const { data: customerRows, error: customerErr } = await supabase.from("customers").select("owner_id,status,created_at");
+    if (customerErr) console.error("[admin/clients] customers query error:", customerErr.message, customerErr.details);
     const leadsPorUsuario = {};
     const clientesPorUsuario = {};
     (customerRows || []).forEach(row => {
@@ -1619,7 +1567,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
     });
 
     const enriched = await Promise.all((data || []).map(async (p) => {
-      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid] = await Promise.all([
+      const [salesSum, prodCount, wapConnected, visitTotal, visitHoje, hasGclid, hasMiniChat] = await Promise.all([
         supabase.from("sales").select("gross_amount,amount,platform_fee").eq("owner_id", p.id).eq("status", "pago"),
         supabase.from("products").select("id", { count: "exact", head: true }).eq("owner_id", p.id),
         // whatsapp_instance só indica que a aba Disparos foi aberta uma vez (o nome da instância
@@ -1635,6 +1583,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview"),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").gte("created_at", todayStart.toISOString()),
         supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).eq("event_type", "pageview").eq("has_gclid", true).then(r => r.count > 0, () => false),
+        supabase.from("visits").select("*", { count: "exact", head: true }).eq("owner_id", p.id).ilike("page", "%minichat%").then(r => (r.count || 0) > 0, () => false),
       ]);
       const vol  = (salesSum.data || []).reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0);
       const taxa = (salesSum.data || []).reduce((a, s) => a + Number(s.platform_fee || Math.round(Number(s.gross_amount || s.amount || 0) * PLATFORM_FEE_RATE * 100) / 100), 0);
@@ -1658,12 +1607,7 @@ app.get("/api/admin/clients", requireAuth, requireAdmin, async (req, res) => {
           whatsapp: wapConnected,
           site:     !!p.github_sensor_installed_at || !!p.gtm_sensor_installed_at || vtotal > 0,
           email:    !!p.email_connected,
-          // Site com GitHub: confia SÓ na última verificação ao vivo (verifyMinichatLive)
-          // — a mesma verdade mostrada dentro do perfil do produtor. Antes usava "teve
-          // alguma visita numa página com 'minichat' no nome" — ficava verde pra sempre
-          // mesmo com o Mini Chat quebrado, e nunca batia com o que aparecia lá dentro.
-          // Site via GTM não passa por essa verificação — usa se já tem config salva.
-          minichat: p.github_repo ? !!p.github_minichat_verified_ok : !!(p.minichat_config?.whatsapp_number || p.minichat_config?.email_destino),
+          minichat: hasMiniChat,
           googleAds: !!hasGclid,
         },
       };
@@ -1812,8 +1756,7 @@ app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => 
     const newId = created.user.id;
 
     await supabase.from("profiles").upsert(
-      { id: newId, name: name.trim(), role: tipo, email: email.trim(), phone: phone?.trim() || null,
-        ...(tipo === "afiliado" ? { partner_type: "embaixador" } : {}) },
+      { id: newId, name: name.trim(), role: tipo, email: email.trim(), phone: phone?.trim() || null },
       { onConflict: "id" }
     );
 
@@ -1845,10 +1788,9 @@ app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, a
   try {
     const { id } = req.params;
     const newPassword = generatePassword();
-    const { data: updated, error } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
+    const { error } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
     if (error) return res.status(400).json({ error: error.message });
-    const email = updated?.user?.email || null;
-    res.json({ id, password: newPassword, email });
+    res.json({ id, password: newPassword });
   } catch (err) {
     console.error("[admin/producers reset-password]", err.message);
     res.status(500).json({ error: err.message });
@@ -1885,33 +1827,6 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
   }
 });
 
-app.delete("/api/admin/producers/:id", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (id === req.user.id) return res.status(400).json({ error: "Não é possível excluir sua própria conta." });
-    const { error } = await supabase.auth.admin.deleteUser(id);
-    if (error) return res.status(400).json({ error: error.message });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[admin/producers delete]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/admin/producers/:id/impersonate", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("email").eq("id", id).maybeSingle();
-    if (!profile?.email) return res.status(404).json({ error: "Usuário não encontrado" });
-    const { data, error } = await supabase.auth.admin.generateLink({ type: "magiclink", email: profile.email });
-    if (error) return res.status(400).json({ error: error.message });
-    res.json({ link: data.properties.action_link });
-  } catch (err) {
-    console.error("[admin/impersonate]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Ativa ou desativa um produtor (soft-delete: só seta/limpa disabled_at).
 // Requer migration_v34.sql aplicada no Supabase.
 app.post("/api/admin/producers/:id/toggle-active", requireAuth, requireAdmin, async (req, res) => {
@@ -1928,63 +1843,6 @@ app.post("/api/admin/producers/:id/toggle-active", requireAuth, requireAdmin, as
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-app.get("/api/admin/producers/:id/disparos", requireAuth, requireAdmin, async (req, res) => {
-  const { data } = await supabase.from("profiles").select("disparos").eq("id", req.params.id).single();
-  res.json(data?.disparos || []);
-});
-
-app.patch("/api/admin/producers/:id/disparos", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  if (!Array.isArray(req.body)) return res.status(400).json({ error: "Array esperado" });
-  const { error } = await supabase.from("profiles").update({ disparos: req.body }).eq("id", id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-app.patch("/api/admin/producers/:pid/customers/:cid", requireAuth, requireAdmin, async (req, res) => {
-  const { pid, cid } = req.params;
-  const { name, phone, email, birthday, status } = req.body;
-  const updates = {};
-  if (name !== undefined) updates.name = String(name).trim();
-  if (phone !== undefined) updates.phone = String(phone || "").trim() || null;
-  if (email !== undefined) updates.email = String(email || "").trim() || null;
-  if (birthday !== undefined) updates.birthday = birthday || null;
-  if (status !== undefined) updates.status = status;
-  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
-  const { error } = await supabase.from("customers").update(updates).eq("id", cid).eq("owner_id", pid);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-app.delete("/api/admin/producers/:pid/customers/:cid", requireAuth, requireAdmin, async (req, res) => {
-  const { pid, cid } = req.params;
-  const { error } = await supabase.from("customers")
-    .update({ deleted_at: new Date().toISOString() }).eq("id", cid).eq("owner_id", pid);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-app.patch("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { name, price } = req.body;
-  const updates = {};
-  if (name !== undefined) updates.name = String(name).trim();
-  if (price !== undefined) updates.price = Number(price);
-  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nada para atualizar" });
-  const { error } = await supabase.from("products").update(updates).eq("id", id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-// Exclui um produto de um produtor — a pedido do Thomas, mesma lógica de
-// /api/products/:id (o produtor exclui o próprio), só que sem exigir owner_id
-// porque quem chama é o admin, não o dono do produto.
-app.delete("/api/admin/products/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { error } = await supabase.from("products").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
 });
 
 // Nota privada do admin sobre esse produtor — fica numa tabela própria
@@ -2007,91 +1865,6 @@ app.patch("/api/admin/producers/:id/notes", requireAuth, requireAdmin, async (re
   }
 });
 
-// Cria/atualiza contatos evitando duplicar por telefone — se já existe um `customers`
-// desse owner com o mesmo telefone, só incrementa `times_seen`/`last_seen_at` na linha
-// existente em vez de nascer uma segunda linha. Contato sem telefone (só nome/e-mail)
-// não tem como conferir duplicata, sempre entra como novo. `rows` já vem pronto pra
-// inserir (owner_id, name, phone, email, status, source — o que cada chamador precisar).
-// Chave de comparação de telefone pra achar repetido — só pra COMPARAR, o número é
-// gravado do jeito que veio. Ignora formatação e o código do país 55 na frente: a mesma
-// pessoa subida uma vez como "5521999015805" (lista do Google Ads) e outra como
-// "21999015805" (lista colada à mão) virava dois contatos separados no CRM.
-function phoneMatchKey(raw, { br = true } = {}) {
-  let d = String(raw || "").replace(/\D/g, "");
-  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) d = d.slice(2);
-  // Celular sem o 9 e com o 9 é a mesma pessoa (21 8494-1200 = 21 98494-1200).
-  if (br) { const fixed = addMissingNinthDigit(d); if (fixed) d = fixed; }
-  return d;
-}
-
-// DDDs que existem no Brasil — só número com um desses na frente é tratado como
-// brasileiro pela regra do 9 (protege número estrangeiro de 10 dígitos).
-const BR_DDDS = new Set("11 12 13 14 15 16 17 18 19 21 22 24 27 28 31 32 33 34 35 37 38 41 42 43 44 45 46 47 48 49 51 53 54 55 61 62 63 64 65 66 67 68 69 71 73 74 75 77 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99".split(" "));
-// Celular brasileiro antigo, sem o 9 na frente (ex: "2184941200" → "21984941200").
-// Só mexe quando tem CERTEZA de que é celular: DDD válido + 8 dígitos começando com
-// 6, 7, 8 ou 9 (faixa de celular). Fixo (começa com 2–5) fica como está. Mantém o 55
-// se já tinha. Devolve null quando não precisa (ou não deve) mudar nada.
-function addMissingNinthDigit(raw) {
-  let d = String(raw || "").replace(/\D/g, "");
-  let prefixo = "";
-  if (d.length === 12 && d.startsWith("55")) { prefixo = "55"; d = d.slice(2); }
-  if (d.length !== 10) return null;
-  if (!BR_DDDS.has(d.slice(0, 2)) || !/[6-9]/.test(d[2])) return null;
-  return prefixo + d.slice(0, 2) + "9" + d.slice(2);
-}
-
-// Produtor com Mini Chat em inglês (ex: CAA, clientes nos EUA) tem número estrangeiro
-// de 10 dígitos que pode parecer um celular brasileiro sem o 9 — nesses, a regra do
-// 9 nunca roda.
-async function ownerUsesBrPhones(ownerId) {
-  const { data } = await supabase.from("profiles").select("minichat_config").eq("id", ownerId).maybeSingle();
-  return data?.minichat_config?.language !== "en";
-}
-
-async function upsertCustomersByPhone(ownerId, rows) {
-  const br = await ownerUsesBrPhones(ownerId);
-  if (br) rows = rows.map(r => { const fixed = r.phone ? addMissingNinthDigit(r.phone) : null; return fixed ? { ...r, phone: fixed } : r; });
-  const comTelefone = rows.filter(r => r.phone);
-  const semTelefone = rows.filter(r => !r.phone);
-  let inserted = 0, duplicated = 0;
-  const paraInserir = [...semTelefone];
-
-  if (comTelefone.length) {
-    // Busca todos os telefones já cadastrados desse produtor (paginado) e compara pela
-    // chave normalizada — um .in("phone", ...) exato não pega "55" + número.
-    const existentes = [];
-    for (let from = 0; ; from += 1000) {
-      const { data: page } = await supabase.from("customers").select("id,phone,times_seen").eq("owner_id", ownerId).not("phone", "is", null).is("deleted_at", null).order("id", { ascending: true }).range(from, from + 999);
-      existentes.push(...(page || []));
-      if (!page || page.length < 1000) break;
-    }
-    const porTelefone = {};
-    existentes.forEach(e => { const k = phoneMatchKey(e.phone, { br }); if (k && !porTelefone[k]) porTelefone[k] = e; });
-    for (const row of comTelefone) {
-      const k = phoneMatchKey(row.phone, { br });
-      const existente = porTelefone[k];
-      if (existente?.pending) {
-        duplicated++;
-      } else if (existente) {
-        await supabase.from("customers").update({ times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id);
-        existente.times_seen = (existente.times_seen || 1) + 1;
-        duplicated++;
-      } else {
-        paraInserir.push(row);
-        // Mesmo número repetido dentro da própria lista colada também não duplica.
-        if (k) porTelefone[k] = { pending: true };
-      }
-    }
-  }
-
-  if (paraInserir.length) {
-    const { data, error } = await supabase.from("customers").insert(paraInserir.map(r => ({ ...r, times_seen: 1 }))).select("id");
-    if (error) throw error;
-    inserted = data.length;
-  }
-  return { inserted, duplicated };
-}
-
 // Admin adiciona contatos em massa direto no CRM de um cliente (tabela customers) —
 // os contatos aparecem no painel do próprio produtor, é a mesma tabela que ele usa.
 app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, async (req, res) => {
@@ -2106,58 +1879,20 @@ app.post("/api/admin/producers/:id/customers/bulk", requireAuth, requireAdmin, a
         phone: c?.phone ? String(c.phone).trim() : null,
         email: c?.email ? String(c.email).trim() : null,
         status: c?.status === "cliente" ? "cliente" : "lead",
-        // Origem é sempre "manual" por padrão (não muda pra ninguém) — só vira
-        // "google_ads" quando o admin marca isso explicitamente ao subir a lista
-        // (ex: leads exportados do Google Ads), pra dar pra filtrar depois.
-        source: c?.source === "google_ads" ? "google_ads" : "manual",
+        source: "manual",
       }))
       .filter(c => c.name);
     if (!rows.length) return res.status(400).json({ error: "Nenhum contato válido (precisa de nome)" });
-    const { inserted, duplicated } = await upsertCustomersByPhone(id, rows);
+    const { data, error } = await supabase.from("customers").insert(rows).select("id");
+    if (error) return res.status(500).json({ error: error.message });
     if (rows.length === 1) {
       sendPushToOwner(id, { title: "Novo interessado!", body: rows[0].name, url: "/" });
     } else {
       sendPushToOwner(id, { title: "Novos interessados!", body: `${rows.length} contatos adicionados`, url: "/" });
     }
-    res.json({ ok: true, count: inserted + duplicated, inserted, duplicated });
+    res.json({ ok: true, count: data.length });
   } catch (err) {
     console.error("[admin/producers customers bulk]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Corrige os celulares que já estão no CRM sem o 9 (ex: lista colada antes dessa regra
-// existir). Só mexe no telefone desses contatos — nome, status, histórico, nada mais.
-// apply=false só conta (pra tela mostrar "X números sem o 9"); apply=true corrige.
-// Se a mesma pessoa já está cadastrada COM o 9 em outro contato, não mexe em nenhum
-// dos dois (não apaga nada) — só avisa, pra decidir à mão qual manter.
-app.post("/api/admin/producers/:id/customers/fix-phones", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const apply = req.body?.apply === true;
-    if (!(await ownerUsesBrPhones(id))) return res.json({ candidates: 0, fixed: 0, duplicates: [], skippedReason: "Mini Chat em inglês — números estrangeiros não são alterados." });
-    const todos = [];
-    for (let from = 0; ; from += 1000) {
-      const { data: page, error } = await supabase.from("customers").select("id,name,phone").eq("owner_id", id).not("phone", "is", null).is("deleted_at", null).order("id", { ascending: true }).range(from, from + 999);
-      if (error) return res.status(500).json({ error: error.message });
-      todos.push(...(page || []));
-      if (!page || page.length < 1000) break;
-    }
-    const porChave = {};
-    todos.forEach(c => { const k = phoneMatchKey(c.phone); (porChave[k] = porChave[k] || []).push(c); });
-    const candidatos = todos.map(c => ({ ...c, novo: addMissingNinthDigit(c.phone) })).filter(c => c.novo);
-    const duplicates = [];
-    let fixed = 0;
-    for (const c of candidatos) {
-      const outros = (porChave[phoneMatchKey(c.phone)] || []).filter(o => o.id !== c.id);
-      if (outros.length) { duplicates.push({ name: c.name, phone: c.phone, other: outros.map(o => `${o.name} (${o.phone})`).join(", ") }); continue; }
-      if (!apply) continue;
-      const { error } = await supabase.from("customers").update({ phone: c.novo }).eq("id", c.id).eq("owner_id", id);
-      if (!error) fixed++;
-    }
-    res.json({ candidates: candidatos.length - duplicates.length, fixed, duplicates });
-  } catch (err) {
-    console.error("[admin/producers customers fix-phones]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2170,7 +1905,7 @@ app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (
   try {
     const { data, error } = await supabase
       .from("customers")
-      .select("id,name,phone,email,status,source,birthday,created_at,times_seen")
+      .select("id,name,phone,email,status,source,birthday,created_at")
       .eq("owner_id", req.params.id)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
@@ -2178,26 +1913,6 @@ app.get("/api/admin/producers/:id/customers", requireAuth, requireAdmin, async (
     res.json({ customers: data || [] });
   } catch (err) {
     console.error("[admin/producers customers]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Histórico de compras de um contato específico — mesma informação que o produtor já
-// vê no próprio CRM ao clicar num cliente, só que lida pelo Admin (service role, já
-// que o Admin não tem a sessão do produtor). Só leitura, nenhum valor é alterado aqui.
-app.get("/api/admin/producers/:id/customers/:customerId/sales", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id, customerId } = req.params;
-    const { data, error } = await supabase
-      .from("sales")
-      .select("amount,producer_amount,status,created_at,product_id,billing_type,installment_count,payment_date")
-      .eq("owner_id", id)
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ sales: data || [] });
-  } catch (err) {
-    console.error("[admin/producers customer sales]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2258,296 +1973,6 @@ app.get("/api/admin/producers/:id/minichat/sessions", requireAuth, requireAdmin,
     res.json({ sessoes: rows, funil, total: rows.length, completas: rows.filter(s => s.completed_at).length });
   } catch (err) {
     console.error("[admin/producers minichat sessions]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Métricas do Mini Chat (sub-aba "📊 Mini Chat" do produtor + relatório) ─────────
-// Tudo calculado a partir do que o Mini Chat JÁ grava (minichat_sessions.answers) — vale
-// pra qualquer produtor, português ou inglês, WhatsApp ou e-mail, inclusive o histórico.
-// As colunas novas da migration_v44 (origem, customer_id, quente) são opcionais: antes
-// do SQL rodar, tudo continua funcionando, só sem a divisão Google Ads x orgânico.
-const MC_ORIGENS = ["google_ads", "google", "instagram", "facebook", "whatsapp", "site", "direto", "outro"];
-const MC_ORIGEM_LABEL = { google_ads: "Google Ads", google: "Google (orgânico)", instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp", site: "Site do cliente", direto: "Direto", outro: "Outros" };
-function cleanMinichatOrigem(v) {
-  const s = String(v || "").toLowerCase().trim();
-  return MC_ORIGENS.includes(s) ? s : (s ? "outro" : null);
-}
-// "Quente" = respondeu algo que indica pressa ("Quanto antes", "Este mês", "As soon as
-// possible"...). Só olha as respostas de múltipla escolha — nunca nome/telefone.
-const MC_QUENTE_RE = /(quanto antes|o mais r[aá]pido|o quanto antes|este m[eê]s|esse m[eê]s|esta semana|essa semana|\bhoje\b|\bagora\b|imediat|urgente|urg[eê]ncia|j[aá] quero|pront[oa] pra|as soon as possible|\basap\b|this month|this week|\btoday\b|right away|immediately|\burgent|\bnow\b|ready to)/i;
-// Nome/telefone/e-mail/nascimento também ficam em answers (perguntas de contato do
-// minichat.html) — nunca entram nas métricas como "resposta"; o nome vira só rótulo.
-const MC_CONTATO_RE = /^(qual seu nome completo|qual seu telefone com whatsapp|qual sua data de nascimento|qual seu melhor e-mail|e qual seu telefone|what's your full name|what's your whatsapp number|what's your date of birth|what's your best e-mail|and your phone number)/i;
-const MC_NOME_RE = /^(qual seu nome completo|what's your full name)/i;
-function splitMinichatAnswers(answers) {
-  const lista = Array.isArray(answers) ? answers : [];
-  const nome = String(lista.find(a => a && MC_NOME_RE.test(String(a.question || "").trim()))?.answer || "").trim() || null;
-  return { respostas: lista.map(a => (a && MC_CONTATO_RE.test(String(a.question || "").trim())) ? null : a), nome };
-}
-function minichatSessionQuente(answers) {
-  return (Array.isArray(answers) ? answers : []).some(a => a?.answer && MC_QUENTE_RE.test(String(a.answer)));
-}
-async function fetchAllMinichatSessions(ownerId, fromIso, toIso) {
-  const out = [];
-  for (let page = 0; page < 10; page++) {
-    const { data, error } = await supabase.from("minichat_sessions").select("*")
-      .eq("owner_id", ownerId).gte("created_at", fromIso).lt("created_at", toIso)
-      .order("created_at", { ascending: false }).range(page * 1000, page * 1000 + 999);
-    if (error) throw new Error(error.message);
-    out.push(...(data || []).map(s => { const { respostas, nome } = splitMinichatAnswers(s.answers); return { ...s, answers: respostas, nome }; }));
-    if (!data || data.length < 1000) break;
-  }
-  return out;
-}
-// Agrupa as respostas por PERGUNTA (pelo texto, não pela posição — se o produtor mudou
-// as perguntas no meio do período, cada pergunta continua com os números dela).
-function minichatQuestionStats(sessoes, perguntasAtuais) {
-  const norm = s => String(s || "").trim();
-  const mapa = new Map(); // texto -> { texto, idx, total, respostas: Map }
-  sessoes.forEach(s => {
-    const origem = cleanMinichatOrigem(s.origem);
-    (Array.isArray(s.answers) ? s.answers : []).forEach((a, idx) => {
-      const q = norm(a?.question), r = norm(a?.answer);
-      if (!q || !r) return;
-      if (!mapa.has(q)) mapa.set(q, { texto: q, idx, total: 0, ads: 0, organico: 0, respostas: new Map() });
-      const p = mapa.get(q);
-      p.idx = Math.min(p.idx, idx);
-      p.total++;
-      if (!p.respostas.has(r)) p.respostas.set(r, { resposta: r, count: 0, ads: 0, organico: 0 });
-      const o = p.respostas.get(r);
-      o.count++;
-      if (origem === "google_ads") { p.ads++; o.ads++; } else if (origem) { p.organico++; o.organico++; }
-    });
-  });
-  const atuais = (perguntasAtuais || []).map(norm).filter(Boolean);
-  return [...mapa.values()].map(p => ({
-    texto: p.texto, idx: p.idx, total: p.total, ads: p.ads, organico: p.organico,
-    atual: !atuais.length || atuais.includes(p.texto),
-    respostas: [...p.respostas.values()].sort((a, b) => b.count - a.count).map(o => ({
-      ...o,
-      pct: Math.round((o.count / p.total) * 100),
-      pctAds: p.ads ? Math.round((o.ads / p.ads) * 100) : null,
-      pctOrganico: p.organico ? Math.round((o.organico / p.organico) * 100) : null,
-    })),
-  })).sort((a, b) => (b.atual - a.atual) || (a.idx - b.idx) || (b.total - a.total));
-}
-// Versão curta pro relatório que vai pro cliente (só perguntas atuais, top 5 respostas).
-async function minichatPublicoParaRelatorio(ownerId, mc, from, to) {
-  try {
-    const sessoes = await fetchAllMinichatSessions(ownerId, from.toISOString(), to.toISOString());
-    if (!sessoes.length) return null;
-    const perguntas = minichatQuestionStats(sessoes, (mc.questions || []).map(q => q.subtext || q.text))
-      .filter(p => p.atual && p.total > 0).slice(0, 6)
-      .map(p => ({ texto: p.texto, total: p.total, respostas: p.respostas.slice(0, 5).map(r => ({ resposta: r.resposta, count: r.count, pct: r.pct })) }));
-    if (!perguntas.length) return null;
-    const comOrigem = sessoes.filter(s => cleanMinichatOrigem(s.origem));
-    const ads = comOrigem.filter(s => cleanMinichatOrigem(s.origem) === "google_ads").length;
-    return {
-      conversas: sessoes.length,
-      quentes: sessoes.filter(s => minichatSessionQuente(s.answers)).length,
-      origem: comOrigem.length ? { ads, organico: comOrigem.length - ads, pctAds: Math.round((ads / comOrigem.length) * 100) } : null,
-      perguntas,
-    };
-  } catch (e) {
-    console.warn("[minichat publico relatorio]", e.message);
-    return null;
-  }
-}
-// Liga a conversa do Mini Chat ao contato que acabou de entrar no CRM e avisa o admin
-// quando o interessado é "quente". Nunca bloqueia nem altera a criação do contato.
-async function linkMinichatSessionToCustomer(ownerId, visitorId, customer) {
-  try {
-    if (!visitorId || !customer?.id) return;
-    const { data: sessao } = await supabase.from("minichat_sessions").select("*").eq("owner_id", ownerId).eq("visitor_id", String(visitorId).slice(0, 100)).maybeSingle();
-    if (!sessao) return;
-    sessao.answers = splitMinichatAnswers(sessao.answers).respostas;
-    const quente = minichatSessionQuente(sessao.answers);
-    const { error } = await supabase.from("minichat_sessions").update({ customer_id: customer.id, quente }).eq("id", sessao.id);
-    if (error) return; // migration_v44 ainda não rodou — sem coluna, sem aviso duplicado
-    if (quente && sessao.quente !== true) {
-      const { data: prof } = await supabase.from("profiles").select("name,company_name").eq("id", ownerId).maybeSingle();
-      const respostas = (sessao.answers || []).filter(a => a?.answer).map(a => a.answer).join(" · ");
-      notifyAdmins(`🔥 Interessado quente — ${prof?.company_name || prof?.name || "produtor"}`, `${customer.name || "Contato"}${respostas ? `: ${respostas}` : ""}`.slice(0, 180)).catch(() => {});
-    }
-  } catch (e) {
-    console.warn("[minichat link lead]", e.message);
-  }
-}
-const minichatInsightsIaCache = new Map(); // `${id}:${dias}` -> { at, insights }
-app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const dias = [7, 30, 90, 365].includes(Number(req.query.dias)) ? Number(req.query.dias) : 30;
-    const to = new Date();
-    const from = new Date(to.getTime() - dias * 86400000);
-    const prevFrom = new Date(from.getTime() - dias * 86400000);
-    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,minichat_config").eq("id", id).maybeSingle();
-    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
-    const mc = profile.minichat_config || {};
-    const en = mc.language === "en";
-    const perguntasConfig = (mc.questions || []).map(q => q.subtext || q.text).filter(Boolean);
-    const nOpcoes = perguntasConfig.length || 3;
-
-    const head = q => q.then(r => r.count || 0, () => 0);
-    const [sessoes, anteriores, visitasSite, visitasAds, abriramChat, abriramAnterior, novosContatos] = await Promise.all([
-      fetchAllMinichatSessions(id, from.toISOString(), to.toISOString()),
-      fetchAllMinichatSessions(id, prevFrom.toISOString(), from.toISOString()),
-      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").neq("site_url", "minichat").gte("created_at", from.toISOString())),
-      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").neq("site_url", "minichat").eq("has_gclid", true).gte("created_at", from.toISOString())),
-      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").eq("site_url", "minichat").gte("created_at", from.toISOString())),
-      head(supabase.from("visits").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("event_type", "pageview").eq("site_url", "minichat").gte("created_at", prevFrom.toISOString()).lt("created_at", from.toISOString())),
-      head(supabase.from("customers").select("id", { count: "exact", head: true }).eq("owner_id", id).eq("source", "minichat").is("deleted_at", null).gte("created_at", from.toISOString())),
-    ]);
-
-    // 1) O que o público procura (com comparação ao período anterior e Ads x orgânico)
-    const perguntas = minichatQuestionStats(sessoes, perguntasConfig);
-    const anteriorPorPergunta = new Map(minichatQuestionStats(anteriores, perguntasConfig).map(p => [p.texto, p]));
-    perguntas.forEach(p => {
-      const ant = anteriorPorPergunta.get(p.texto);
-      p.totalAnterior = ant?.total || 0;
-      p.respostas.forEach(r => { const ra = ant?.respostas.find(x => x.resposta === r.resposta); r.pctAnterior = ant ? (ra?.pct || 0) : null; });
-    });
-    const atuais = perguntas.filter(p => p.atual);
-
-    // 2) Funil + em qual pergunta as pessoas desistem
-    const respondidas = s => (Array.isArray(s.answers) ? s.answers : []).filter(a => a?.answer).length;
-    const completasPergs = sessoes.filter(s => respondidas(s) >= Math.min(nOpcoes, Math.max(1, atuais.length))).length;
-    const clicaram = sessoes.filter(s => s.completed_at);
-    const funil = {
-      visitasSite, visitasAds, abriramChat, abriramAnterior,
-      comecaram: sessoes.length, comecaramAnterior: anteriores.length,
-      responderamTudo: completasPergs, novosContatos,
-      clicaramBotao: clicaram.length,
-      viaWhatsapp: clicaram.filter(s => s.finished_via === "whatsapp").length,
-      viaEmail: clicaram.filter(s => s.finished_via === "email").length,
-    };
-    const ordem = atuais.slice().sort((a, b) => a.idx - b.idx);
-    const desistencia = ordem.map((p, i) => {
-      const chegaram = i === 0 ? Math.max(abriramChat, p.total) : ordem[i - 1].total;
-      const pct = chegaram ? Math.max(0, Math.round(((chegaram - p.total) / chegaram) * 100)) : 0;
-      return { texto: p.texto, chegaram, responderam: p.total, pct, alerta: chegaram >= 10 && pct >= (i === 0 ? 60 : 35) };
-    });
-
-    // 3) Cruzamentos: 1ª pergunta x cada uma das outras
-    const cruzamentos = [];
-    if (ordem.length > 1) {
-      const A = ordem[0];
-      ordem.slice(1).forEach(B => {
-        const linhas = A.respostas.slice(0, 6).map(ra => {
-          const doGrupo = sessoes.filter(s => (s.answers || []).some(a => String(a?.question || "").trim() === A.texto && String(a?.answer || "").trim() === ra.resposta));
-          const cont = {};
-          doGrupo.forEach(s => { const b = (s.answers || []).find(a => String(a?.question || "").trim() === B.texto && a?.answer); if (b) { const k = String(b.answer).trim(); cont[k] = (cont[k] || 0) + 1; } });
-          const tot = Object.values(cont).reduce((x, y) => x + y, 0);
-          return { resposta: ra.resposta, total: tot, colunas: Object.entries(cont).sort((x, y) => y[1] - x[1]).map(([resposta, count]) => ({ resposta, count, pct: Math.round((count / tot) * 100) })) };
-        }).filter(l => l.total > 0);
-        if (linhas.length) cruzamentos.push({ a: A.texto, b: B.texto, linhas });
-      });
-    }
-
-    // 4) Origem (Google Ads x orgânico) — só conversas que já vieram com a origem gravada
-    const comOrigem = sessoes.filter(s => cleanMinichatOrigem(s.origem));
-    const porOrigem = {};
-    comOrigem.forEach(s => { const o = cleanMinichatOrigem(s.origem); porOrigem[o] = (porOrigem[o] || 0) + 1; });
-    const adsN = porOrigem.google_ads || 0;
-    const origem = {
-      rastreadas: comOrigem.length, semOrigem: sessoes.length - comOrigem.length,
-      ads: adsN, organico: comOrigem.length - adsN,
-      pctAds: comOrigem.length ? Math.round((adsN / comOrigem.length) * 100) : null,
-      canais: Object.entries(porOrigem).map(([k, n]) => ({ origem: k, label: MC_ORIGEM_LABEL[k] || k, count: n, pct: Math.round((n / comOrigem.length) * 100) })).sort((a, b) => b.count - a.count),
-      quentesAds: comOrigem.filter(s => cleanMinichatOrigem(s.origem) === "google_ads" && minichatSessionQuente(s.answers)).length,
-      quentesOrganico: comOrigem.filter(s => cleanMinichatOrigem(s.origem) !== "google_ads" && minichatSessionQuente(s.answers)).length,
-    };
-
-    // 5) Interessados quentes (com o contato, quando a conversa já está ligada ao CRM)
-    const quentesSess = sessoes.filter(s => minichatSessionQuente(s.answers));
-    const idsClientes = [...new Set(quentesSess.map(s => s.customer_id).filter(Boolean))];
-    const clientes = new Map();
-    if (idsClientes.length) {
-      const { data } = await supabase.from("customers").select("id,name,phone,email,status").in("id", idsClientes.slice(0, 200));
-      (data || []).forEach(c => clientes.set(c.id, c));
-    }
-    const quentes = {
-      total: quentesSess.length,
-      pct: sessoes.length ? Math.round((quentesSess.length / sessoes.length) * 100) : 0,
-      totalAnterior: anteriores.filter(s => minichatSessionQuente(s.answers)).length,
-      lista: quentesSess.slice(0, 30).map(s => ({
-        quando: s.created_at, origem: MC_ORIGEM_LABEL[cleanMinichatOrigem(s.origem)] || null,
-        respostas: (s.answers || []).filter(a => a?.answer).map(a => String(a.answer)),
-        contato: clientes.get(s.customer_id) || (s.nome ? { name: s.nome } : null),
-      })),
-    };
-
-    // 6) Horário em que as conversas acontecem (fuso do produtor)
-    const tz = en ? "America/New_York" : "America/Sao_Paulo";
-    const FAIXAS = [["00-06h", 0, 6], ["06-12h", 6, 12], ["12-18h", 12, 18], ["18-24h", 18, 24]];
-    const horarios = FAIXAS.map(([faixa]) => ({ faixa, conversas: 0 }));
-    sessoes.forEach(s => {
-      const h = Number(new Date(s.created_at).toLocaleString("en-US", { timeZone: tz, hour: "2-digit", hour12: false })) % 24;
-      const i = FAIXAS.findIndex(([, ini, fim]) => h >= ini && h < fim);
-      if (i >= 0) horarios[i].conversas++;
-    });
-
-    // 7) Resumo da IA — só comenta os números acima (cache 30 min)
-    let insights = [];
-    const cacheKey = `${id}:${dias}`;
-    const cached = minichatInsightsIaCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < 30 * 60 * 1000 && cached.n === sessoes.length) insights = cached.insights;
-    else if (sessoes.length >= 3) {
-      const dadosIA = {
-        conversas: sessoes.length, conversasPeriodoAnterior: anteriores.length,
-        perguntas: atuais.slice(0, 5).map(p => ({ pergunta: p.texto, respostas: p.respostas.slice(0, 4).map(r => `${r.resposta}: ${r.pct}%${r.pctAnterior != null ? ` (antes ${r.pctAnterior}%)` : ""}`) })),
-        quentes: `${quentes.total} (${quentes.pct}%)`,
-        googleAds: origem.pctAds != null ? `${origem.pctAds}% das conversas com origem conhecida` : null,
-        maiorDesistencia: desistencia.slice().sort((a, b) => b.pct - a.pct)[0] ? `${desistencia.slice().sort((a, b) => b.pct - a.pct)[0].pct}% desistem em "${desistencia.slice().sort((a, b) => b.pct - a.pct)[0].texto}"` : null,
-      };
-      const prompt = `Você resume, em português simples e direto, o que o público de um negócio respondeu no mini chat do site. Números reais (JSON): ${JSON.stringify(dadosIA)}\n\nEscreva 3 frases curtas, cada uma sobre um número acima (ex: "42% procuram cirurgia — o serviço mais buscado"). NÃO invente nenhum dado. Campo null = não fale dele. Responda SOMENTE um array JSON de strings.`;
-      try {
-        let reply = null;
-        for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: "Gere o resumo." }]); break; } catch {} }
-        if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: "Gere o resumo." }]); } catch {} }
-        const m = reply && reply.match(/\[[\s\S]*\]/);
-        if (m) insights = JSON.parse(m[0]).filter(s => typeof s === "string" && s.trim()).slice(0, 4);
-        minichatInsightsIaCache.set(cacheKey, { at: Date.now(), n: sessoes.length, insights });
-      } catch (e) { console.warn("[minichat insights IA]", e.message); }
-    }
-
-    res.json({
-      dias, idioma: en ? "en" : "pt",
-      origemDisponivel: sessoes.some(s => "origem" in s),
-      conversas: sessoes.length, conversasAnterior: anteriores.length,
-      perguntas: atuais, perguntasAntigas: perguntas.filter(p => !p.atual),
-      funil, desistencia, cruzamentos, origem, quentes, horarios, insights,
-    });
-  } catch (err) {
-    console.error("[admin/producers minichat insights]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-// IA sugere outro jeito de fazer a pergunta onde muita gente desiste. Só SUGERE — nunca
-// muda as perguntas salvas (o admin copia e salva em "Perguntas do Mini Chat" se quiser).
-app.post("/api/admin/producers/:id/minichat/suggest-question", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const pergunta = String(req.body?.pergunta || "").slice(0, 300).trim();
-    const opcoes = (Array.isArray(req.body?.opcoes) ? req.body.opcoes : []).slice(0, 8).map(o => String(o).slice(0, 120));
-    const desistencia = Number(req.body?.desistencia) || null;
-    if (!pergunta) return res.status(400).json({ error: "Pergunta ausente" });
-    const { data: profile } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
-    const mc = profile?.minichat_config || {};
-    const en = mc.language === "en";
-    const prompt = `Você melhora perguntas de um mini chat de pré-diagnóstico no site de um negócio${mc.business_context ? ` (contexto: ${String(mc.business_context).slice(0, 400)})` : ""}. ${desistencia ? `${desistencia}% das pessoas desistem nesta pergunta.` : ""} Pergunta atual: "${pergunta}"${opcoes.length ? `. Opções: ${opcoes.join(" | ")}` : ""}.\n\nSugira 3 versões mais curtas, simples e convidativas${en ? ", em INGLÊS (o público é americano)" : ", em português"}, mantendo o mesmo objetivo. Responda SOMENTE um array JSON de objetos {"pergunta": "...", "opcoes": ["..."]}.`;
-    let reply = null;
-    for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: "Sugira." }]); break; } catch {} }
-    if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: "Sugira." }]); } catch {} }
-    const m = reply && reply.match(/\[[\s\S]*\]/);
-    let sugestoes = [];
-    try { sugestoes = m ? JSON.parse(m[0]) : []; } catch {}
-    sugestoes = (Array.isArray(sugestoes) ? sugestoes : []).filter(s => s && typeof s.pergunta === "string").slice(0, 3)
-      .map(s => ({ pergunta: s.pergunta.slice(0, 300), opcoes: (Array.isArray(s.opcoes) ? s.opcoes : []).slice(0, 8).map(o => String(o).slice(0, 120)) }));
-    if (!sugestoes.length) return res.status(502).json({ error: "A IA não respondeu agora. Tente de novo em instantes." });
-    res.json({ sugestoes });
-  } catch (err) {
-    console.error("[admin/producers minichat suggest-question]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2629,15 +2054,6 @@ app.post("/api/admin/producers/:id/avatar", requireAuth, requireAdmin, async (re
 // Gera (com IA) uma pergunta do Mini Chat com base nos dados reais deste cliente
 // (nome/marca, site, produtos cadastrados) — não salva nada, só devolve a sugestão
 // pro admin revisar/editar antes de clicar em "Salvar perguntas".
-// O Mini Chat de produtor em inglês (ex: CAA Renovations, clientes nos EUA) precisa
-// das perguntas geradas em inglês — o resto do prompt continua em português (é só
-// instrução pra IA, o visitante nunca vê).
-function minichatLangInstruction(language) {
-  return language === "en"
-    ? "Escreva TUDO (text, subtext e options) em inglês americano natural — o Mini Chat desse cliente é em inglês."
-    : "Português do Brasil.";
-}
-
 app.post("/api/admin/producers/:id/minichat/generate-question", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2662,7 +2078,7 @@ Outras perguntas já existentes no fluxo (não repita o mesmo assunto):
 ${outrasPerguntas}
 Gere APENAS a pergunta de número ${index + 1}, adaptada ao negócio acima. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
 {"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}
-As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções. ${minichatLangInstruction(profile?.minichat_config?.language)}`;
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções. Português do Brasil.`;
 
     let reply = null, lastErr = null;
     for (const key of GROQ_KEYS) {
@@ -2699,7 +2115,7 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
 app.post("/api/admin/producers/:id/minichat/generate-all-questions", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    let { count, business_context, language } = req.body;
+    let { count, business_context } = req.body;
     count = Math.min(Math.max(Number(count) || 4, 2), 8);
     const [{ data: profile }, { data: products }] = await Promise.all([
       supabase.from("profiles").select("name,company_name,site_url,minichat_config").eq("id", id).maybeSingle(),
@@ -2723,7 +2139,7 @@ Dados reais do negócio deste cliente:
 ${negocio}
 Gere exatamente ${count} perguntas, cada uma sobre um assunto diferente (não repita o mesmo tema), formando uma sequência lógica de diagnóstico que termina qualificando o lead pra falar no WhatsApp. Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
 {"questions":[{"text":"frase curta de transição (ex: Perfeito.)","subtext":"a pergunta em si, objetiva","options":["opção 1","opção 2","opção 3","opção 4"]}]}
-As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções por pergunta. ${minichatLangInstruction(language || profile?.minichat_config?.language)}`;
+As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio específico, e sempre 3 a 5 opções por pergunta. Português do Brasil.`;
 
     let reply = null, lastErr = null;
     for (const key of GROQ_KEYS) {
@@ -2757,171 +2173,9 @@ As opções devem ser curtas (até 4 palavras), plausíveis pra esse negócio es
   }
 });
 
-// Lê o mini chat que o cliente JÁ tinha no próprio site (ex: o public/minichat/index.html
-// da CAA Renovations) e devolve TUDO que dá pra aproveitar: perguntas, idioma, e-mail /
-// WhatsApp de destino, nome da marca e cores. Padrão pra qualquer repositório (pedido do
-// Thomas): primeiro procura pelo nome do arquivo (minichat, chat, quiz, diagnóstico...);
-// se não achar, varre os arquivos de código procurando uma lista de perguntas com opções
-// em QUALQUER arquivo (ex: src/data/quiz.ts). Só LÊ o repositório — nunca escreve nada.
-const MINICHAT_SIGNATURE_RE = /options\s*:\s*\[|questions\s*[=:]\s*\[|perguntas\s*[=:]\s*\[|"options"\s*:\s*\[/i;
-async function findMinichatSources(repo, headers, token) {
-  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-  const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
-  const codigo = (treeResp.data.tree || []).filter(i => i.type === "blob" && i.size < 200000
-    && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro|json)$/i.test(i.path)
-    && !/(^|\/)(node_modules|dist|build|\.next|\.vercel|components\/ui)\//i.test(i.path)
-    && !/(package(-lock)?|tsconfig|components|bun\.lock|vercel|eslint|routeTree\.gen)/i.test(i.path.split("/").pop()));
-  const porNome = codigo.filter(i => /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard|funnel|funil)/i.test(i.path))
-    .sort((a, b) => /mini-?_?chat/i.test(b.path) - /mini-?_?chat/i.test(a.path));
-  // Fallback: arquivos de código "normais" (src/, app/, public/, data/), menores primeiro.
-  const resto = codigo.filter(i => !porNome.includes(i) && /^(src|app|public|data|lib|pages|components)\//i.test(i.path))
-    .sort((a, b) => a.size - b.size).slice(0, 40);
-  const achados = [];
-  const ler = async item => { try { return await readGithubFile(repo, item.path, headers, token); } catch { return ""; } };
-  for (const lista of [porNome.slice(0, 8), resto]) {
-    for (let i = 0; i < lista.length && achados.length < 3; i += 8) {
-      const lote = await Promise.all(lista.slice(i, i + 8).map(async item => ({ path: item.path, conteudo: await ler(item) })));
-      for (const f of lote) if (f.conteudo && MINICHAT_SIGNATURE_RE.test(f.conteudo) && achados.length < 3) achados.push(f);
-    }
-    if (achados.length) break;
-  }
-  return achados;
-}
-
-// Configurações que dá pra tirar do código sem IA (determinístico): e-mail de destino,
-// WhatsApp, nome da marca, cores e idioma da página.
-function extractMinichatSettings(conteudo) {
-  const out = {};
-  const emails = [...conteudo.matchAll(/mailto:([^?"'`\s)]+)|["'`]([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})["'`]/gi)]
-    .map(m => (m[1] || m[2] || "").trim()).filter(e => e && !/\$\{|example|exemplo|email\.com|you@|voce@|noreply|no-reply/i.test(e));
-  if (emails.length) out.email_destino = emails[0];
-  const wa = conteudo.match(/wa\.me\/(\d{8,15})|api\.whatsapp\.com\/send\?phone=(\d{8,15})|WHATSAPP[_A-Z]*\s*[=:]\s*["'`](\+?[\d(][\d\s()-]{7,})["'`]/i);
-  if (wa) out.whatsapp_number = (wa[1] || wa[2] || wa[3] || "").replace(/\D/g, "");
-  const marca = conteudo.match(/(?:COMPANY_NAME|BRAND_NAME|brandName|companyName)\s*[=:]\s*["'`]([^"'`]{2,60})["'`]/);
-  if (marca) out.brand_name = marca[1].trim();
-  const cor = nomes => { for (const n of nomes) { const m = conteudo.match(new RegExp(`--${n}\\s*:\\s*(#[0-9a-f]{3,6})\\b`, "i")); if (m) return m[1].toLowerCase(); } return null; };
-  const bg = cor(["bg-primary", "background", "bg", "primary-bg"]);
-  const accent = cor(["accent", "primary", "brand", "cta"]);
-  if (bg) out.bg_color = bg;
-  if (accent) out.accent_color = accent;
-  const lang = conteudo.match(/<html[^>]*\blang=["']([a-z]{2})/i);
-  if (lang) out.language = lang[1].toLowerCase() === "en" ? "en" : "pt";
-  // Só e-mail (mailto) e nenhum WhatsApp → o chat original manda o lead por e-mail.
-  if (out.email_destino && !out.whatsapp_number) out.destination_type = "email";
-  else if (out.whatsapp_number && !out.email_destino) out.destination_type = "whatsapp";
-  return out;
-}
-
-// Cache curto por repositório — o Admin chama isso sozinho ao abrir os cards do Mini
-// Chat (Mini Chat + Perguntas), e não faz sentido chamar a IA duas vezes pra mesma coisa.
-const minichatImportCache = new Map(); // repo -> { ts, data }
-async function importMinichatFromRepo(repo) {
-  const cached = minichatImportCache.get(repo);
-  if (cached && Date.now() - cached.ts < 30 * 60 * 1000) return cached.data;
-  const token = await getGithubToken();
-  if (!token) return { error: "GitHub ainda não conectado" };
-  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-  const fontes = await findMinichatSources(repo, headers, token);
-  if (!fontes.length) { const data = { found: false, questions: [], settings: {} }; minichatImportCache.set(repo, { ts: Date.now(), data }); return data; }
-
-  const settings = extractMinichatSettings(fontes[0].conteudo);
-  // Só o trecho em volta das perguntas vai pra IA — o arquivo inteiro (CSS, HTML) é grande demais.
-  const trechos = fontes.map(f => {
-    const idx = f.conteudo.search(MINICHAT_SIGNATURE_RE);
-    return `--- ${f.path} ---\n${f.conteudo.slice(Math.max(0, idx - 600), idx + 7000)}`;
-  });
-  const systemPrompt = `Você recebe trechos de código de um mini chat/quiz de diagnóstico que já existe no site de um cliente. Extraia as perguntas EXATAMENTE como estão no código (mesmo idioma, mesmas palavras — não traduza, não reescreva, não invente). Ignore perguntas de contato (nome, telefone, e-mail, data de nascimento) — essas o nosso Mini Chat já faz sozinho.
-Para cada pergunta: "text" é a frase de transição/saudação antes da pergunta (pode ser vazia), "subtext" é a pergunta em si, "options" são as opções de resposta.
-"business" é uma frase curta (máx 25 palavras), no idioma do código, descrevendo o negócio/serviço que dá pra deduzir do conteúdo (ou vazio se não der).
-Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
-{"language":"pt ou en","business":"...","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
-  const userMsg = trechos.join("\n\n").slice(0, 16000);
-  let reply = null, lastErr = null;
-  for (const key of GROQ_KEYS) {
-    try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: userMsg }]); break; }
-    catch (e) { lastErr = e; console.warn("[minichat import] groq falhou, tentando próxima:", e.response?.data?.error?.message || e.message); }
-  }
-  if (reply === null && process.env.ANTHROPIC_API_KEY) {
-    try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: userMsg }]); }
-    catch (e) { lastErr = e; console.error("[minichat import] anthropic falhou:", e.response?.data || e.message); }
-  }
-  let parsed = null;
-  if (reply !== null) { const m = reply.match(/\{[\s\S]*\}/); try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; } }
-  const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
-    .map(q => ({
-      text: String(q?.text || "").trim(),
-      subtext: String(q?.subtext || "").trim(),
-      options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean).slice(0, 8) : [],
-    }))
-    .filter(q => (q.text || q.subtext) && q.options.length >= 2)
-    .slice(0, 10);
-  if (!settings.language && parsed?.language) settings.language = parsed.language === "en" ? "en" : "pt";
-  if (parsed?.business) settings.business_context = String(parsed.business).trim().slice(0, 300);
-  const data = { found: true, source: fontes.map(f => f.path), questions, settings, aiFailed: reply === null || !questions.length };
-  // Falha da IA não fica em cache (tenta de novo na próxima abertura).
-  if (!data.aiFailed) minichatImportCache.set(repo, { ts: Date.now(), data });
-  if (reply === null && lastErr) console.warn("[minichat import] sem IA:", lastErr.message);
-  return data;
-}
-
-app.post("/api/admin/producers/:id/minichat/import-questions-from-repo", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!profile?.github_repo) return res.status(400).json({ error: "Esse cliente não tem repositório GitHub vinculado (card \"Site\")." });
-    if (req.body?.fresh) minichatImportCache.delete(profile.github_repo);
-    const d = await importMinichatFromRepo(profile.github_repo);
-    if (d.error) return res.status(400).json({ error: d.error });
-    if (!d.found) return res.json({ found: false, questions: [], settings: {}, error: "Não achei nenhum mini chat/quiz com perguntas no repositório desse cliente." });
-    res.json({ ...d, language: d.settings.language || "pt", ...(d.questions.length ? {} : { error: "Achei o mini chat, mas a IA não conseguiu ler as perguntas agora — tenta de novo." }) });
-  } catch (err) {
-    console.error("[admin/producers minichat import-questions]", err.message);
-    res.status(500).json({ error: "Não consegui ler o repositório agora. Tenta de novo em instantes." });
-  }
-});
-
-// Sugestões de melhoria no fluxo do Mini Chat direto pela IA já embutida no JosephPay —
-// substitui o fluxo antigo de copiar um prompt e colar manualmente no ChatGPT/Claude por
-// fora do sistema. Só sugere (texto), não altera nada sozinho — o admin decide o que aplicar.
-app.post("/api/admin/producers/:id/minichat/suggest-improvements", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("name,company_name,minichat_config").eq("id", id).maybeSingle();
-    const mc = profile?.minichat_config || {};
-    const linhas = [`Negócio: ${profile?.company_name || profile?.name || "cliente"}`];
-    if (mc.business_context) linhas.push(`Sobre o negócio: ${mc.business_context}`);
-    if (mc.brand_name) linhas.push(`Nome usado na saudação: ${mc.brand_name}`);
-    if (mc.objetivo_options?.length) linhas.push(`Opções da pergunta "objetivo": ${mc.objetivo_options.join(", ")}`);
-    if (mc.questions?.length) {
-      linhas.push("Perguntas atuais do fluxo:");
-      mc.questions.forEach((q, i) => linhas.push(`${i + 1}. ${q.subtext || q.text || ""}${q.options?.filter(Boolean).length ? ` (opções: ${q.options.filter(Boolean).join(", ")})` : ""}`));
-    }
-    const systemPrompt = `Você avalia o fluxo de perguntas de um Mini Chat de qualificação de leads (estilo WhatsApp, botões de resposta rápida).
-${linhas.join("\n")}
-Dê no máximo 4 sugestões objetivas e curtas (1-2 frases cada) de como melhorar o texto das perguntas/opções pra soar mais natural e no tom desse negócio específico. Responda só a lista, em português direto, sem introdução nem markdown.`;
-    let reply = null, lastErr = null;
-    for (const key of GROQ_KEYS) {
-      try { reply = await callGroq(key, systemPrompt, [{ role: "user", content: "Sugira melhorias." }]); break; }
-      catch (e) { lastErr = e; }
-    }
-    if (reply === null && process.env.ANTHROPIC_API_KEY) {
-      try { reply = await callAnthropic(systemPrompt, [{ role: "user", content: "Sugira melhorias." }]); }
-      catch (e) { lastErr = e; }
-    }
-    if (reply === null) throw lastErr || new Error("Nenhum provedor de IA configurado");
-    res.json({ suggestions: reply.trim() });
-  } catch (err) {
-    console.error("[minichat suggest-improvements]", err.message);
-    res.status(500).json({ error: "Não consegui gerar sugestões agora. Tenta de novo em instantes." });
-  }
-});
-
-// Após instalar/salvar o minichat, corrige silenciosamente qualquer link
-// josephpay.com/minichat com uid errado em TODOS os arquivos do repositório.
-// Funciona com qualquer tipo de repo: HTML puro, React/Lovable/Vite, Next.js,
-// Vue, SvelteKit — varre a árvore inteira e pula o que não tem o texto.
-// Fire-and-forget: não bloqueia a resposta; erros só aparecem no log.
-const TEXT_FILE_RE = /\.(html|js|jsx|ts|tsx|vue|svelte|css|md|json)$/i;
-
+// Após salvar o minichat, corrige silenciosamente qualquer link josephpay.com/minichat
+// nos arquivos do repositório do produtor que estejam sem o ?uid= correto.
+// Fire-and-forget: não bloqueia a resposta, erros só aparecem no log.
 async function autoFixMinichatLink(id) {
   try {
     const { data: profile } = await supabase.from("profiles")
@@ -2933,93 +2187,35 @@ async function autoFixMinichatLink(id) {
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
     const correctLink = `https://josephpay.com/minichat.html?uid=${id}`;
-    // Regex: qualquer josephpay.com/minichat (com ou sem .html, com ou sem ?uid=qualquer-coisa)
+    // Regex: qualquer link josephpay.com/minichat (com ou sem .html, com ou sem ?uid=qualquer-coisa)
     const re = /https:\/\/josephpay\.com\/minichat(?:\.html)?(?:\?[^"'`\s<>]*)*/g;
-
-    // Pega a árvore completa do repositório — um único request, sem recursão manual
-    let allPaths = [];
-    try {
-      const treeResp = await axios.get(
-        `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
-        { headers }
-      );
-      allPaths = (treeResp.data.tree || [])
-        .filter(f => f.type === "blob" && TEXT_FILE_RE.test(f.path) && (f.size || 0) < 400000)
-        .map(f => f.path);
-    } catch (e) {
-      // Fallback: usa só os arquivos cadastrados se a árvore falhar
-      console.warn("[minichat/auto-link] tree fetch falhou, usando fallback:", e.message);
-      allPaths = [profile.github_file_path, profile.github_minichat_path].filter(Boolean);
+    const files = [...new Set([profile.github_file_path, profile.github_minichat_path].filter(Boolean))];
+    for (const filePath of files) {
+      try {
+        const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+        const sha = resp.data.sha;
+        const original = Buffer.from(resp.data.content, "base64").toString("utf8");
+        const updated = original.replace(re, correctLink);
+        if (updated === original) continue;
+        await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+          message: "JosephPay: corrige link do Mini Chat com uid do produtor",
+          content: Buffer.from(updated, "utf8").toString("base64"),
+          sha,
+        }, { headers });
+        console.log(`[minichat/auto-link] ${repo}/${filePath} atualizado com uid=${id}`);
+      } catch(e) {
+        console.warn(`[minichat/auto-link] ${repo}/${filePath}:`, e.response?.data?.message || e.message);
+      }
     }
-
-    // Garante que os arquivos cadastrados entram mesmo que fora do filtro de extensão
-    const knownFiles = [profile.github_file_path, profile.github_minichat_path].filter(Boolean);
-    const filesToScan = [...new Set([...knownFiles, ...allPaths])];
-
-    let fixedCount = 0;
-    const BATCH = 6; // 6 requests paralelos — confortável abaixo do rate limit do GitHub
-    for (let i = 0; i < filesToScan.length; i += BATCH) {
-      await Promise.all(filesToScan.slice(i, i + BATCH).map(async (filePath) => {
-        try {
-          const resp = await axios.get(
-            `https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`,
-            { headers }
-          );
-          const original = Buffer.from(resp.data.content, "base64").toString("utf8");
-          // Pulo rápido: 99% dos arquivos não têm o texto — evita regex desnecessária
-          if (!original.includes("josephpay.com/minichat")) return;
-          const updated = original.replace(re, correctLink);
-          if (updated === original) return; // já está certo
-          await axios.put(
-            `https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`,
-            {
-              message: "JosephPay: corrige link do Mini Chat com uid do produtor",
-              content: Buffer.from(updated, "utf8").toString("base64"),
-              sha: resp.data.sha,
-            },
-            { headers }
-          );
-          fixedCount++;
-          console.log(`[minichat/auto-link] corrigido: ${repo}/${filePath} → uid=${id}`);
-        } catch (e) {
-          if (e.response?.status !== 404) {
-            console.warn(`[minichat/auto-link] ${repo}/${filePath}:`, e.response?.data?.message || e.message);
-          }
-        }
-      }));
-    }
-    console.log(`[minichat/auto-link] scan concluído: ${fixedCount}/${filesToScan.length} arquivo(s) corrigido(s) em ${repo}`);
-    // Se corrigiu links errados, invalida o status "instalado" para forçar reinstalação manual e confirmação visual
-    if (fixedCount > 0) {
-      await supabase.from("profiles").update({ github_minichat_installed_at: null }).eq("id", id);
-      console.log(`[minichat/auto-link] status invalidado — produtor ${id} verá vermelho e precisará reinstalar para confirmar`);
-    }
-  } catch (e) {
+  } catch(e) {
     console.warn("[minichat/auto-link]", e.message);
   }
-}
-
-// Número de WhatsApp digitado com formatação humana (espaço, traço, parênteses) ou sem
-// o código do país quebra o link "https://wa.me/<número>" — o WhatsApp não consegue
-// reconhecer como telefone e mostra "nome de usuário não está no WhatsApp" em vez de abrir
-// a conversa. Normaliza pra só dígitos e adiciona o 55 quando faltar (DDD de 2 dígitos +
-// telefone de 8/9 — o formato mais comum de número brasileiro cadastrado sem o código do país).
-function normalizeWhatsappNumber(raw) {
-  if (!raw) return raw;
-  let digits = String(raw).replace(/\D/g, "");
-  if (digits.length === 10 || digits.length === 11) digits = "55" + digits;
-  return digits || null;
-}
-
-function cleanHexColor(v) {
-  const c = String(v || "").trim();
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c) ? c.toLowerCase() : null;
 }
 
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message, language, template, accent_color, bg_color } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -3041,7 +2237,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       if (!cleanQuestions.length) cleanQuestions = null;
     }
     const minichat_config = {
-      whatsapp_number: whatsapp_number !== undefined ? normalizeWhatsappNumber(whatsapp_number.trim()) : existing.whatsapp_number,
+      whatsapp_number: whatsapp_number !== undefined ? whatsapp_number.trim() : existing.whatsapp_number,
       brand_name: brand_name !== undefined ? (brand_name?.trim() || null) : (existing.brand_name ?? null),
       greeting_name: greeting_name !== undefined ? (greeting_name?.trim() || brand_name?.trim() || null) : (existing.greeting_name ?? null),
       avatar_url: avatar_url !== undefined ? (avatar_url?.trim() || null) : (existing.avatar_url ?? null),
@@ -3058,26 +2254,9 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       business_context: business_context !== undefined ? (business_context?.trim() || null) : (existing.business_context ?? null),
       closing_message: closing_message !== undefined ? (closing_message?.trim() || null) : (existing.closing_message ?? null),
       destination_type: destination_type !== undefined ? (destination_type || "whatsapp") : (existing.destination_type ?? "whatsapp"),
-      // Idioma só do Mini Chat (textos fixos, perguntas de contato, e-mail do lead) —
-      // "pt" é o padrão, então todo produtor que já existe continua exatamente igual.
-      language: language !== undefined ? (language === "en" ? "en" : "pt") : (existing.language ?? "pt"),
-      // Modelo visual: "whatsapp" (o de sempre, padrão) ou "email" (tela escura com
-      // resumo do projeto, inspirado no mini chat da CAA Renovations).
-      template: template !== undefined ? (template === "email" ? "email" : "whatsapp") : (existing.template ?? "whatsapp"),
-      // Cores do produtor — só usadas pelo modelo "email". Aceita só #rgb/#rrggbb pra
-      // nunca injetar CSS arbitrário na página pública do Mini Chat.
-      accent_color: accent_color !== undefined ? cleanHexColor(accent_color) : (existing.accent_color ?? null),
-      bg_color: bg_color !== undefined ? cleanHexColor(bg_color) : (existing.bg_color ?? null),
-      // Token do xPosts (card "xPosts") — salvo por /xposts; aqui só é mantido.
-      xposts_token: existing.xposts_token ?? null,
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
     if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
-    // E-mail inválido (ex: "caarenovations.com", sem o nome antes do @) fazia o envio
-    // automático falhar e cair no app de e-mail do visitante com destinatário errado.
-    if (email_destino !== undefined && minichat_config.email_destino && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(minichat_config.email_destino)) {
-      return res.status(400).json({ error: `"${minichat_config.email_destino}" não é um e-mail válido — falta a parte antes do @ (ex: nome@gmail.com).` });
-    }
     const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
     // Corrige o link do minichat no repositório do produtor de forma assíncrona (não bloqueia)
@@ -3089,169 +2268,37 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
   }
 });
 
-// ── Conversão do Google Ads (clique no botão do Mini Chat) ──────────────────────
-// Dispara dentro do PRÓPRIO sensor.js, no site do cliente (não no minichat.html) —
-// é o que garante que o gclid (cookie _gcl_aw, salvo no domínio do cliente no
-// momento do clique no anúncio) já está presente na hora de avisar o Google, senão
-// a conversão não se liga à campanha (ver /sensor.js abaixo). Cobre os dois jeitos
-// de instalar o sensor hoje (GitHub e GTM) porque os dois só carregam esse mesmo
-// arquivo — não precisa mexer em install-sensor nem no buildMinichatGtmTag.
-const AW_ID_RE = /^AW-\d+$/;
-app.patch("/api/admin/producers/:id/google-ads-conversion", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { conversion_id, conversion_label } = req.body;
-    const cid = conversion_id !== undefined ? (String(conversion_id || "").trim() || null) : undefined;
-    const clabel = conversion_label !== undefined ? (String(conversion_label || "").trim() || null) : undefined;
-    if (cid && !AW_ID_RE.test(cid)) return res.status(400).json({ error: `"${cid}" não parece um ID de conversão válido — o formato é AW- seguido só de números (ex: AW-123456789).` });
-    if (cid && !clabel) return res.status(400).json({ error: "Preencha o Rótulo também — os dois campos são obrigatórios juntos." });
-    const { data: current } = await supabase.from("profiles").select("minichat_config").eq("id", id).maybeSingle();
-    const existing = current?.minichat_config || {};
-    const minichat_config = {
-      ...existing,
-      google_ads_conversion_id: cid !== undefined ? cid : (existing.google_ads_conversion_id ?? null),
-      google_ads_conversion_label: clabel !== undefined ? clabel : (existing.google_ads_conversion_label ?? null),
-    };
-    const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, minichat_config });
-  } catch (err) {
-    console.error("[google-ads-conversion patch]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Prova real (mesmo padrão de getSensorStatus/gtmMinichatStatus): campos válidos,
-// sensor instalado, e o sensor.js PUBLICADO de verdade já inclui o ID configurado.
-app.get("/api/admin/producers/:id/google-ads-conversion/status", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_sensor_installed_at,gtm_sensor_installed_at").eq("id", id).maybeSingle();
-    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
-    const cid = profile.minichat_config?.google_ads_conversion_id || null;
-    const clabel = profile.minichat_config?.google_ads_conversion_label || null;
-    const checks = [];
-    const camposOk = !!(cid && clabel && AW_ID_RE.test(cid));
-    checks.push({ id: "campos", label: "Campos preenchidos", ok: camposOk, detail: camposOk ? `${cid} / ${clabel}` : "Preencha o ID da conversão e o Rótulo acima." });
-    const sensorInstalado = !!(profile.github_sensor_installed_at || profile.gtm_sensor_installed_at);
-    checks.push({ id: "sensor", label: "Sensor instalado no site", ok: sensorInstalado, detail: sensorInstalado ? "O sensor já está no site — é ele que avisa o Google." : "Instale o sensor no card \"Sensor\" acima primeiro." });
-    let scriptOk = null, scriptDetail = "Preencha os campos pra eu conferir o script publicado.";
-    if (camposOk) {
-      try {
-        const live = await axios.get(`${PUBLIC_URL}/sensor.js?uid=${id}&_jp=${Date.now()}`, { timeout: 8000, responseType: "text", transformResponse: x => x });
-        scriptOk = String(live.data || "").includes(cid);
-        scriptDetail = scriptOk ? "O script publicado já dispara a conversão com esse ID." : "O script publicado ainda não tem esse ID — tente de novo em instantes (cache de 1h no navegador do visitante, mas aqui já deveria estar atualizado).";
-      } catch (e) { scriptDetail = `Não consegui buscar o script publicado: ${e.message}`; }
-    }
-    checks.push({ id: "script", label: "Script publicado dispara a conversão", ok: scriptOk, warn: scriptOk === null, detail: scriptDetail });
-    let googleOk = null, googleDetail = "—";
-    if (camposOk) {
-      try {
-        const g = await axios.get(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(cid)}`, { timeout: 8000, validateStatus: () => true });
-        googleOk = g.status === 200;
-        googleDetail = googleOk ? "O Google reconhece esse ID de conversão." : `O Google devolveu ${g.status} pra esse ID — confira se está certo.`;
-      } catch (e) { googleDetail = `Não consegui confirmar com o Google: ${e.message}`; }
-    } else { googleDetail = "Preencha os campos pra eu conferir com o Google."; }
-    checks.push({ id: "google", label: "Google reconhece o ID", ok: googleOk, warn: googleOk === null, detail: googleDetail });
-    const okCount = checks.filter(c => c.ok).length;
-    res.json({ checks, okCount, total: checks.length, allOk: checks.every(c => c.ok) });
-  } catch (err) {
-    console.error("[google-ads-conversion status]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Invalida o status de instalação do Mini Chat — faz o card ficar vermelho
-// para sinalizar que precisa ser reinstalado (útil quando o admin detecta
-// que o link estava errado ou quer forçar re-verificação).
-app.post("/api/admin/producers/:id/github/invalidate-minichat", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { error } = await supabase.from("profiles").update({ github_minichat_installed_at: null }).eq("id", id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Reinstala o arquivo redirect do Mini Chat no repositório do cliente usando
 // o caminho já salvo em github_minichat_path — útil para corrigir uid errado
 // sem precisar selecionar o caminho novamente.
-// Corrige o arquivo do Mini Chat de um produtor: move pra public/ se precisar, garante
-// o vercel.json certo, e recommita o arquivo redirect. Extraído da rota abaixo pra
-// poder ser chamado tanto por um clique do admin quanto pelo diagnóstico automático
-// em segundo plano (autofixSiteIssues).
-// Apaga um arquivo antigo do Mini Chat que ficou pra trás quando o caminho mudou (ex:
-// "minichat.html" na raiz virou "public/minichat.html") — sem isso sobra arquivo
-// duplicado no repositório do cliente pra sempre. Só apaga se for de fato o caminho
-// antigo que a JosephPay tinha salvo, nunca um arquivo que o admin não escolheu.
-async function deleteStaleMinichatFile(repo, headers, oldPath, newPath) {
-  if (!oldPath || oldPath === newPath) return;
-  try {
-    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(oldPath)}`, { headers });
-    await axios.delete(`https://api.github.com/repos/${repo}/contents/${encodeURI(oldPath)}`, {
-      headers,
-      data: { message: "JosephPay: remove Mini Chat duplicado (caminho antigo)", sha: existing.data.sha },
-    });
-  } catch (e) {
-    if (e.response?.status !== 404) console.warn("[deleteStaleMinichatFile]", e.message);
-  }
-}
-
-async function reinstalarMinichatFile(id) {
-  const { data: profile } = await supabase.from("profiles")
-    .select("github_repo,github_minichat_path")
-    .eq("id", id).maybeSingle();
-  if (!profile?.github_repo) throw new Error("Repositório não vinculado");
-  const desiredPath = (profile.github_minichat_path || "minichat.html").replace(/^public\//, "");
-  const token = await getGithubToken();
-  if (!token) throw new Error("GitHub não conectado");
-  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-  const repo = profile.github_repo;
-
-  // Garante as configurações de build ANTES do redirecionamento — ensureMinichatRedirect
-  // preserva tudo que já está no vercel.json, então rodar nessa ordem garante que o
-  // redirecionamento não é perdido numa eventual escrita de ensureVercelConfig depois.
-  try {
-    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
-    const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-    const detected = detectRepoFramework(allPaths);
-    if (detected.isBuildProject) {
-      await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
-        if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
-      });
-    }
-  } catch (e) {
-    console.warn("[reinstalarMinichatFile] detecção de framework falhou, seguindo assim mesmo:", e.message);
-  }
-
-  // Redescobre sozinho o(s) caminho(s) real(is) toda vez que reinstala — o botão do
-  // site pode nunca ter sido o caminho padrão (foi exatamente o caso da Lervet:
-  // "/minichat/index.html", não "minichat.html"), e o admin não deveria precisar saber
-  // ou digitar isso. Aponta um redirecionamento pra cada candidato encontrado.
-  const detectados = await detectMinichatCandidatePaths(repo, headers, token);
-  const todosOsCaminhos = [...new Set([desiredPath, ...detectados])];
-  for (const p of todosOsCaminhos) {
-    await ensureMinichatRedirect(repo, headers, id, p);
-  }
-  // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo (baseado
-  // em arquivo, não em redirecionamento) — sobrar os dois é clutter e pode até
-  // atrapalhar dependendo de como o framework prioriza rota x arquivo estático.
-  for (const p of todosOsCaminhos) {
-    await deleteStaleMinichatFile(repo, headers, p, null);
-    await deleteStaleMinichatFile(repo, headers, `public/${p}`, null);
-  }
-  await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
-  autoFixMinichatLink(id).catch(() => {});
-  return { file_path: desiredPath, extra_paths: detectados };
-}
-
 app.post("/api/admin/producers/:id/github/reinstall-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { file_path, extra_paths } = await reinstalarMinichatFile(id);
-    res.json({ ok: true, file_path, extra_paths });
+    const { data: profile } = await supabase.from("profiles")
+      .select("github_repo,github_minichat_path")
+      .eq("id", id).maybeSingle();
+    if (!profile?.github_repo) return res.status(400).json({ error: "Repositório não vinculado" });
+    const filePath = profile.github_minichat_path || "minichat.html";
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub não conectado" });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    const repo = profile.github_repo;
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    const loaderHtml = `<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<meta http-equiv="refresh" content="0;url=${minichatLink}">\n<title>Mini Chat</title>\n<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>\n</head>\n<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">\n<p>Redirecionando…</p>\n</body>\n</html>\n`;
+    let sha;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      sha = existing.data.sha;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: corrige UID do Mini Chat",
+      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }, { headers });
+    await supabase.from("profiles").update({ github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true, file_path: filePath });
   } catch (err) {
     console.error("[reinstall-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || err.message });
@@ -3268,18 +2315,11 @@ app.get("/api/minichat/config", async (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   const { uid } = req.query;
   if (!uid) return res.status(400).json({ error: "uid ausente" });
-  const [{ data }, { data: productsData }] = await Promise.all([
-    supabase.from("profiles").select("minichat_config, name").eq("id", uid).single(),
-    supabase.from("products").select("name").eq("owner_id", uid).order("created_at", { ascending: false }),
-  ]);
+  const { data } = await supabase.from("profiles").select("minichat_config, name").eq("id", uid).single();
   const cfg = data?.minichat_config || {};
   // Use producer name from profiles as fallback when brand_name not explicitly set
   if (!cfg.brand_name && data?.name) cfg.brand_name = data.name;
-  // Manda os produtos JUNTO nessa mesma resposta — antes o Mini Chat precisava de um
-  // segundo fetch pra /api/minichat/products, e se esse segundo fetch falhasse (rede
-  // instável, cold start), caía sozinho na pergunta genérica errada. Uma resposta só
-  // elimina esse ponto de falha extra.
-  res.json({ config: Object.keys(cfg).length ? cfg : null, producer_name: data?.name || null, products: (productsData || []).map(p => p.name).filter(Boolean) });
+  res.json({ config: Object.keys(cfg).length ? cfg : null, producer_name: data?.name || null });
 });
 
 // Lista pública (só nome) dos produtos de um produtor — usada pelo Mini Chat como opções
@@ -3319,48 +2359,11 @@ const GOOGLE_ADS_DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "";
 
 // state do OAuth só precisa viver alguns minutos (tempo de o admin logar no Google) —
 // mapa em memória é suficiente, não precisa de tabela pra isso.
-const googleOAuthStates = new Map(); // state → { ts, producerId }
+const googleOAuthStates = new Map();
 setInterval(() => {
   const now = Date.now();
-  for (const [state, data] of googleOAuthStates) if (now - data.ts > 10 * 60 * 1000) googleOAuthStates.delete(state);
+  for (const [state, ts] of googleOAuthStates) if (now - ts > 10 * 60 * 1000) googleOAuthStates.delete(state);
 }, 5 * 60 * 1000);
-
-// Retorna o token de acesso do produtor específico — refresca se necessário.
-async function getGoogleAccessTokenForProducer(producerId) {
-  const { data: row } = await supabase.from("profiles")
-    .select("google_refresh_token,google_access_token,google_token_expires_at")
-    .eq("id", producerId).maybeSingle();
-  if (!row?.google_refresh_token) return null;
-  if (row.google_access_token && row.google_token_expires_at &&
-      new Date(row.google_token_expires_at) > new Date(Date.now() + 60000)) {
-    return row.google_access_token;
-  }
-  const resp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    client_secret: GOOGLE_CLIENT_SECRET,
-    refresh_token: row.google_refresh_token,
-    grant_type: "refresh_token",
-  }));
-  const { access_token, expires_in } = resp.data;
-  const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
-  await supabase.from("profiles").update({
-    google_access_token: access_token,
-    google_token_expires_at: expires_at,
-    google_token_updated_at: new Date().toISOString(),
-  }).eq("id", producerId);
-  return access_token;
-}
-
-// Escolhe o token certo para um produtor: o próprio (novo) ou o da plataforma (legado MCC).
-// Nunca joga exceção — retorna null se nenhum token estiver disponível.
-async function getAdsAccessToken(profile) {
-  if (profile?.google_refresh_token) {
-    try { return await getGoogleAccessTokenForProducer(profile.id); } catch {}
-    return null;
-  }
-  try { return await getGoogleAccessToken(); } catch {}
-  return null;
-}
 
 async function getGoogleAccessToken() {
   const { data: row } = await supabase.from("platform_google_auth").select("*").eq("id", 1).maybeSingle();
@@ -3394,32 +2397,14 @@ app.get("/api/admin/google/status", requireAuth, requireAdmin, async (req, res) 
 app.get("/api/admin/google/connect", requireAuth, requireAdmin, (req, res) => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(500).json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não configurados no servidor" });
   const state = crypto.randomBytes(16).toString("hex");
-  googleOAuthStates.set(state, { ts: Date.now(), producerId: null });
+  googleOAuthStates.set(state, Date.now());
   const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: "code",
     scope: GOOGLE_SCOPE,
     access_type: "offline",
-    prompt: "consent select_account",
-    state,
-  });
-  res.json({ url });
-});
-
-// Inicia OAuth do Google Ads para um produtor específico — Thomas faz isso durante
-// o onboarding, logando com a conta Google Ads do produtor. Sem MCC necessário.
-app.get("/api/admin/producers/:id/google/connect", requireAuth, requireAdmin, (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(500).json({ error: "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET não configurados no servidor" });
-  const state = crypto.randomBytes(16).toString("hex");
-  googleOAuthStates.set(state, { ts: Date.now(), producerId: req.params.id });
-  const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    response_type: "code",
-    scope: `${GOOGLE_ADS_SCOPE} https://www.googleapis.com/auth/userinfo.email`,
-    access_type: "offline",
-    prompt: "consent select_account",
+    prompt: "consent",
     state,
   });
   res.json({ url });
@@ -3429,8 +2414,7 @@ app.get("/api/admin/google/callback", async (req, res) => {
   const { code, state, error } = req.query;
   res.header("Content-Type", "text/html; charset=utf-8");
   if (error) return res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">Conexão cancelada (${error}). Pode fechar esta aba.</body></html>`);
-  const stateData = googleOAuthStates.get(state);
-  if (!state || !stateData) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
+  if (!state || !googleOAuthStates.has(state)) return res.status(400).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Link inválido ou expirado. Volte ao JosephPay e tente conectar de novo.</body></html>");
   googleOAuthStates.delete(state);
   try {
     const tokenResp = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
@@ -3447,48 +2431,17 @@ app.get("/api/admin/google/callback", async (req, res) => {
       const info = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${access_token}` } });
       email = info.data?.email || null;
     } catch {}
-
-    if (stateData.producerId) {
-      // Fluxo por-produtor: salva o token diretamente no perfil do produtor
-      const producerId = stateData.producerId;
-      const { data: existing } = await supabase.from("profiles").select("google_refresh_token").eq("id", producerId).maybeSingle();
-      await supabase.from("profiles").update({
-        google_access_token: access_token,
-        google_refresh_token: refresh_token || existing?.google_refresh_token || null,
-        google_token_expires_at: expires_at,
-        google_connected_email: email,
-        google_token_updated_at: new Date().toISOString(),
-      }).eq("id", producerId);
-      // Tenta auto-descobrir o customer_id via listAccessibleCustomers
-      const developerToken = await getGoogleAdsDeveloperToken();
-      if (developerToken) {
-        try {
-          const custsResp = await axios.get(
-            `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers:listAccessibleCustomers`,
-            { headers: { Authorization: `Bearer ${access_token}`, "developer-token": developerToken } }
-          );
-          const ids = (custsResp.data.resourceNames || []).map(rn => rn.replace("customers/", ""));
-          if (ids.length === 1) {
-            await supabase.from("profiles").update({ google_ads_customer_id: ids[0] }).eq("id", producerId);
-          }
-        } catch (e) {
-          console.error("[google/callback] auto-discover customer_id falhou:", e.message);
-        }
-      }
-      res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google Ads conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
-    } else {
-      // Fluxo plataforma (GTM + Ads via MCC)
-      const { data: existing } = await supabase.from("platform_google_auth").select("refresh_token").eq("id", 1).maybeSingle();
-      await supabase.from("platform_google_auth").upsert({
-        id: 1,
-        access_token,
-        refresh_token: refresh_token || existing?.refresh_token || null,
-        expires_at,
-        connected_email: email,
-        updated_at: new Date().toISOString(),
-      });
-      res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
-    }
+    // Google só manda refresh_token na primeira autorização — se reconectar depois, preserva o antigo.
+    const { data: existing } = await supabase.from("platform_google_auth").select("refresh_token").eq("id", 1).maybeSingle();
+    await supabase.from("platform_google_auth").upsert({
+      id: 1,
+      access_token,
+      refresh_token: refresh_token || existing?.refresh_token || null,
+      expires_at,
+      connected_email: email,
+      updated_at: new Date().toISOString(),
+    });
+    res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">✅ Google conectado${email ? ` (${email})` : ""}.<br>Pode fechar esta aba e voltar ao JosephPay.</body></html>`);
   } catch (err) {
     console.error("[google/callback]", err.response?.data || err.message);
     res.status(500).send("<html><body style=\"font-family:sans-serif;padding:40px;text-align:center\">Erro ao conectar com o Google. Volte ao JosephPay e tente de novo.</body></html>");
@@ -3573,15 +2526,12 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
     if (!workspace) return res.status(500).json({ error: "Nenhuma workspace encontrada nesse container" });
     const workspacePath = workspace.path;
 
-    // Trigger próprio em vez do "All Pages" nativo — evita depender do ID interno do
-    // container. Reaproveita o que já existir (antes cada clique criava um duplicado).
-    const triggerId = await gtmEnsureAllPagesTrigger({ workspacePath, headers });
-    // Sensor já instalado nesse container? Não cria uma segunda tag igual.
-    const tagsAtuais = await axios.get(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/tags`, { headers });
-    if ((tagsAtuais.data.tag || []).some(t => t.name === "JosephPay — Sensor de visitas")) {
-      await supabase.from("profiles").update({ gtm_sensor_installed_at: new Date().toISOString() }).eq("id", id);
-      return res.json({ ok: true, already: true });
-    }
+    // Trigger próprio em vez do "All Pages" nativo — evita depender do ID interno do container.
+    const triggerResp = await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/triggers`, {
+      name: "JosephPay — Todas as páginas",
+      type: "pageview",
+    }, { headers });
+    const triggerId = triggerResp.data.triggerId;
 
     const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
     await axios.post(`https://www.googleapis.com/tagmanager/v2/${workspacePath}/tags`, {
@@ -3604,189 +2554,6 @@ app.post("/api/admin/producers/:id/gtm/install-sensor", requireAuth, requireAdmi
   } catch (err) {
     console.error("[gtm/install-sensor]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar o sensor via GTM" });
-  }
-});
-
-// ── GTM: botões de WhatsApp do site abrem o Mini Chat (sites SEM GitHub) ────────
-// Pra site feito em WordPress/Wix/qualquer coisa que tenha Google Tag Manager, não dá
-// pra trocar o botão no código. Aqui uma tag do GTM faz isso no navegador do visitante:
-// clique num link de WhatsApp DO PRODUTOR (mesmo número) abre o Mini Chat no lugar.
-//
-// Cuidados (regra 7 do CLAUDE.md — o caso da Lervet):
-//  • Só troca link de WhatsApp pro número do produtor (os últimos 8 dígitos batem). Link
-//    pra outro número (ex: um parceiro) fica como está. Link de WhatsApp sem número
-//    algum também é trocado (é o "fale conosco" genérico).
-//  • Nunca roda em página com cara de mini chat/quiz/diagnóstico do próprio site — o
-//    passo final de um chat que o cliente já tem continua indo pro WhatsApp (sem loop).
-//  • Qualquer botão com o atributo data-jp-keep é ignorado (escape manual).
-//  • Só é instalada quando o admin clica — nunca pelo job automático.
-//  • Nunca publica alteração de outra pessoa: se o GTM tiver mudança pendente que não é
-//    nossa, para e avisa.
-const GTM_MINICHAT_TAG = "JosephPay — Botões abrem o Mini Chat";
-const GTM_TRIGGER_ALL = "JosephPay — Todas as páginas";
-function buildMinichatGtmTag(uid, whatsappDigits) {
-  const mc = `https://josephpay.com/minichat.html?uid=${uid}`;
-  const num = String(whatsappDigits || "").replace(/\D/g, "");
-  // ES5 de propósito: o GTM valida o JavaScript das tags de HTML personalizado.
-  return `<script>
-(function(){
-  if (window.__jpMinichatTag) return; window.__jpMinichatTag = true;
-  var MC = ${JSON.stringify(mc)};
-  var NUM = ${JSON.stringify(num)};
-  if (/mini-?_?chat|quiz|diagn|pre-?diag/i.test(location.pathname)) return;
-  function waPhone(u){
-    var x; try { x = new URL(u, location.href); } catch (e) { return null; }
-    var host = x.hostname.replace(/^www\\./, "");
-    if (x.protocol === "whatsapp:") return (x.searchParams.get("phone") || "").replace(/\\D/g, "");
-    if (host === "wa.me") return x.pathname.replace(/\\D/g, "");
-    if (host === "api.whatsapp.com" || host === "web.whatsapp.com" || host === "whatsapp.com") {
-      if (!/send/i.test(x.pathname) && !x.searchParams.get("phone")) return null;
-      return (x.searchParams.get("phone") || "").replace(/\\D/g, "");
-    }
-    return null;
-  }
-  function deveTrocar(u){
-    var p = waPhone(u);
-    if (p === null) return false;
-    if (!NUM || !p) return true;
-    return p.slice(-8) === NUM.slice(-8);
-  }
-  function marcar(a){
-    if (!a || !a.getAttribute || a.hasAttribute("data-jp-keep")) return;
-    var h = a.getAttribute("href");
-    if (h && h !== MC && deveTrocar(h)) { a.setAttribute("data-jp-original", h); a.setAttribute("href", MC); }
-  }
-  function varrer(raiz){ var l = (raiz || document).querySelectorAll ? (raiz || document).querySelectorAll("a[href]") : []; for (var i = 0; i < l.length; i++) marcar(l[i]); }
-  document.addEventListener("click", function(e){
-    var el = e.target;
-    while (el && el.tagName !== "A") el = el.parentElement;
-    if (!el || el.hasAttribute("data-jp-keep")) return;
-    var h = el.getAttribute("data-jp-original") || el.getAttribute("href");
-    if (!h || !deveTrocar(h)) return;
-    e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-    if (el.getAttribute("target") === "_blank") window.open(MC, "_blank"); else window.location.href = MC;
-  }, true);
-  var abrir = window.open;
-  window.open = function(u, t, f){ if (u && deveTrocar(String(u))) return abrir.call(window, MC, t || "_blank", f); return abrir.apply(window, arguments); };
-  varrer(document);
-  if (window.MutationObserver) new MutationObserver(function(ms){
-    for (var i = 0; i < ms.length; i++) {
-      var m = ms[i];
-      if (m.type === "attributes") marcar(m.target);
-      else for (var j = 0; j < m.addedNodes.length; j++) { var n = m.addedNodes[j]; if (n.nodeType === 1) { if (n.tagName === "A") marcar(n); varrer(n); } }
-    }
-  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
-})();
-</script>`;
-}
-
-// Contexto do GTM do produtor: token, workspace e o ID público (GTM-XXXX).
-async function getGtmContext(id) {
-  const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id,site_url,phone,minichat_config").eq("id", id).maybeSingle();
-  if (!profile?.gtm_account_id || !profile?.gtm_container_id) return { error: "Vincule um container do GTM a este cliente primeiro (card Site)." };
-  const token = await getGoogleAccessToken();
-  if (!token) return { error: "Google ainda não conectado" };
-  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  const base = `https://www.googleapis.com/tagmanager/v2/accounts/${profile.gtm_account_id}/containers/${profile.gtm_container_id}`;
-  const [cont, ws] = await Promise.all([axios.get(base, { headers }), axios.get(`${base}/workspaces`, { headers })]);
-  const workspace = (ws.data.workspace || [])[0];
-  if (!workspace) return { error: "Nenhuma workspace encontrada nesse container do GTM." };
-  return { profile, headers, base, workspacePath: workspace.path, publicId: cont.data.publicId };
-}
-
-// Mudanças pendentes no workspace que NÃO são nossas (tag/trigger "JosephPay —").
-async function gtmForeignPendingChanges(ctx) {
-  const st = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/status`, { headers: ctx.headers });
-  return (st.data.workspaceChange || []).filter(ch => {
-    const nome = ch.tag?.name || ch.trigger?.name || ch.variable?.name || ch.folder?.name || "";
-    return !/^JosephPay — /.test(nome);
-  });
-}
-
-async function gtmEnsureAllPagesTrigger(ctx) {
-  const tr = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/triggers`, { headers: ctx.headers });
-  const existente = (tr.data.trigger || []).find(t => t.name === GTM_TRIGGER_ALL);
-  if (existente) return existente.triggerId;
-  const novo = await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/triggers`, { name: GTM_TRIGGER_ALL, type: "pageview" }, { headers: ctx.headers });
-  return novo.data.triggerId;
-}
-
-async function gtmPublish(ctx, nomeVersao) {
-  const v = await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}:create_version`, { name: nomeVersao }, { headers: ctx.headers });
-  const vid = v.data.containerVersion?.containerVersionId;
-  if (!vid) throw new Error(v.data.compilerError ? "O GTM recusou a versão (erro de compilação)." : "O GTM não criou a versão.");
-  await axios.post(`${ctx.base}/versions/${vid}:publish`, {}, { headers: ctx.headers });
-}
-
-// Prova real: a tag está no GTM PUBLICADO (gtm.js público) e o site carrega esse GTM?
-async function gtmMinichatStatus(id) {
-  const { data: profile } = await supabase.from("profiles").select("gtm_account_id,gtm_container_id,site_url").eq("id", id).maybeSingle();
-  if (!profile?.gtm_container_id) return { status: "sem_gtm" };
-  let publicId = null;
-  try { const ctx = await getGtmContext(id); if (ctx.error) return { status: "erro", message: ctx.error }; publicId = ctx.publicId; }
-  catch (e) { return { status: "erro", message: e.response?.data?.error?.message || e.message }; }
-  let publicado = false, noSite = null;
-  try {
-    const js = await axios.get(`https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(publicId)}&_jp=${Date.now()}`, { timeout: 10000, responseType: "text", transformResponse: x => x });
-    publicado = String(js.data || "").includes(`minichat.html?uid=${id}`);
-  } catch {}
-  if (profile.site_url) {
-    const h = await detectHosting(profile.site_url.replace(/\/+$/, ""));
-    noSite = h.html ? h.html.includes(publicId) : null;
-  }
-  const ok = publicado && noSite !== false;
-  return {
-    status: ok ? "ok" : publicado ? "gtm_fora_do_site" : "nao_publicado",
-    publicId, publicado, noSite,
-    message: ok ? "Os botões de WhatsApp do site abrem o Mini Chat."
-      : publicado ? `A tag está publicada, mas não achei o GTM ${publicId} no código do site — confira se o GTM está instalado no site.`
-      : "A tag ainda não está publicada no GTM.",
-  };
-}
-
-app.get("/api/admin/producers/:id/gtm/minichat-status", requireAuth, requireAdmin, async (req, res) => {
-  try { res.json(await gtmMinichatStatus(req.params.id)); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post("/api/admin/producers/:id/gtm/install-minichat", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const ctx = await getGtmContext(id);
-    if (ctx.error) return res.status(400).json({ error: ctx.error });
-    const alheias = await gtmForeignPendingChanges(ctx);
-    if (alheias.length) return res.status(409).json({ error: `O GTM desse cliente tem ${alheias.length} alteração(ões) não publicada(s) feitas por outra pessoa. Publique ou descarte no GTM e tente de novo — eu não publico mudança de ninguém sem você ver.` });
-    const numero = normalizeWhatsappNumber(ctx.profile.minichat_config?.whatsapp_number || ctx.profile.phone || "");
-    const html = buildMinichatGtmTag(id, numero);
-    const triggerId = await gtmEnsureAllPagesTrigger(ctx);
-    const tags = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, { headers: ctx.headers });
-    const existente = (tags.data.tag || []).find(t => t.name === GTM_MINICHAT_TAG);
-    const corpo = { name: GTM_MINICHAT_TAG, type: "html", parameter: [{ type: "template", key: "html", value: html }, { type: "boolean", key: "supportDocumentWrite", value: "false" }], firingTriggerId: [triggerId] };
-    if (existente) await axios.put(`https://www.googleapis.com/tagmanager/v2/${existente.path}`, corpo, { headers: ctx.headers });
-    else await axios.post(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, corpo, { headers: ctx.headers });
-    await gtmPublish(ctx, `JosephPay — botões abrem o Mini Chat (${new Date().toLocaleDateString("pt-BR")})`);
-    res.json({ ok: true, updated: !!existente, publicId: ctx.publicId, numero: numero || null });
-  } catch (err) {
-    console.error("[gtm/install-minichat]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao instalar no GTM" });
-  }
-});
-
-app.post("/api/admin/producers/:id/gtm/remove-minichat", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const ctx = await getGtmContext(req.params.id);
-    if (ctx.error) return res.status(400).json({ error: ctx.error });
-    const alheias = await gtmForeignPendingChanges(ctx);
-    if (alheias.length) return res.status(409).json({ error: `O GTM desse cliente tem ${alheias.length} alteração(ões) não publicada(s) feitas por outra pessoa. Publique ou descarte no GTM e tente de novo.` });
-    const tags = await axios.get(`https://www.googleapis.com/tagmanager/v2/${ctx.workspacePath}/tags`, { headers: ctx.headers });
-    const existente = (tags.data.tag || []).find(t => t.name === GTM_MINICHAT_TAG);
-    if (!existente) return res.json({ ok: true, already: true });
-    await axios.delete(`https://www.googleapis.com/tagmanager/v2/${existente.path}`, { headers: ctx.headers });
-    await gtmPublish(ctx, `JosephPay — remove botões do Mini Chat (${new Date().toLocaleDateString("pt-BR")})`);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[gtm/remove-minichat]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || "Falha ao remover no GTM" });
   }
 });
 
@@ -3820,12 +2587,12 @@ const GOOGLE_ADS_API_VERSION = "v25";
 // Roda uma consulta GAQL (linguagem de consulta do Google Ads) contra a conta de um
 // cliente específico, passando pela conta de gerente quando configurada. Erros da API
 // (token em modo teste, conta não vinculada, etc.) sobem pra quem chamou tratar.
-// overrideToken: token do produtor (nova rota sem MCC) — se null, usa o token da plataforma com manager.
-async function googleAdsSearch(customerId, query, overrideToken) {
-  const accessToken = overrideToken !== undefined ? overrideToken : await getGoogleAccessToken();
+async function googleAdsSearch(customerId, query) {
+  const accessToken = await getGoogleAccessToken();
   if (!accessToken) throw new Error("Google não conectado");
   const developerToken = await getGoogleAdsDeveloperToken();
   if (!developerToken) throw new Error("Developer Token não configurado");
+  const managerId = await getGoogleAdsManagerId();
   const cleanCustomerId = String(customerId || "").replace(/\D/g, "");
   if (!cleanCustomerId) throw new Error("ID da conta de Ads inválido");
   const headers = {
@@ -3833,11 +2600,7 @@ async function googleAdsSearch(customerId, query, overrideToken) {
     "developer-token": developerToken,
     "Content-Type": "application/json",
   };
-  // Manager ID só para o fluxo legado MCC (quando token da plataforma é usado)
-  if (overrideToken === undefined) {
-    const managerId = await getGoogleAdsManagerId();
-    if (managerId) headers["login-customer-id"] = managerId;
-  }
+  if (managerId) headers["login-customer-id"] = managerId;
   const resp = await axios.post(
     `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${cleanCustomerId}/googleAds:search`,
     { query },
@@ -3852,13 +2615,9 @@ async function googleAdsSearch(customerId, query, overrideToken) {
 // pra diagnosticar sem precisar olhar log de servidor.
 function describeGoogleAdsError(err) {
   const status = err.response?.status;
-  const body = err.response?.data;
-  // Google Ads API retorna erros em { error: { message, details: [{ errors: [{ message }] }] } }
-  const gErr = body?.error;
+  const gErr = err.response?.data?.error;
   const detail = gErr?.details?.find(d => Array.isArray(d.errors))?.errors?.[0];
-  const reason = detail?.message || gErr?.message || body?.message || err.message;
-  // Loga o corpo completo para diagnóstico no Railway
-  if (status) console.error("[google-ads] erro completo:", JSON.stringify(body || err.message).slice(0, 800));
+  const reason = detail?.message || gErr?.message || err.message;
   return status ? `HTTP ${status} — ${reason}` : reason;
 }
 
@@ -3872,39 +2631,6 @@ app.get("/api/admin/google-ads/status", requireAuth, requireAdmin, async (req, r
       developerTokenConfigured: !!(data?.developer_token || GOOGLE_ADS_DEVELOPER_TOKEN),
       managerCustomerId: data?.manager_customer_id || null,
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Diagnóstico: testa a conexão com a Google Ads API usando a conta do produtor
-// e retorna o erro completo da Google para facilitar diagnóstico
-app.get("/api/admin/producers/:id/google-ads/diagnose", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: profile } = await supabase.from("profiles").select("id,name,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
-    const developerToken = await getGoogleAdsDeveloperToken();
-    const accessToken = await getAdsAccessToken(profile);
-    const customerId = (profile?.google_ads_customer_id || "").replace(/\D/g, "");
-    if (!accessToken) return res.json({ ok: false, step: "access_token", error: "Google Ads não conectado para este produtor — clique em 'Conectar Google Ads'" });
-    if (!developerToken) return res.json({ ok: false, step: "developer_token", error: "Developer Token não configurado" });
-    if (!customerId) return res.json({ ok: false, step: "customer_id", error: "ID da conta do produtor não configurado" });
-    const headers = {
-      Authorization: `Bearer ${accessToken}`,
-      "developer-token": developerToken,
-      "Content-Type": "application/json",
-    };
-    try {
-      // Query minimalista só para validar acesso à conta
-      const resp = await axios.post(
-        `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:search`,
-        { query: "SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1" },
-        { headers }
-      );
-      res.json({ ok: true, customerId, managerId: managerId || null, customerName: resp.data.results?.[0]?.customer?.descriptiveName || null });
-    } catch (err) {
-      const body = err.response?.data;
-      res.json({ ok: false, step: "api_call", httpStatus: err.response?.status, customerId, managerId: managerId || null, googleError: body || err.message });
-    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3958,7 +2684,7 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     const prevTo = new Date(from.getTime());
     const prevFrom = new Date(from.getTime() - rangeMs);
 
-    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,avatar_url,google_ads_customer_id,google_refresh_token").eq("id", id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("name,company_name,avatar_url,google_ads_customer_id").eq("id", id).maybeSingle();
     if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
 
     const periodStats = async (start, end) => {
@@ -3981,42 +2707,22 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
     };
 
     const [atual, anterior, developerToken] = await Promise.all([periodStats(from, to), periodStats(prevFrom, prevTo), getGoogleAdsDeveloperToken()]);
-    const adsToken = await getAdsAccessToken(profile); // nunca joga exceção
-    const adsConnected = !!(profile.google_ads_customer_id && developerToken && adsToken);
+    const adsConnected = !!(profile.google_ads_customer_id && developerToken);
 
     // Investimento real, buscado na hora na Google Ads API — se a busca falhar (token
     // ainda em modo teste, conta não vinculada etc.), fica null e o motivo vai em adsError,
     // nunca inventamos o número.
-    let investimento = null, adsError = null, adsRawError = null;
+    let investimento = null, adsError = null;
     if (adsConnected) {
       try {
         const fromStr = from.toISOString().slice(0, 10);
         const toStr = to.toISOString().slice(0, 10);
-        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`, adsToken);
+        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM customer WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`);
         const costMicros = rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0);
         investimento = Math.round((costMicros / 1e6) * 100) / 100;
       } catch (err) {
-        const body = err.response?.data;
-        console.error("[google-ads/overview] busca real falhou:", JSON.stringify(body || err.message).slice(0, 1000));
+        console.error("[google-ads/overview] busca real falhou:", err.response?.data || err.message);
         adsError = describeGoogleAdsError(err);
-        // Inclui o corpo bruto para diagnóstico no frontend (admin-only, não vaza para produtores)
-        if (body) adsRawError = typeof body === "string" ? body.slice(0, 400) : JSON.stringify(body).slice(0, 400);
-      }
-    }
-
-    // Sem Investimento real (não conectado, ou a busca acima falhou): usa a snapshot
-    // manual mais recente pra esse período (colada pelo admin a partir de prints do
-    // app do Google Ads) em vez de deixar "—" pra sempre. Nunca sobrescreve um número
-    // real — só entra quando `investimento` continua null.
-    let investimentoManual = false, investimentoManualAt = null;
-    const periodoDias = Number(req.query.periodo_dias) || null;
-    if (investimento == null && periodoDias) {
-      const { atual: snapAtual, anterior: snapAnterior } = await getManualSnapshots(id, periodoDias);
-      if (snapAtual) {
-        investimento = Number(snapAtual.investimento_total);
-        investimentoManual = true;
-        investimentoManualAt = snapAtual.created_at;
-        if (snapAnterior) anterior.investimento = Number(snapAnterior.investimento_total);
       }
     }
 
@@ -4024,12 +2730,9 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
       cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
       adsConnected,
       adsError,
-      adsRawError: adsRawError || null,
       googleAdsCustomerId: profile.google_ads_customer_id || null,
       periodo: { from: from.toISOString(), to: to.toISOString() },
       investimento,
-      investimentoManual,
-      investimentoManualAt,
       atual,
       anterior,
     });
@@ -4039,451 +2742,12 @@ app.get("/api/admin/producers/:id/google-ads/overview", requireAuth, requireAdmi
   }
 });
 
-// Relatório rico (gráficos + insights de IA) — só chamado quando o admin clica em
-// "Gerar relatório" (não pela Visão Geral, que precisa responder rápido): roda mais
-// queries e uma chamada de IA, uma espera aceitável só nessa ação específica.
-// Cada número aqui vem de uma tabela real — nada é estimado/inventado. As duas seções
-// do mockup original (ligações recebidas, funil de recuperação de disparos) ficaram de
-// fora de propósito: não existe rastreio real pra nenhuma das duas hoje.
-app.get("/api/admin/producers/:id/google-ads/report", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const to = req.query.to ? new Date(req.query.to) : new Date();
-    const from = req.query.from ? new Date(req.query.from) : new Date(to.getTime() - 30 * 86400000);
-    const rangeMs = Math.max(to.getTime() - from.getTime(), 86400000);
-    const prevTo = new Date(from.getTime());
-    const prevFrom = new Date(from.getTime() - rangeMs);
-    const periodoDias = Number(req.query.periodo_dias) || null;
-
-    const { data: profile } = await supabase.from("profiles").select("id,name,company_name,avatar_url,minichat_config,google_ads_customer_id,google_refresh_token").eq("id", id).maybeSingle();
-    if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
-    const mc = profile.minichat_config || {};
-
-    const periodStats = async (start, end) => {
-      const [customersRes, salesRes, visitsRes] = await Promise.all([
-        supabase.from("customers").select("id,status,source,created_at").eq("owner_id", id).is("deleted_at", null).gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
-        supabase.from("sales").select("amount,gross_amount").eq("owner_id", id).eq("status", "pago").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
-        supabase.from("visits").select("has_gclid").eq("owner_id", id).eq("event_type", "pageview").gte("created_at", start.toISOString()).lt("created_at", end.toISOString()),
-      ]);
-      const customers = customersRes.data || [];
-      const sales = salesRes.data || [];
-      const visits = visitsRes.data || [];
-      return {
-        customers,
-        contatos: customers.length,
-        interessados: customers.filter(c => c.status === "lead").length,
-        clientes: customers.filter(c => c.status === "cliente" || c.status === "assinante").length,
-        faturamento: Math.round(sales.reduce((a, s) => a + Number(s.gross_amount || s.amount || 0), 0) * 100) / 100,
-        visitas: visits.length,
-        visitasAnuncio: visits.filter(v => v.has_gclid).length,
-      };
-    };
-
-    const [statsAtual, statsAnterior, developerToken, sessoesRes] = await Promise.all([
-      periodStats(from, to),
-      periodStats(prevFrom, prevTo),
-      getGoogleAdsDeveloperToken(),
-      supabase.from("minichat_sessions").select("answers,finished_via,completed_at,created_at").eq("owner_id", id).gte("created_at", from.toISOString()).lt("created_at", to.toISOString()),
-    ]);
-    const { customers: customersAtual, ...atual } = statsAtual;
-    const { customers: _c2, ...anterior } = statsAnterior;
-    const sessoes = sessoesRes.data || [];
-
-    const adsToken = await getAdsAccessToken(profile);
-    const adsConnected = !!(profile.google_ads_customer_id && developerToken && adsToken);
-    let investimento = null;
-    if (adsConnected) {
-      try {
-        const fromStr = from.toISOString().slice(0, 10), toStr = to.toISOString().slice(0, 10);
-        const rows = await googleAdsSearch(profile.google_ads_customer_id, `SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'`, adsToken);
-        investimento = Math.round((rows.reduce((a, r) => a + Number(r.metrics?.costMicros || 0), 0) / 1e6) * 100) / 100;
-      } catch { /* fica null, resolvido pela snapshot manual abaixo */ }
-    }
-    let investimentoManual = false, investimentoManualAt = null, impressoes = null, cliques = null, acoesLocais = null, termosPesquisa = [];
-    if (investimento == null && periodoDias) {
-      const { atual: snapAtual } = await getManualSnapshots(id, periodoDias);
-      if (snapAtual) {
-        investimento = Number(snapAtual.investimento_total);
-        investimentoManual = true;
-        investimentoManualAt = snapAtual.created_at;
-        impressoes = snapAtual.impressoes ?? null;
-        cliques = snapAtual.cliques ?? null;
-        acoesLocais = snapAtual.acoes_locais || null;
-        termosPesquisa = Array.isArray(snapAtual.termos_pesquisa) ? snapAtual.termos_pesquisa : [];
-      }
-    }
-    const ctr = (impressoes && cliques != null) ? Math.round((cliques / impressoes) * 10000) / 100 : null;
-
-    // Evolução de interessados — 6 meses corridos, sempre (independe do período
-    // escolhido nos chips, igual ao mockup mostrar Mar-Ago junto de um relatório de Ago).
-    const seisMesesAtras = new Date(to.getTime()); seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 5); seisMesesAtras.setDate(1); seisMesesAtras.setHours(0, 0, 0, 0);
-    const { data: leadsSeisMeses } = await supabase.from("customers").select("created_at").eq("owner_id", id).eq("status", "lead").is("deleted_at", null).gte("created_at", seisMesesAtras.toISOString());
-    const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const evolucaoInteressados = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(to.getFullYear(), to.getMonth() - i, 1);
-      evolucaoInteressados.push({ mes: MESES[d.getMonth()], interessados: 0, _y: d.getFullYear(), _m: d.getMonth() });
-    }
-    (leadsSeisMeses || []).forEach(c => {
-      const d = new Date(c.created_at);
-      const bucket = evolucaoInteressados.find(b => b._y === d.getFullYear() && b._m === d.getMonth());
-      if (bucket) bucket.interessados++;
-    });
-    evolucaoInteressados.forEach(b => { delete b._y; delete b._m; });
-
-    // Horários com mais contatos — bucket por hora em America/Sao_Paulo (não getHours()
-    // cru, que muda com o fuso da máquina que roda o código).
-    const FAIXAS = [{ label: "00-06h", ini: 0, fim: 6 }, { label: "06-12h", ini: 6, fim: 12 }, { label: "12-18h", ini: 12, fim: 18 }, { label: "18-21h", ini: 18, fim: 21 }, { label: "21-24h", ini: 21, fim: 24 }];
-    const horarios = FAIXAS.map(f => ({ faixa: f.label, contatos: 0 }));
-    customersAtual.forEach(c => {
-      const hora = Number(new Date(c.created_at).toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }));
-      const idx = FAIXAS.findIndex(f => hora >= f.ini && hora < f.fim);
-      if (idx >= 0) horarios[idx].contatos++;
-    });
-
-    // Canais de origem — só os 4 valores que existem de verdade (nunca "Google Meu
-    // Negócio"/"Indicação", que não são rastreados em lugar nenhum do sistema).
-    const SOURCE_LABEL = { minichat: "Site", google_ads: "Google Ads", manual: "Manual", checkout: "Compra" };
-    const canaisPorFonte = {};
-    customersAtual.forEach(c => { const s = c.source || "checkout"; canaisPorFonte[s] = (canaisPorFonte[s] || 0) + 1; });
-    const totalCanais = customersAtual.length || 1;
-    const canaisOrigem = Object.entries(canaisPorFonte).map(([source, count]) => ({ source, label: SOURCE_LABEL[source] || source, count, pct: Math.round((count / totalCanais) * 100) })).sort((a, b) => b.count - a.count);
-
-    // Conversas no WhatsApp — sessões do Mini Chat concluídas via WhatsApp.
-    const conversasWhatsapp = sessoes.filter(s => s.completed_at && s.finished_via === "whatsapp").length;
-
-    // "O que as pessoas procuraram" — só confiável pra quem usa o fluxo PADRÃO do Mini
-    // Chat (perguntas customizadas podem ter outra coisa na posição 0) — nesse caso
-    // devolve null e o card some sozinho no frontend, nunca mostra dado errado.
-    let interesses = null;
-    if (!mc.questions?.length) {
-      const contagem = {};
-      sessoes.forEach(s => { const r = Array.isArray(s.answers) ? s.answers[0] : null; const nome = r?.answer && String(r.answer).trim(); if (nome) contagem[nome] = (contagem[nome] || 0) + 1; });
-      const totalInteresses = Object.values(contagem).reduce((a, b) => a + b, 0);
-      if (totalInteresses > 0) interesses = Object.entries(contagem).map(([nome, count]) => ({ nome, count, pct: Math.round((count / totalInteresses) * 100) })).sort((a, b) => b.count - a.count).slice(0, 8);
-    }
-
-    // Insights de IA — só comenta os números já calculados acima, nunca abre pergunta
-    // livre (evita a IA inventar um dado que não foi passado).
-    const dadosParaIA = {
-      contatos: atual.contatos, contatosAnterior: anterior.contatos,
-      interessados: atual.interessados, interessadosAnterior: anterior.interessados,
-      clientes: atual.clientes, faturamento: atual.faturamento,
-      canaisOrigem: canaisOrigem.map(c => `${c.label}: ${c.pct}%`),
-      horarioPico: horarios.slice().sort((a, b) => b.contatos - a.contatos)[0]?.faixa,
-      servicoMaisProcurado: interesses?.[0] ? `${interesses[0].nome} (${interesses[0].pct}%)` : null,
-      conversasWhatsapp,
-      investimento, impressoes, cliques, ctr,
-      chamadasGoogleAds: acoesLocais?.chamadas ?? null,
-      visitasLoja: acoesLocais?.visitas_loja ?? null,
-      termoMaisBuscado: termosPesquisa?.[0]?.termo || null,
-    };
-    const systemPromptInsights = `Você resume o desempenho de marketing de um negócio pro dono, em português direto e curto. Aqui estão os números reais do período (JSON): ${JSON.stringify(dadosParaIA)}\n\nEscreva de 3 a 5 frases curtas (uma por linha), cada uma comentando um número acima. NÃO invente nenhum dado que não esteja nesse JSON — se um campo vier null, não fale sobre ele. Responda SOMENTE um array JSON puro de strings, sem markdown, ex: ["frase 1","frase 2"]`;
-    let insights = [];
-    try {
-      let reply = null;
-      for (const key of GROQ_KEYS) { try { reply = await callGroq(key, systemPromptInsights, [{ role: "user", content: "Gere os insights." }]); break; } catch {} }
-      if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(systemPromptInsights, [{ role: "user", content: "Gere os insights." }]); } catch {} }
-      if (reply) { const m = reply.match(/\[[\s\S]*\]/); if (m) insights = JSON.parse(m[0]).filter(s => typeof s === "string" && s.trim()).slice(0, 4); }
-    } catch (e) { console.error("[google-ads/report] insights IA falharam:", e.message); }
-
-    res.json({
-      cliente: { id, name: profile.name, company_name: profile.company_name, avatar_url: profile.avatar_url },
-      businessContext: mc.business_context || null,
-      periodo: { from: from.toISOString(), to: to.toISOString() },
-      investimento, investimentoManual, investimentoManualAt,
-      impressoes, cliques, ctr, acoesLocais, termosPesquisa,
-      atual, anterior,
-      conversasWhatsapp,
-      evolucaoInteressados, horarios, canaisOrigem, interesses, insights,
-      publico: await minichatPublicoParaRelatorio(id, mc, from, to),
-    });
-  } catch (err) {
-    console.error("[google-ads/report]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Salva (ou atualiza) o relatório já gerado pelo admin — sempre a mesma linha por
-// (produtor, tipo, ano, mês), pra nunca duplicar no histórico: gerar de novo o
-// relatório de agosto substitui o de agosto, mantendo o mesmo link já compartilhado
-// (`share_token`). Recebe o JSON que GET .../report já devolveu, pra não recalcular
-// tudo de novo (principalmente a chamada de IA dos insights, que custa e demora).
-app.post("/api/admin/producers/:id/google-ads/report/save", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { tipo, dados } = req.body;
-    if (!dados?.periodo?.to) return res.status(400).json({ error: "Dados do relatório ausentes" });
-    const to = new Date(dados.periodo.to);
-    const ano = to.getFullYear(), mes = to.getMonth() + 1;
-    const { data: existente, error: erroSelect } = await supabase.from("google_ads_reports").select("id,share_token,viewed_at,viewed_by").eq("owner_id", id).eq("tipo", tipo || "mensal").eq("ano", ano).eq("mes", mes).maybeSingle();
-    if (erroSelect) return res.status(500).json({ error: erroSelect.message });
-    if (existente) {
-      await supabase.from("google_ads_reports").update({ periodo_from: dados.periodo.from, periodo_to: dados.periodo.to, dados, updated_at: new Date().toISOString() }).eq("id", existente.id);
-      return res.json({ share_token: existente.share_token, viewed_at: existente.viewed_at, viewed_by: existente.viewed_by });
-    }
-    const share_token = crypto.randomBytes(12).toString("base64url");
-    const { error } = await supabase.from("google_ads_reports").insert({
-      owner_id: id, tipo: tipo || "mensal", ano, mes,
-      periodo_from: dados.periodo.from, periodo_to: dados.periodo.to,
-      dados, share_token,
-    });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ share_token, viewed_at: null, viewed_by: null });
-  } catch (err) {
-    console.error("[google-ads/report/save]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Histórico de relatórios salvos desse produtor — alimenta a tela "Histórico" e o
-// detalhe da aba "Relatórios" (Clientes) — por isso já vem com os comentários
-// completos (quem, quando, o texto), não só a contagem.
-app.get("/api/admin/producers/:id/google-ads/reports", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data: reports, error } = await supabase.from("google_ads_reports")
-      .select("id,tipo,ano,mes,periodo_from,periodo_to,share_token,viewed_at,viewed_by,created_at")
-      .eq("owner_id", id).order("ano", { ascending: false }).order("mes", { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
-    const ids = (reports || []).map(r => r.id);
-    let comentariosPorReport = {}, viewsPorReport = {};
-    if (ids.length) {
-      const { data: comentarios } = await supabase.from("google_ads_report_comments").select("id,report_id,autor,texto,created_at").in("report_id", ids).order("created_at", { ascending: true });
-      (comentarios || []).forEach(c => { (comentariosPorReport[c.report_id] = comentariosPorReport[c.report_id] || []).push(c); });
-      const { data: views, error: erroViews } = await supabase.from("google_ads_report_views").select("id,report_id,nome,times_seen,first_viewed_at,last_viewed_at").in("report_id", ids).order("last_viewed_at", { ascending: false });
-      if (erroViews) return res.status(500).json({ error: `Tabela de visualizações: ${erroViews.message}` });
-      (views || []).forEach(v => { (viewsPorReport[v.report_id] = viewsPorReport[v.report_id] || []).push(v); });
-    }
-    res.json({ reports: (reports || []).map(r => ({ ...r, comments: comentariosPorReport[r.id] || [], comment_count: (comentariosPorReport[r.id] || []).length, views: viewsPorReport[r.id] || [] })) });
-  } catch (err) {
-    console.error("[google-ads/reports]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Resumo por produtor — só quem já gerou pelo menos um relatório — alimenta a aba
-// "Relatórios" em Clientes (lista antes de abrir o detalhe de cada produtor).
-app.get("/api/admin/google-ads/reports/summary", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: reports, error } = await supabase.from("google_ads_reports").select("id,owner_id,ano,mes");
-    if (error) return res.status(500).json({ error: error.message });
-    if (!reports?.length) return res.json({ produtores: [] });
-    const reportIds = reports.map(r => r.id);
-    const { data: comments } = await supabase.from("google_ads_report_comments").select("report_id").in("report_id", reportIds);
-    const comentariosPorReport = {};
-    (comments || []).forEach(c => { comentariosPorReport[c.report_id] = (comentariosPorReport[c.report_id] || 0) + 1; });
-    // total_vistos conta PESSOAS que viram (uma linha por nome distinto em cada
-    // relatório), não relatórios — senão um relatório visto por 3 pessoas aparecia
-    // como "1 visto" só porque é um relatório só.
-    const { data: views, error: erroViews } = await supabase.from("google_ads_report_views").select("report_id").in("report_id", reportIds);
-    if (erroViews) return res.status(500).json({ error: `Tabela de visualizações: ${erroViews.message}` });
-    const vistosPorReport = {};
-    (views || []).forEach(v => { vistosPorReport[v.report_id] = (vistosPorReport[v.report_id] || 0) + 1; });
-    const porOwner = {};
-    reports.forEach(r => {
-      if (!porOwner[r.owner_id]) porOwner[r.owner_id] = { owner_id: r.owner_id, total_relatorios: 0, total_vistos: 0, total_comentarios: 0, ultimo: null };
-      const p = porOwner[r.owner_id];
-      p.total_relatorios++;
-      p.total_vistos += vistosPorReport[r.id] || 0;
-      p.total_comentarios += comentariosPorReport[r.id] || 0;
-      if (!p.ultimo || r.ano > p.ultimo.ano || (r.ano === p.ultimo.ano && r.mes > p.ultimo.mes)) p.ultimo = { ano: r.ano, mes: r.mes };
-    });
-    const ownerIds = Object.keys(porOwner);
-    const { data: profiles } = await supabase.from("profiles").select("id,name,company_name,avatar_url").in("id", ownerIds);
-    const profileMap = {};
-    (profiles || []).forEach(p => { profileMap[p.id] = p; });
-    const produtores = Object.values(porOwner).map(p => ({
-      ...p,
-      producer_name: profileMap[p.owner_id]?.company_name || profileMap[p.owner_id]?.name || null,
-      avatar_url: profileMap[p.owner_id]?.avatar_url || null,
-    })).sort((a, b) => (b.ultimo.ano * 12 + b.ultimo.mes) - (a.ultimo.ano * 12 + a.ultimo.mes));
-    res.json({ produtores });
-  } catch (err) {
-    console.error("[google-ads/reports/summary]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Comentários recentes em relatórios do Google Ads — alimenta o aviso na Visão geral
-// (de um produtor) e o card no Dashboard (de todos os produtores, sem ?owner_id).
-app.get("/api/admin/google-ads/comments/recent", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit) || 8, 50);
-    const ownerId = req.query.owner_id || null;
-    let reportQuery = supabase.from("google_ads_reports").select("id,owner_id,tipo,ano,mes");
-    if (ownerId) reportQuery = reportQuery.eq("owner_id", ownerId);
-    const { data: reports, error: erroReports } = await reportQuery;
-    if (erroReports) return res.status(500).json({ error: erroReports.message });
-    const reportMap = {};
-    (reports || []).forEach(r => { reportMap[r.id] = r; });
-    const reportIds = Object.keys(reportMap);
-    if (!reportIds.length) return res.json({ comments: [] });
-    const { data: comments, error } = await supabase.from("google_ads_report_comments")
-      .select("id,report_id,autor,texto,created_at")
-      .in("report_id", reportIds).order("created_at", { ascending: false }).limit(limit);
-    if (error) return res.status(500).json({ error: error.message });
-    const ownerIds = [...new Set((comments || []).map(c => reportMap[c.report_id]?.owner_id).filter(Boolean))];
-    let profileMap = {};
-    if (ownerIds.length) {
-      const { data: profiles } = await supabase.from("profiles").select("id,name").in("id", ownerIds);
-      (profiles || []).forEach(p => { profileMap[p.id] = p.name; });
-    }
-    res.json({
-      comments: (comments || []).map(c => {
-        const rep = reportMap[c.report_id];
-        return {
-          id: c.id, autor: c.autor, texto: c.texto, created_at: c.created_at,
-          owner_id: rep?.owner_id || null, producer_name: rep ? (profileMap[rep.owner_id] || null) : null,
-          tipo: rep?.tipo || null, ano: rep?.ano || null, mes: rep?.mes || null,
-        };
-      }),
-    });
-  } catch (err) {
-    console.error("[google-ads/comments/recent]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Visualização pública do relatório salvo — sem login, sem acesso a mais nada do
-// sistema. Mesmo padrão de rota pública já usado em /api/minichat/config: CORS aberto,
-// busca só pelo token, nunca expõe o id do produtor nem qualquer outro dado.
-app.options("/api/public/google-ads-report/:token", (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-  res.sendStatus(204);
-});
-// Registra UMA visualização — sempre cria uma linha nova, nunca funde com uma
-// visualização anterior do "mesmo" nome. Nome não identifica a pessoa (duas pessoas
-// diferentes podem se chamar igual) — juntar pelo nome ia esconder visitas de gente
-// diferente como se fosse uma só. google_ads_reports.viewed_at/viewed_by continuam
-// existindo só como "visto mais recente" (atalho pra Histórico/GARelatorioGerado), a
-// lista completa (uma linha por visita) vem de google_ads_report_views.
-async function registrarVisualizacaoRelatorio(reportId, nome) {
-  try {
-    const agora = new Date().toISOString();
-    const { error: erroInsert } = await supabase.from("google_ads_report_views").insert({ report_id: reportId, nome, first_viewed_at: agora, last_viewed_at: agora });
-    if (erroInsert) console.error("[registrarVisualizacaoRelatorio] insert:", erroInsert.message);
-    await supabase.from("google_ads_reports").update({ viewed_at: agora, viewed_by: nome }).eq("id", reportId);
-  } catch (e) {
-    console.error("[registrarVisualizacaoRelatorio]", e.message);
-  }
-}
-
-app.get("/api/public/google-ads-report/:token", async (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  try {
-    const { token } = req.params;
-    // Nome de quem tá vendo — o relatório.html pede antes de mostrar o relatório, pra
-    // o admin saber QUEM viu, não só que alguém viu.
-    const nome = req.query.nome ? String(req.query.nome).trim().slice(0, 120) : null;
-    const { data: report } = await supabase.from("google_ads_reports").select("id,tipo,dados,owner_id,viewed_at").eq("share_token", token).maybeSingle();
-    if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
-    if (nome) {
-      registrarVisualizacaoRelatorio(report.id, nome);
-    } else if (!report.viewed_at) {
-      supabase.from("google_ads_reports").update({ viewed_at: new Date().toISOString() }).eq("id", report.id).then(null, () => {});
-    }
-    const { data: profile } = await supabase.from("profiles").select("name,avatar_url").eq("id", report.owner_id).maybeSingle();
-    const { data: comments } = await supabase.from("google_ads_report_comments").select("autor,texto,created_at").eq("report_id", report.id).order("created_at", { ascending: true });
-    res.json({ producer: { name: profile?.name || null, avatar_url: profile?.avatar_url || null }, tipo: report.tipo, dados: report.dados, comments: comments || [] });
-  } catch (err) {
-    console.error("[public/google-ads-report]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Comentário público no relatório (ex: o produtor respondendo pelo link) — mesmo
-// padrão de rate limit por chave já usado em /api/leads/create.
-const reportCommentRateMap = new Map();
-app.options("/api/public/google-ads-report/:token/comment", (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-  res.sendStatus(204);
-});
-app.post("/api/public/google-ads-report/:token/comment", async (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  try {
-    const { token } = req.params;
-    const now = Date.now();
-    const entry = reportCommentRateMap.get(token) || { count: 0, reset: now + 60000 };
-    if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
-    entry.count++;
-    reportCommentRateMap.set(token, entry);
-    if (entry.count > 5) return res.status(429).json({ error: "Muitos comentários seguidos, tente de novo em instantes." });
-
-    const { autor, texto } = req.body;
-    if (!texto || !texto.trim()) return res.status(400).json({ error: "Comentário vazio" });
-    const { data: report } = await supabase.from("google_ads_reports").select("id").eq("share_token", token).maybeSingle();
-    if (!report) return res.status(404).json({ error: "Relatório não encontrado" });
-    const { data, error } = await supabase.from("google_ads_report_comments").insert({
-      report_id: report.id,
-      autor: autor ? String(autor).trim().slice(0, 120) : null,
-      texto: String(texto).trim().slice(0, 2000),
-    }).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-  } catch (err) {
-    console.error("[public/google-ads-report/comment]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Admin apaga um comentário do relatório (ex: comentário de teste, spam) — o admin
-// confirma antes na tela, nunca apaga automático.
-app.delete("/api/admin/google-ads/report-comments/:commentId", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const { error } = await supabase.from("google_ads_report_comments").delete().eq("id", commentId);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[google-ads/report-comments delete]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Status do Google Ads por produtor
-app.get("/api/admin/producers/:id/google/status", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data } = await supabase.from("profiles")
-      .select("google_refresh_token,google_connected_email,google_token_updated_at,google_ads_customer_id")
-      .eq("id", req.params.id).maybeSingle();
-    res.json({
-      connected: !!data?.google_refresh_token,
-      email: data?.google_connected_email || null,
-      updatedAt: data?.google_token_updated_at || null,
-      customerId: data?.google_ads_customer_id || null,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/admin/producers/:id/google/disconnect", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { error } = await supabase.from("profiles").update({
-      google_refresh_token: null,
-      google_access_token: null,
-      google_token_expires_at: null,
-      google_connected_email: null,
-      google_token_updated_at: null,
-    }).eq("id", req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Campanhas/Anúncios/Palavras-chave: dependem da Google Ads API de verdade (developer
 // token + customer_id). Estrutura pronta pra plugar isso — até lá, resposta honesta
 // de "não conectado", sem simular dado nenhum.
 async function requireAdsConnection(profile) {
-  if (!profile?.google_ads_customer_id) return false;
   const developerToken = await getGoogleAdsDeveloperToken();
-  if (!developerToken) return false;
-  return !!(await getAdsAccessToken(profile)); // nunca joga exceção
+  return !!(profile?.google_ads_customer_id && developerToken);
 }
 function adsDateRange(req) {
   const to = req.query.to ? new Date(req.query.to) : new Date();
@@ -4491,47 +2755,17 @@ function adsDateRange(req) {
   return { fromStr: from.toISOString().slice(0, 10), toStr: to.toISOString().slice(0, 10) };
 }
 
-// Busca as duas snapshots manuais mais recentes (atual + anterior) pra um produtor +
-// período — usadas como substituto do Investimento/campanhas reais quando o Google Ads
-// ainda não está conectado. `periodo_dias` precisa bater exatamente (7/14/30/90): uma
-// snapshot colada pra "30 dias" não vale pra outra janela, pra nunca misturar números
-// de períodos diferentes sem o admin saber.
-async function getManualSnapshots(ownerId, periodoDias) {
-  if (!periodoDias) return { atual: null, anterior: null };
-  const { data } = await supabase
-    .from("google_ads_manual_snapshots")
-    .select("id,investimento_total,campanhas,impressoes,cliques,acoes_locais,termos_pesquisa,created_at")
-    .eq("owner_id", ownerId)
-    .eq("periodo_dias", periodoDias)
-    .order("created_at", { ascending: false })
-    .limit(2);
-  const rows = data || [];
-  return { atual: rows[0] || null, anterior: rows[1] || null };
-}
-
-
 app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
-  if (!(await requireAdsConnection(profile))) {
-    // Sem conexão real: mostra a lista de campanhas da snapshot manual mais recente
-    // (colada a partir de prints do app do Google Ads) em vez do card de "pendente".
-    const periodoDias = Number(req.query.periodo_dias) || null;
-    const { atual: snap } = await getManualSnapshots(req.params.id, periodoDias);
-    if (snap && Array.isArray(snap.campanhas) && snap.campanhas.length) {
-      const campaigns = snap.campanhas.map(c => ({ name: c.nome, cost: Number(c.investimento) || 0, clicks: c.cliques ?? null }));
-      return res.json({ connected: false, manual: true, manualAt: snap.created_at, campaigns });
-    }
-    return res.json({ connected: false, campaigns: [] });
-  }
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
+  if (!(await requireAdsConnection(profile))) return res.json({ connected: false, campaigns: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
-    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.clicks, metrics.impressions
       FROM campaign
       WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
       ORDER BY metrics.cost_micros DESC
-    `, adsToken);
+    `);
     const campaigns = rows.map(r => ({
       id: r.campaign?.id, name: r.campaign?.name, status: r.campaign?.status,
       cost: Number(r.metrics?.costMicros || 0) / 1e6,
@@ -4544,67 +2778,18 @@ app.get("/api/admin/producers/:id/google-ads/campaigns", requireAuth, requireAdm
     res.json({ connected: true, campaigns: [], error: describeGoogleAdsError(err) });
   }
 });
-
-// Salva um "snapshot" manual do Google Ads (investimento total + campanhas) colado
-// pelo admin a partir da resposta de uma IA externa que leu prints do app do Google
-// Ads — ponte enquanto a conta desse produtor não está com a integração real
-// conectada. Sempre INSERT (nunca sobrescreve o anterior), pra manter histórico e
-// permitir comparar com a última vez que o admin atualizou.
-app.post("/api/admin/producers/:id/google-ads/manual-snapshot", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { periodo_dias, investimento_total, campanhas, impressoes, cliques, acoes_locais, termos_pesquisa, raw_gpt_text } = req.body;
-    if (![7, 14, 30, 90].includes(Number(periodo_dias))) return res.status(400).json({ error: "Período inválido" });
-    const investimento = Number(investimento_total);
-    if (!Number.isFinite(investimento) || investimento < 0) return res.status(400).json({ error: "Investimento total inválido" });
-    const campanhasLimpas = Array.isArray(campanhas)
-      ? campanhas
-          .map(c => ({ nome: String(c?.nome || "").trim(), investimento: Number(c?.investimento), cliques: c?.cliques != null ? Number(c.cliques) : null }))
-          .filter(c => c.nome && Number.isFinite(c.investimento))
-      : [];
-    // Campos extras opcionais — o admin pode colar só o investimento (como antes) ou o
-    // JSON completo (impressões, cliques, detalhamento de "ações locais" do Google Ads —
-    // visita à loja, chamada, rota, etc. — e termos de pesquisa com custo). Cada campo
-    // ausente/null fica null, nunca é estimado.
-    const numOrNull = v => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
-    const acoesLocaisLimpas = acoes_locais && typeof acoes_locais === "object"
-      ? { visitas_loja: numOrNull(acoes_locais.visitas_loja), visitas_site: numOrNull(acoes_locais.visitas_site), visualizacoes_rota: numOrNull(acoes_locais.visualizacoes_rota), chamadas: numOrNull(acoes_locais.chamadas), pedidos: numOrNull(acoes_locais.pedidos), visualizacoes_menu: numOrNull(acoes_locais.visualizacoes_menu), outras: numOrNull(acoes_locais.outras) }
-      : null;
-    const termosPesquisaLimpos = Array.isArray(termos_pesquisa)
-      ? termos_pesquisa.map(t => ({ termo: String(t?.termo || "").trim(), cliques: numOrNull(t?.cliques), custo: numOrNull(t?.custo) })).filter(t => t.termo)
-      : [];
-    const { data, error } = await supabase.from("google_ads_manual_snapshots").insert({
-      owner_id: id,
-      periodo_dias: Number(periodo_dias),
-      investimento_total: investimento,
-      campanhas: campanhasLimpas,
-      impressoes: numOrNull(impressoes),
-      cliques: numOrNull(cliques),
-      acoes_locais: acoesLocaisLimpas,
-      termos_pesquisa: termosPesquisaLimpos,
-      raw_gpt_text: raw_gpt_text ? String(raw_gpt_text).slice(0, 20000) : null,
-    }).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-  } catch (err) {
-    console.error("[google-ads/manual-snapshot]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, ads: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
-    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status,
              ad_group_ad.ad.responsive_search_ad.headlines, metrics.clicks, metrics.impressions, metrics.cost_micros
       FROM ad_group_ad
       WHERE segments.date BETWEEN '${fromStr}' AND '${toStr}'
       ORDER BY metrics.cost_micros DESC
-    `, adsToken);
+    `);
     const ads = rows.map(r => {
       const headline = r.adGroupAd?.ad?.responsiveSearchAd?.headlines?.[0]?.text || r.adGroupAd?.ad?.name || r.adGroupAd?.ad?.type || "Anúncio";
       return {
@@ -4621,11 +2806,10 @@ app.get("/api/admin/producers/:id/google-ads/ads", requireAuth, requireAdmin, as
   }
 });
 app.get("/api/admin/producers/:id/google-ads/keywords", requireAuth, requireAdmin, async (req, res) => {
-  const { data: profile } = await supabase.from("profiles").select("id,google_ads_customer_id,google_refresh_token").eq("id", req.params.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("google_ads_customer_id").eq("id", req.params.id).maybeSingle();
   if (!(await requireAdsConnection(profile))) return res.json({ connected: false, keywords: [] });
   try {
     const { fromStr, toStr } = adsDateRange(req);
-    const adsToken = await getAdsAccessToken(profile);
     const rows = await googleAdsSearch(profile.google_ads_customer_id, `
       SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
              metrics.clicks, metrics.impressions, metrics.cost_micros, metrics.ctr
@@ -4727,97 +2911,6 @@ app.get("/api/admin/github/callback", async (req, res) => {
 app.post("/api/admin/github/disconnect", requireAuth, requireAdmin, async (req, res) => {
   await supabase.from("platform_github_auth").delete().eq("id", 1);
   res.json({ ok: true });
-});
-
-const IMAGE_EXT_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml" };
-const imageMimeFromPath = (p) => IMAGE_EXT_MIME[(p.split(".").pop() || "").toLowerCase()] || "application/octet-stream";
-
-// Lista as imagens de verdade do repositório do cliente — pra trocar foto do site direto
-// pelo Admin, sem precisar pedir pra outra IA (Lovable) editar o site. Prioriza public/ e
-// src/assets, onde ficam as imagens reais do site (favicon/ícones minúsculos ficam por
-// último, raramente é isso que o admin quer trocar).
-app.get("/api/admin/producers/:id/github/images", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
-    const repo = profile.github_repo;
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-    const branch = repoInfo.data.default_branch;
-    const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
-    const images = (treeResp.data.tree || [])
-      .filter(i => i.type === "blob" && /\.(png|jpe?g|webp|gif|svg)$/i.test(i.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(i.path) && (i.size || 0) < 8 * 1024 * 1024)
-      .map(i => ({ path: i.path, size: i.size || 0 }))
-      .sort((a, b) => {
-        const pa = /^(public|src\/assets)\//i.test(a.path) ? 0 : 1, pb = /^(public|src\/assets)\//i.test(b.path) ? 0 : 1;
-        if (pa !== pb) return pa - pb;
-        const fa = /favicon|icon-/i.test(a.path) ? 1 : 0, fb = /favicon|icon-/i.test(b.path) ? 1 : 0;
-        if (fa !== fb) return fa - fb;
-        return a.path.localeCompare(b.path);
-      })
-      .slice(0, 60);
-    res.json({ images });
-  } catch (err) {
-    console.error("[github/images]", err.response?.data || err.message);
-    res.status(500).json({ error: "Falha ao listar as imagens do repositório" });
-  }
-});
-
-// Devolve o conteúdo de uma imagem do repo em base64 pra pré-visualização (o <img> do
-// admin monta um data: URL com isso — evita expor uma rota sem autenticação só pra imagem).
-app.get("/api/admin/producers/:id/github/image-content", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { path } = req.query;
-    if (!path) return res.status(400).json({ error: "path ausente" });
-    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const resp = await axios.get(`https://api.github.com/repos/${profile.github_repo}/contents/${encodeURI(path)}`, { headers });
-    if (!resp.data.content) return res.status(500).json({ error: "Arquivo grande demais pra pré-visualizar" });
-    res.json({ content_base64: resp.data.content.replace(/\n/g, ""), mime: imageMimeFromPath(path) });
-  } catch (err) {
-    console.error("[github/image-content]", err.response?.data || err.message);
-    res.status(500).json({ error: "Falha ao carregar a imagem" });
-  }
-});
-
-// Troca uma imagem do site pelo caminho EXATO onde ela já está — mantém o mesmo nome de
-// arquivo, então nenhum código do site precisa mudar (Vite/Next só empacotam de novo o
-// que já está em public/ ou src/assets no próximo deploy). Sem isso, o produtor precisaria
-// pedir pra outra IA (Lovable) editar o site toda vez que quiser trocar uma foto.
-app.post("/api/admin/producers/:id/github/replace-image", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { path, base64 } = req.body || {};
-    if (!path || !base64) return res.status(400).json({ error: "path e base64 são obrigatórios" });
-    const { data: profile } = await supabase.from("profiles").select("github_repo,site_url").eq("id", id).maybeSingle();
-    if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const repo = profile.github_repo;
-    const raw = base64.includes(",") ? base64.split(",")[1] : base64;
-    let sha;
-    try {
-      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(path)}`, { headers });
-      sha = existing.data.sha;
-    } catch (e) {
-      if (e.response?.status !== 404) throw e;
-    }
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(path)}`, {
-      message: `JosephPay: troca a imagem ${path}`,
-      content: raw,
-      ...(sha ? { sha } : {}),
-    }, { headers });
-    res.json({ ok: true, path });
-  } catch (err) {
-    console.error("[github/replace-image]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.message || "Falha ao trocar a imagem" });
-  }
 });
 
 app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) => {
@@ -4925,15 +3018,6 @@ async function readGithubFile(repo, filePath, headers, token) {
 // só <a href>, porque muitos botões (principalmente os que abrem WhatsApp) são feitos
 // via onClick + window.open/window.location em vez de um <a> de verdade. Chama registra()
 // pra cada ocorrência encontrada.
-// Conteúdo de uma string JS que pode ter blocos ${...} com aspas dentro (ex:
-// `https://wa.me/${phone}?text=${encodeURIComponent('Olá, tudo bem?')}`). Sem
-// isso, um regex ingênuo pra de capturar na primeira aspa que aparece DENTRO do
-// ${...} — gerando um href quebrado que nunca casa com o texto real do arquivo
-// na hora de aplicar a troca (o bug que fez o botão da Temakeria não ser corrigido
-// mesmo o "Aplicar" reportando sucesso). Trata ${...} como bloco atômico (não para
-// nas aspas de dentro) e só encerra a string na aspa/crase de verdade, fora de ${}.
-const STR_CONTENT = "(?:\\$\\{[^}]*\\}|[^\"'`\\n])*";
-
 function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   let m;
   const reHref = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -4941,69 +3025,35 @@ function extractLinksFromContent(content, filePath, registra, varMap = {}) {
   const reLink = /<Link\b[^>]*\bto\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Link>/gi;
   while ((m = reLink.exec(content))) registra(m[1], m[2], filePath);
   // href/to passado como expressão JSX com string estática: href={"..."} ou href={'...'}
-  const reHrefExpr = new RegExp(`\\b(?:href|to)\\s*=\\s*\\{\\s*(["'\`])(${STR_CONTENT})\\1\\s*\\}`, "gi");
-  while ((m = reHrefExpr.exec(content))) registra(m[2], "(atributo href={...})", filePath);
-  // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível.
-  // O texto da URL não existe literalmente NESTE arquivo (só o nome da variável) — pra
-  // aplicar uma troca de verdade, quem for editar precisa mexer no arquivo de constantes
-  // onde a variável é DEFINIDA, não procurar a URL aqui. Por isso passa varName/varFile
-  // adiante — sem isso, "aplicar" tentava achar a URL neste arquivo e nunca encontrava
-  // (erro "nenhum link encontrado", mesmo o link tendo sido detectado certinho no scan).
+  const reHrefExpr = /\b(?:href|to)\s*=\s*\{\s*["'`]([^"'`]+)["'`]\s*\}/gi;
+  while ((m = reHrefExpr.exec(content))) registra(m[1], "(atributo href={...})", filePath);
+  // href/to passado como variável JSX — ex: href={WHATSAPP_URL}; resolve do varMap se possível
   const reHrefVar = /\b(?:href|to)\s*=\s*\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
   while ((m = reHrefVar.exec(content))) {
     const varName = m[1];
     const resolved = varMap[varName];
-    if (resolved) registra(resolved.url, `(variável: ${varName})`, filePath, { varName, varFile: resolved.file });
+    if (resolved) registra(resolved, `(variável: ${varName})`, filePath);
     else registra(`{${varName}}`, `(variável: ${varName})`, filePath);
   }
   // botão que redireciona via JS em vez de <a href> — comum pra abrir WhatsApp num onClick
-  const reWinOpen = new RegExp(`window\\.open\\(\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
-  while ((m = reWinOpen.exec(content))) registra(m[2], "(window.open no código)", filePath);
-  const reWinLoc = new RegExp(`window\\.location(?:\\.href)?\\s*=\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
-  while ((m = reWinLoc.exec(content))) registra(m[2], "(window.location no código)", filePath);
-  const reWa = new RegExp(`(["'\`])(https?:\\/\\/(?:wa\\.me|api\\.whatsapp\\.com)\\/${STR_CONTENT})\\1`, "gi");
-  while ((m = reWa.exec(content))) registra(m[2], "(link de WhatsApp no código)", filePath);
-  // Template literals com URL — ex: `https://wa.me/${phone}` ou `https://site.com/pagina`.
-  // Registra o texto CRU (com ${...} de verdade) — é o que precisa bater exatamente com
-  // o arquivo na hora de aplicar; a versão com "{...}" é só pra ficar legível na tela.
+  const reWinOpen = /window\.open\(\s*["'`]([^"'`]+)["'`]/gi;
+  while ((m = reWinOpen.exec(content))) registra(m[1], "(window.open no código)", filePath);
+  const reWinLoc = /window\.location(?:\.href)?\s*=\s*["'`]([^"'`]+)["'`]/gi;
+  while ((m = reWinLoc.exec(content))) registra(m[1], "(window.location no código)", filePath);
+  const reWa = /["'`](https?:\/\/(?:wa\.me|api\.whatsapp\.com)\/[^"'`\s]*)["'`]/gi;
+  while ((m = reWa.exec(content))) registra(m[1], "(link de WhatsApp no código)", filePath);
+  // Template literals com URL — ex: `https://wa.me/${phone}` ou `https://site.com/pagina`
   const reTemplateUrl = /`(https?:\/\/[^`\n]{5,})`/gi;
   while ((m = reTemplateUrl.exec(content))) {
-    const raw = m[1];
-    const display = raw.replace(/\$\{[^}]+\}/g, "{...}");
-    registra(raw, `(URL em template literal: ${display})`, filePath);
+    const url = m[1].replace(/\$\{[^}]+\}/g, '{...}');
+    registra(url, "(URL em template literal)", filePath);
   }
   // tel: e mailto: como string
-  const reTelMail = new RegExp(`(["'\`])((?:tel|mailto):${STR_CONTENT})\\1`, "gi");
-  while ((m = reTelMail.exec(content))) registra(m[2], "(link de contato)", filePath);
+  const reTelMail = /["'`]((?:tel|mailto):[^"'`\s<>]{3,})["'`]/gi;
+  while ((m = reTelMail.exec(content))) registra(m[1], "(link de contato)", filePath);
   // router.push / navigate com rota estática
-  const reRouterPush = new RegExp(`(?:router|navigate)\\s*(?:\\.push)?\\s*\\(\\s*(["'\`])(${STR_CONTENT})\\1`, "gi");
-  while ((m = reRouterPush.exec(content))) registra(m[2], "(router.push)", filePath);
-}
-
-// Link de WhatsApp cru (wa.me/api.whatsapp.com) não é a única forma de um botão do
-// site nunca ter sido corrigido — o caso da Lervet foi um botão que linkava pra uma
-// página INTERNA (ex: "/atendimento") com um mini chat próprio antigo, sem nenhum
-// wa.me envolvido. Um link interno com essas palavras no caminho é forte candidato a
-// ser um chat/atendimento rival que "Botões do site" nunca tocou — mesma lista de
-// palavras já usada em "Detectar caminhos automaticamente" (MinichatRepoAdmin, index.html).
-const RIVAL_CHAT_LINK_RE = /minichat|mini-chat|mini_chat|\bchat\b|atendimento|fale-?conosco/i;
-function isInternalLink(href) {
-  return !/^https?:\/\//i.test(href) && !/^(mailto:|tel:|#)/i.test(href);
-}
-// Um link "pendente" é um wa.me/api.whatsapp.com que ainda não aponta pro Mini Chat,
-// OU um link interno com cara de chat/atendimento rival — nos dois casos o botão de
-// verdade do site continua levando o cliente final pra outro lugar que não o nosso.
-// ownPaths: caminhos do mini chat PRÓPRIO do site (detectOwnMinichat), quando ele é
-// aceito como "conectado" — link interno apontando pra ele não é pendência.
-function pendingChatLinks(links, minichatLink, ownPaths = []) {
-  const norm = h => String(h || "").replace(/^\.?\/+/, "").replace(/[?#].*$/, "");
-  const proprios = new Set((ownPaths || []).map(norm));
-  return (links || []).filter(l => {
-    if (l.href === minichatLink) return false;
-    if (proprios.size && proprios.has(norm(l.href))) return false;
-    if (/wa\.me|api\.whatsapp\.com/i.test(l.href)) return true;
-    return isInternalLink(l.href) && RIVAL_CHAT_LINK_RE.test(l.href);
-  });
+  const reRouterPush = /(?:router|navigate)\s*(?:\.push)?\s*\(\s*["'`]([^"'`\n]+)["'`]/gi;
+  while ((m = reRouterPush.exec(content))) registra(m[1], "(router.push)", filePath);
 }
 
 // Sites feitos no Lovable (ou qualquer app em React/Vite) não têm botões dentro do
@@ -5015,61 +3065,45 @@ async function scanRepoJsxLinks(repo, headers, token) {
   const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
   const branch = repoInfo.data.default_branch;
   const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
-  // Inclui .vue/.svelte/.astro além de React/HTML — sem isso, um produtor futuro feito
-  // em Vue, Svelte ou Astro (frameworks que já sabemos IDENTIFICAR em detectRepoFramework,
-  // mas cujos arquivos de template nunca eram varridos aqui) sempre dava "não achei nenhum
-  // botão pendente", mesmo com o botão de WhatsApp bem na cara dentro do <template>.
   const arquivos = (treeResp.data.tree || [])
-    .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js|html?|vue|svelte|astro)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
+    .filter(item => item.type === "blob" && /\.(tsx|jsx|ts|js|html?)$/i.test(item.path) && !/(^|\/)(node_modules|dist|build|\.next)\//i.test(item.path))
     .slice(0, 80);
 
   const groups = {};
-  const registra = (href, text, filePath, varMeta) => {
+  const registra = (href, text, filePath) => {
     href = (href || "").trim();
     if (!href || href.startsWith("#")) return;
     const key = `${filePath}::${href}`;
-    if (!groups[key]) groups[key] = { href, file: filePath, count: 0, samples: [], ...(varMeta || {}) };
+    if (!groups[key]) groups[key] = { href, file: filePath, count: 0, samples: [] };
     groups[key].count++;
     text = (text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
     if (text && groups[key].samples.length < 3 && !groups[key].samples.includes(text)) groups[key].samples.push(text);
   };
 
-  // Lê o conteúdo de TODO arquivo do repositório antes de tentar resolver variáveis —
-  // uma constante como MINICHAT/WHATSAPP_URL pode estar declarada em QUALQUER arquivo
-  // (inclusive dentro da própria rota que a usa, sem export nenhum), não só num arquivo
-  // chamado "site.ts"/"constants.ts". Foi assim que a Lervet quebrou: a constante MINICHAT
-  // ficava dentro de src/routes/index.tsx, um arquivo que a busca antiga nunca olhava —
-  // pra funcionar igual em QUALQUER produtor futuro, sem precisar de ajuste manual depois,
-  // isso não pode depender de convenção de nome de arquivo.
-  const conteudoPorArquivo = {};
+  // Pré-lê arquivos de constantes (lib/site.ts, constants.ts, etc.) pra resolver
+  // variáveis como href={WHATSAPP_URL} que o scan de JSX não consegue ver diretamente.
+  const varMap = {};
+  const constFiles = arquivos.filter(f => /\b(site|constants?|config|urls?)\.(ts|js)$/i.test(f.path));
+  await Promise.all(constFiles.map(async f => {
+    try {
+      const c = await readGithubFile(repo, f.path, headers, token);
+      // export const VARNAME = "https://..." (valor pode estar na mesma linha ou na seguinte)
+      const reConst = /export\s+const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`](https?:\/\/[^"'`\n]+)["'`]/g;
+      let cm;
+      while ((cm = reConst.exec(c))) varMap[cm[1]] = cm[2];
+    } catch {}
+  }));
+
+  // Processa em lotes pra não estourar o rate limit da API do GitHub nem demorar demais.
   const LOTE = 10;
   for (let i = 0; i < arquivos.length; i += LOTE) {
     const lote = arquivos.slice(i, i + LOTE);
     await Promise.all(lote.map(async item => {
-      try { conteudoPorArquivo[item.path] = await readGithubFile(repo, item.path, headers, token); }
-      catch {}
+      let content;
+      try { content = await readGithubFile(repo, item.path, headers, token); }
+      catch { return; }
+      extractLinksFromContent(content, item.path, registra, varMap);
     }));
-  }
-
-  // Monta o mapa de variáveis olhando TODO arquivo lido (com ou sem "export" na frente —
-  // uma constante local, usada só dentro do próprio arquivo, não precisa ser exportada).
-  // Aceita link externo (https://wa.me/...) e também rota interna (/minichat,
-  // /atendimento) e tel:/mailto:, que é o formato mais comum desse tipo de constante.
-  const varMap = {};
-  const reConst = /(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:[\r\n]\s*)?["'`]((?:https?:\/\/|\/|tel:|mailto:)[^"'`\n]*)["'`]/g;
-  for (const [filePath, content] of Object.entries(conteudoPorArquivo)) {
-    reConst.lastIndex = 0;
-    let cm;
-    while ((cm = reConst.exec(content))) {
-      // Não sobrescreve se um arquivo anterior já resolveu o mesmo nome — colisão de
-      // nome entre arquivos diferentes é rara o bastante pra não valer a complexidade
-      // de desambiguar.
-      if (!varMap[cm[1]]) varMap[cm[1]] = { url: cm[2], file: filePath };
-    }
-  }
-
-  for (const [filePath, content] of Object.entries(conteudoPorArquivo)) {
-    extractLinksFromContent(content, filePath, registra, varMap);
   }
   return Object.values(groups).sort((a, b) => b.count - a.count);
 }
@@ -5097,110 +3131,6 @@ app.get("/api/admin/github/scan-links", requireAuth, requireAdmin, async (req, r
 
 // Aplica só os links escolhidos pelo admin, trocando o href exato de cada um pro link do
 // Mini Chat desse cliente — substituição direta de texto, sem adivinhar nada.
-// Troca os links escolhidos pelo href exato do Mini Chat desse cliente, direto nos
-// arquivos do repositório. Extraído da rota abaixo pra ser reaproveitado pelo
-// diagnóstico automático em segundo plano (autofixSiteIssues), que aplica sozinho
-// os links de WhatsApp ainda pendentes sem precisar do admin marcar um por um.
-async function applyLinksToRepo(id, repo, itens, headers) {
-  const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
-  const porArquivo = {};
-  // Link resolvido de uma variável (href={WHATSAPP_URL}) não tem a URL literal no
-  // arquivo JSX — só o nome da variável. Precisa editar onde a constante é DECLARADA
-  // (varFile), não procurar a URL no arquivo onde ela é só usada — sem essa distinção,
-  // "aplicar" sempre dava "nenhum link encontrado" pra esse tipo de link.
-  const porVarFile = {};
-  itens.forEach(({ href, file, varName, varFile }) => {
-    if (!href) return;
-    if (varName && varFile) (porVarFile[varFile] = porVarFile[varFile] || []).push(varName);
-    else if (file) (porArquivo[file] = porArquivo[file] || []).push(href);
-  });
-  if (!Object.keys(porArquivo).length && !Object.keys(porVarFile).length) return { changed: 0, tentativas: [] };
-
-  let changed = 0;
-  // Diagnóstico de cada tentativa (href/varName + arquivo) — pra quando `changed` fica
-  // em 0 dar pra saber EXATAMENTE o que foi tentado trocar e por que não bateu (texto
-  // sumiu do arquivo vs. o texto tá lá mas o padrão de troca não reconheceu), em vez de
-  // só um erro genérico que obriga a ficar adivinhando a causa real.
-  const tentativas = [];
-  for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
-    let fileResp;
-    try {
-      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-    } catch (e) {
-      hrefsDoArquivo.forEach(href => tentativas.push({ href, file: filePath, achou: false, textoAindaNoArquivo: false, erro: e.response?.status === 404 ? "arquivo não existe mais" : "erro ao ler arquivo" }));
-      continue;
-    }
-    const sha = fileResp.data.sha;
-    // Arquivo >1MB: a API do GitHub não manda o conteúdo em base64 (só o download_url) —
-    // sem essa checagem, `content` virava string vazia e TODA troca falhava silenciosamente
-    // como se o texto não existisse, mesmo ele estando lá.
-    let content = fileResp.data.content
-      ? Buffer.from(fileResp.data.content, "base64").toString("utf8")
-      : await readGithubFile(repo, filePath, headers, await getGithubToken());
-    let mudouAqui = false;
-    hrefsDoArquivo.forEach(href => {
-      const textoAindaNoArquivo = content.includes(href);
-      const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const before = content;
-      // Se o link antigo for montado em duas partes coladas com "+" (ex:
-      // `"https://wa.me/5511..." + "?text=Olá, tudo bem?"`), trocar só a primeira parte
-      // deixa a segunda pendurada, colando um texto sem sentido no link novo — foi
-      // exatamente o que quebrou o botão da Temakeria. Esse grupo opcional captura
-      // (e descarta) esse pedaço solto junto com a troca.
-      const concatDepois = `(?:\\s*\\+\\s*["'\`][^"'\`]*["'\`])?`;
-      // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
-      content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3${concatDepois}`, "g"), `$1$2$3${minichatLink}$3`);
-      // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
-      //    num onClick, sem estar num atributo href/to)
-      content = content.replace(new RegExp(`(["'\`])${escaped}\\1${concatDepois}`, "g"), `$1${minichatLink}$1`);
-      const mudou = content !== before;
-      if (mudou) { changed++; mudouAqui = true; }
-      tentativas.push({ href, file: filePath, achou: mudou, textoAindaNoArquivo });
-    });
-    if (!mudouAqui) continue;
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-      message: "JosephPay: aponta botões do site pro Mini Chat",
-      content: Buffer.from(content, "utf8").toString("base64"),
-      sha,
-    }, { headers });
-  }
-  for (const [filePath, varNames] of Object.entries(porVarFile)) {
-    let fileResp;
-    try {
-      fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
-    } catch (e) {
-      [...new Set(varNames)].forEach(varName => tentativas.push({ href: `(variável) ${varName}`, file: filePath, achou: false, textoAindaNoArquivo: false, erro: e.response?.status === 404 ? "arquivo não existe mais" : "erro ao ler arquivo" }));
-      continue;
-    }
-    const sha = fileResp.data.sha;
-    let content = fileResp.data.content
-      ? Buffer.from(fileResp.data.content, "base64").toString("utf8")
-      : await readGithubFile(repo, filePath, headers, await getGithubToken());
-    let mudouAqui = false;
-    [...new Set(varNames)].forEach(varName => {
-      // "export" é opcional — a constante pode ser local ao arquivo, sem export nenhum.
-      const textoAindaNoArquivo = new RegExp(`(?:export\\s+)?const\\s+${varName}\\s*=`).test(content);
-      const before = content;
-      // Troca só o VALOR da declaração dessa constante (pelo nome, não pela URL antiga
-      // — a URL pode já estar diferente do que o scan viu, o nome da constante não muda).
-      content = content.replace(
-        new RegExp(`((?:export\\s+)?const\\s+${varName}\\s*=\\s*(?:[\\r\\n]\\s*)?["'\`])[^"'\`]*(["'\`])`),
-        `$1${minichatLink}$2`
-      );
-      const mudou = content !== before;
-      if (mudou) { changed++; mudouAqui = true; }
-      tentativas.push({ href: `(variável) ${varName}`, file: filePath, achou: mudou, textoAindaNoArquivo });
-    });
-    if (!mudouAqui) continue;
-    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
-      message: "JosephPay: aponta constante de link pro Mini Chat",
-      content: Buffer.from(content, "utf8").toString("base64"),
-      sha,
-    }, { headers });
-  }
-  return { changed, tentativas };
-}
-
 app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -5216,21 +3146,39 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
 
-    const { changed, tentativas } = await applyLinksToRepo(id, repo, itens, headers);
-    if (!changed) {
-      // Em vez de um erro genérico, mostra exatamente o que foi tentado trocar e por que
-      // não bateu — sem isso ficamos só adivinhando a causa a cada vez que isso acontece.
-      const primeira = (tentativas || [])[0];
-      let detail = "Nenhum link válido foi enviado pra corrigir.";
-      if (primeira) {
-        const trecho = String(primeira.href).slice(0, 90);
-        if (primeira.erro) detail = `Não consegui ler ${primeira.file} no GitHub (${primeira.erro}).`;
-        else if (!primeira.textoAindaNoArquivo) detail = `O texto "${trecho}" não está mais em ${primeira.file} — provavelmente alguém editou o arquivo depois do último escaneamento. Recarregue a lista e tente de novo.`;
-        else detail = `Achei "${trecho}" em ${primeira.file}, mas o formato do link não bateu com o padrão de troca — me avise que eu ajusto o padrão.`;
-      }
-      return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado.", detail, tentativas });
+    const porArquivo = {};
+    itens.forEach(({ href, file }) => {
+      if (!href || !file) return;
+      (porArquivo[file] = porArquivo[file] || []).push(href);
+    });
+    if (!Object.keys(porArquivo).length) return res.status(400).json({ error: "Nenhum link selecionado" });
+
+    let changed = 0;
+    for (const [filePath, hrefsDoArquivo] of Object.entries(porArquivo)) {
+      const fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      const sha = fileResp.data.sha;
+      let content = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+      let mudouAqui = false;
+      hrefsDoArquivo.forEach(href => {
+        const escaped = String(href).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const before = content;
+        // 1) atributo href="…" ou to="…" (HTML ou <Link> do React Router)
+        content = content.replace(new RegExp(`(href|to)(\\s*=\\s*)(["'])${escaped}\\3`, "g"), `$1$2$3${minichatLink}$3`);
+        // 2) qualquer outra ocorrência entre aspas (ex: link de WhatsApp usado direto
+        //    num onClick, sem estar num atributo href/to)
+        content = content.replace(new RegExp(`(["'\`])${escaped}\\1`, "g"), `$1${minichatLink}$1`);
+        if (content !== before) { changed++; mudouAqui = true; }
+      });
+      if (!mudouAqui) continue;
+      await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+        message: "JosephPay: aponta botões do site pro Mini Chat",
+        content: Buffer.from(content, "utf8").toString("base64"),
+        sha,
+      }, { headers });
     }
+    if (!changed) return res.status(400).json({ error: "Nenhum dos links selecionados foi encontrado — o arquivo pode ter mudado desde a última leitura. Recarregue a lista e tente de novo." });
 
     res.json({ ok: true, changed });
   } catch (err) {
@@ -5238,238 +3186,6 @@ app.post("/api/admin/producers/:id/github/apply-links", requireAuth, requireAdmi
     res.status(500).json({ error: "Falha ao aplicar os links no repositório" });
   }
 });
-
-// Analisa a árvore de arquivos do repo e descobre que tipo de projeto é —
-// usado tanto pra montar o vercel.json certo quanto pra saber se um arquivo
-// novo (ex: a página do Mini Chat) precisa entrar em public/ pra ser
-// realmente publicado no build (Vite/Next só copiam pro deploy final o que
-// está dentro de public/ — qualquer outro arquivo novo na raiz é ignorado
-// pelo build e nunca chega ao site no ar).
-function detectRepoFramework(allPaths) {
-  const hasPackageJson = allPaths.includes("package.json");
-  const hasViteConfig  = allPaths.some(p => /^vite\.config\.[jt]s$/.test(p));
-  const hasNextConfig  = allPaths.some(p => /^next\.config\.[jt]sx?$/.test(p));
-  const hasTanStackRoutes = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
-  // "TanStack Start" (SSR via Vinxi/Nitro — app.config.ts é a assinatura) é um framework
-  // BEM diferente de "TanStack Router" puro dentro de um SPA Vite comum: mesma pasta de
-  // rotas, builds completamente diferentes. Tratar os dois como "é Vite" foi o que gerou
-  // um vercel.json errado (framework:"vite" + outputDirectory:"dist") num projeto Start —
-  // que não builda pra uma pasta dist/ estática, e quebrou o site publicado da Lervet.
-  //
-  // A versão NOVA do TanStack Start (a que o Lovable gera — caso da CAA Renovations) não
-  // tem mais app.config.ts: usa vite.config.ts com o plugin tanstackStart, então "ter
-  // vite.config" NÃO prova que é um SPA Vite comum. A assinatura confiável por caminho é
-  // não ter index.html na raiz (um SPA Vite sempre tem; o Start gera o HTML no servidor)
-  // ou ter os arquivos de entrada do Start (src/start.ts, src/server.ts, src/client.tsx).
-  // Foi assim que o vercel.json da CAA virou um genérico de Vite sem ninguém perceber.
-  const hasRootIndexHtml = allPaths.includes("index.html");
-  const hasStartEntry = allPaths.some(p => /^src\/(start|server|client)\.[jt]sx?$/.test(p));
-  const hasTanStackStart = allPaths.some(p => /^app\.config\.[jt]s$/.test(p))
-    || (hasTanStackRoutes && (!hasRootIndexHtml || hasStartEntry));
-  const hasTanStack = hasTanStackRoutes && !hasTanStackStart;
-  const hasAstroConfig   = allPaths.some(p => /^astro\.config\.[jt]s$/.test(p));
-  const hasSvelteConfig  = allPaths.some(p => /^svelte\.config\.[jt]s$/.test(p));
-  const hasNuxtConfig    = allPaths.some(p => /^nuxt\.config\.[jt]s$/.test(p));
-  const hasRemixConfig   = allPaths.some(p => /^remix\.config\.[jt]s$/.test(p));
-  // Qualquer framework fora dos que sabemos montar um vercel.json correto de cor — melhor
-  // não inventar um molde genérico errado do que arriscar quebrar o build.
-  // Esses frameworks usam vite.config por baixo (TanStack Start novo, SvelteKit, Astro,
-  // Remix com Vite) — por isso "tem vite.config" não pode mais excluir eles daqui.
-  const unknownFramework = hasPackageJson && !hasNextConfig
-    && (hasTanStackStart || hasAstroConfig || hasSvelteConfig || hasNuxtConfig || hasRemixConfig);
-  const hasPublicDir   = allPaths.some(p => /^public\//.test(p));
-  // Qualquer projeto com package.json passa por um passo de build (Vite/Next/CRA/etc)
-  // que só publica o que está dentro de public/ — arquivos soltos na raiz do repo
-  // não vão pro ar, mesmo que o commit no GitHub funcione normalmente.
-  const isBuildProject = hasPackageJson;
-  return { hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack, unknownFramework, hasPublicDir, isBuildProject };
-}
-
-function buildVercelConfig({ hasPackageJson, hasViteConfig, hasNextConfig, hasTanStack }) {
-  if (hasNextConfig) return { framework: "nextjs" };
-  if (hasViteConfig || hasTanStack) {
-    return {
-      buildCommand: "npm run build",
-      outputDirectory: "dist",
-      framework: "vite",
-      rewrites: [{ source: "/(.*)", destination: "/index.html" }],
-    };
-  }
-  if (hasPackageJson) {
-    return {
-      buildCommand: "npm run build",
-      outputDirectory: "dist",
-      rewrites: [{ source: "/(.*)", destination: "/index.html" }],
-    };
-  }
-  return { cleanUrls: true, trailingSlash: false };
-}
-
-// Garante que o vercel.json do repositório existe e está com a configuração certa
-// pro tipo de projeto detectado — chamada tanto pelo botão manual "Preparar pra
-// Vercel" quanto automaticamente sempre que instalamos algo novo no repo, pra
-// nunca depender de alguém lembrar de clicar nesse botão.
-//
-// Duas travas de segurança pra nunca mais sobrescrever um vercel.json que não é nosso
-// (o bug que quebrou o deploy da Lervet, testado e validado por outro projeto dela):
-// 1. Framework que não sabemos montar de cor (TanStack Start, Astro, Svelte, Nuxt,
-//    Remix, e qualquer outro que vier no futuro) — nunca cria/sobrescreve, só avisa.
-// 2. Já existe um vercel.json e não fomos NÓS que escrevemos da última vez (ou alguém
-//    mudou desde então) — também não mexe, só avisa. `id` é o produtor, usado pra
-//    lembrar o sha do que a JosephPay escreveu por último.
-async function ensureVercelConfig(repo, headers, detected, id) {
-  // Só trava de vez pra framework que NÃO sabemos montar de cor (TanStack Start,
-  // Astro, etc.) — Vite e Next continuam sendo cuidados normalmente, sempre, mesmo
-  // pra produtor antigo que ainda não tinha essa proteção salva (não pode virar
-  // "nunca mais mexo" pro caso que a gente já testou e sabe fazer certo).
-  if (detected.unknownFramework) {
-    return { changed: false, skipped: "framework_desconhecido" };
-  }
-  const vercelConfig = buildVercelConfig(detected);
-  let storedSha = null;
-  if (id) {
-    const { data: profile } = await supabase.from("profiles").select("github_vercel_config_sha").eq("id", id).maybeSingle();
-    storedSha = profile?.github_vercel_config_sha || null;
-  }
-  let existingSha = null;
-  let existingContent = null;
-  let existingCfg = {};
-  try {
-    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    existingSha = existing.data.sha;
-    existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
-    try { existingCfg = existingContent.trim() ? JSON.parse(existingContent) : {}; } catch { existingCfg = {}; }
-  } catch (e) {
-    if (e.response?.status !== 404) throw e;
-  }
-  // Formato legado do Vercel ("routes") não pode ser misturado com as chaves modernas
-  // que a gente escreve aqui (framework/buildCommand/rewrites) — o Vercel rejeita o
-  // arquivo inteiro se os dois aparecerem juntos. Nunca mexe nesse caso; deixa como
-  // "customizado" pro admin revisar — mistura os dois teria quebrado o deploy inteiro.
-  if (Array.isArray(existingCfg.routes)) {
-    return { changed: false, skipped: "vercel_json_customizado" };
-  }
-  // NUNCA substitui o arquivo inteiro — só garante que as chaves de build (framework/
-  // buildCommand/outputDirectory/rewrites) estão certas, preservando qualquer outra
-  // chave que já esteja lá (ex: "redirects" do Mini Chat, cuidado por ensureMinichatRedirect
-  // separadamente — sobrescrever o arquivo inteiro aqui apagaria esse redirecionamento
-  // toda vez que essa função rodasse de novo).
-  const desired = JSON.stringify({ ...existingCfg, ...vercelConfig }, null, 2) + "\n";
-  if (existingContent !== null) {
-    if (existingContent === desired) {
-      // Já está certo. Se ainda não tínhamos a "impressão digital" salva (produtor
-      // de antes dessa trava existir), grava agora sem reescrever nada no repo.
-      if (id && storedSha !== existingSha) await supabase.from("profiles").update({ github_vercel_config_sha: existingSha }).eq("id", id).then(null, () => {});
-      return { changed: false, config: vercelConfig };
-    }
-    // Só bloqueia a reescrita se JÁ tínhamos uma impressão digital salva (ou seja,
-    // a JosephPay já escreveu esse arquivo antes) e ela não bate mais — sinal de
-    // que alguém trocou por fora depois que passamos a cuidar dele. Sem impressão
-    // digital ainda é só o caso comum de produtor antigo — adota e escreve normal.
-    if (id && storedSha && storedSha !== existingSha) {
-      return { changed: false, config: vercelConfig, skipped: "vercel_json_customizado" };
-    }
-  }
-  const body = {
-    message: "JosephPay: prepara repositório pra deploy na Vercel",
-    content: Buffer.from(desired, "utf8").toString("base64"),
-  };
-  if (existingSha) body.sha = existingSha;
-  const put = await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
-  if (id) await supabase.from("profiles").update({ github_vercel_config_sha: put.data.content.sha }).eq("id", id).then(null, () => {});
-  return { changed: true, config: vercelConfig };
-}
-
-// Aponta um caminho (ex: "/minichat.html") direto pro Mini Chat usando uma regra de
-// REDIRECIONAMENTO do próprio Vercel (redirects/routes no vercel.json) — não mais um
-// arquivo estático dentro do repositório. Isso funciona pra QUALQUER tipo de projeto,
-// conhecido ou não (TanStack Start, Astro, Remix, qualquer framework que vier no
-// futuro), porque não depende de saber onde/como o framework serve arquivos de public/
-// nem do build ter dado certo — o Vercel resolve essa regra na borda, antes de chamar
-// qualquer código do framework. E como nossa regra sempre entra NA FRENTE de qualquer
-// outra já existente no arquivo, ela vale mesmo em projetos com uma rota "pega-tudo"
-// própria (comum em apps com servidor próprio) — foi exatamente isso que impedia o
-// Mini Chat de aparecer no site da Lervet não importava quantas vezes reinstalasse.
-// Só mexe na chave "redirects"/"routes", nunca no resto do arquivo — pode rodar mesmo
-// em framework "desconhecido" que `ensureVercelConfig` se recusa a tocar.
-async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
-  const source = "/" + String(desiredPath || "minichat.html").replace(/^\/+/, "");
-  const destination = `https://josephpay.com/minichat.html?uid=${id}`;
-  let sha = null;
-  let cfg = {};
-  try {
-    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    sha = existing.data.sha;
-    const content = Buffer.from(existing.data.content, "base64").toString("utf8");
-    try { cfg = content.trim() ? JSON.parse(content) : {}; } catch { cfg = {}; }
-  } catch (e) {
-    if (e.response?.status !== 404) throw e;
-  }
-
-  const escaped = source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  let novoCfg;
-  if (Array.isArray(cfg.routes)) {
-    // Formato legado do Vercel ("routes") — não pode ser misturado com "redirects"/
-    // "rewrites" modernos no mesmo arquivo, o Vercel rejeita. Remove só uma entrada
-    // antiga NO MESMO caminho (senão duplica a cada reinstalação) — várias entradas
-    // com destinos iguais mas caminhos diferentes podem coexistir, porque a gente
-    // não sabe de antemão qual caminho é o botão de verdade do site do cliente.
-    const semEsseCaminho = cfg.routes.filter(r => r.src !== `^${escaped}$`);
-    novoCfg = { ...cfg, routes: [{ src: `^${escaped}$`, status: 307, headers: { Location: destination } }, ...semEsseCaminho] };
-  } else {
-    const atuais = Array.isArray(cfg.redirects) ? cfg.redirects : [];
-    const semEsseCaminho = atuais.filter(r => r.source !== source);
-    novoCfg = { ...cfg, redirects: [{ source, destination, permanent: false }, ...semEsseCaminho] };
-  }
-
-  const desired = JSON.stringify(novoCfg, null, 2) + "\n";
-  const atual = JSON.stringify(cfg, null, 2) + "\n";
-  if (desired === atual) return { changed: false };
-
-  const body = { message: "JosephPay: aponta caminho do Mini Chat pro redirecionamento", content: Buffer.from(desired, "utf8").toString("base64") };
-  if (sha) body.sha = sha;
-  await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
-  return { changed: true };
-}
-
-// Acha sozinho os caminhos internos do site com cara de "entrada de chat/atendimento"
-// (ex: o botão do site linkando pra "/minichat/index.html", em vez do "minichat.html"
-// que a gente supõe por padrão) — pra nunca depender do admin descobrir e digitar o
-// caminho certo à mão. Mesma heurística que já existia em "Detectar caminhos
-// automaticamente" no admin, agora rodando sozinha dentro de install/reinstall.
-async function detectMinichatCandidatePaths(repo, headers, token) {
-  try {
-    const links = await scanRepoJsxLinks(repo, headers, token);
-    const internos = links.filter(l => {
-      const h = l.href || "";
-      return !/^https?:\/\//i.test(h) && !/^(mailto:|tel:|#|\{)/.test(h) && h.length > 1;
-    });
-    const keywords = /minichat|mini-chat|mini_chat|\bchat\b|contact|contato|agendar|conversa|falar|atendimento/i;
-    const candidatos = internos.filter(l => keywords.test(l.href));
-    return [...new Set(candidatos.map(l => l.href.replace(/^\.\//, "").replace(/^\/+/, "")).filter(Boolean))].slice(0, 5);
-  } catch {
-    return [];
-  }
-}
-
-// Lê direto do vercel.json quais caminhos JÁ estão redirecionando pro Mini Chat desse
-// produtor — fonte de verdade real (o que está de fato configurado), em vez de confiar
-// só no que ficou salvo no banco (que pode estar desatualizado ou incompleto se algum
-// caminho foi adicionado depois via detecção automática).
-async function getInstalledMinichatPaths(repo, headers, id) {
-  try {
-    const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    const content = Buffer.from(resp.data.content, "base64").toString("utf8");
-    const cfg = content.trim() ? JSON.parse(content) : {};
-    const destination = `https://josephpay.com/minichat.html?uid=${id}`;
-    if (Array.isArray(cfg.routes)) {
-      return cfg.routes.filter(r => r.headers?.Location === destination).map(r => r.src.replace(/^\^\/?/, "").replace(/\$$/, ""));
-    }
-    return (Array.isArray(cfg.redirects) ? cfg.redirects : []).filter(r => r.destination === destination).map(r => String(r.source || "").replace(/^\/+/, ""));
-  } catch {
-    return [];
-  }
-}
 
 // Prepara o repositório para deploy na Vercel — commita um vercel.json adequado ao tipo de
 // projeto (HTML estático, Vite, Next.js). Assim o produtor só precisa importar no painel da Vercel.
@@ -5486,17 +3202,58 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
     // Detecta o tipo de projeto analisando os arquivos do repo
     const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
     const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-    const detected = detectRepoFramework(allPaths);
-    const { changed, config, skipped } = await ensureVercelConfig(repo, headers, detected, id);
-    if (skipped === "framework_desconhecido") {
-      return res.json({ ok: true, skipped, message: "Esse tipo de projeto eu ainda não sei montar um vercel.json de cor (não é HTML puro, Vite ou Next) — pra não arriscar quebrar o build, não mexi em nada. Se já tem um vercel.json, ele continua como está." });
+
+    let vercelConfig;
+    const hasPackageJson = allPaths.includes("package.json");
+    const hasViteConfig  = allPaths.some(p => /^vite\.config\.[jt]s$/.test(p));
+    const hasNextConfig  = allPaths.some(p => /^next\.config\.[jt]sx?$/.test(p));
+    const hasTanStack    = allPaths.some(p => /^src\/routes\/__root\.[jt]sx?$/.test(p));
+
+    if (hasNextConfig) {
+      vercelConfig = { framework: "nextjs" };
+    } else if (hasViteConfig || hasTanStack) {
+      vercelConfig = {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        framework: "vite",
+        rewrites: [{ source: "/(.*)", destination: "/index.html" }]
+      };
+    } else if (hasPackageJson) {
+      vercelConfig = {
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
+        rewrites: [{ source: "/(.*)", destination: "/index.html" }]
+      };
+    } else {
+      // HTML estático puro
+      vercelConfig = {
+        cleanUrls: true,
+        trailingSlash: false
+      };
     }
-    if (skipped === "vercel_json_customizado") {
-      return res.json({ ok: true, skipped, message: "Já existe um vercel.json nesse repositório que não fui eu que escrevi (ou foi alterado depois) — não mexi pra não sobrescrever uma configuração customizada de propósito." });
+
+    // Verifica se já existe vercel.json
+    let existingSha = null;
+    try {
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
+      existingSha = existing.data.sha;
+      // Já existe — verifica se é diferente antes de atualizar
+      const existingContent = Buffer.from(existing.data.content, "base64").toString("utf8");
+      if (existingContent === JSON.stringify(vercelConfig, null, 2) + "\n") {
+        return res.json({ ok: true, already: true, config: vercelConfig });
+      }
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
     }
-    if (!changed) return res.json({ ok: true, already: true, config });
+
+    const body = {
+      message: "JosephPay: prepara repositório pra deploy na Vercel",
+      content: Buffer.from(JSON.stringify(vercelConfig, null, 2) + "\n", "utf8").toString("base64"),
+    };
+    if (existingSha) body.sha = existingSha;
+    await axios.put(`https://api.github.com/repos/${repo}/contents/vercel.json`, body, { headers });
     await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
-    res.json({ ok: true, config });
+    res.json({ ok: true, config: vercelConfig });
   } catch (err) {
     console.error("[github/prepare-vercel]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao preparar o repositório para a Vercel" });
@@ -5509,766 +3266,48 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
 app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const desiredPath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "").replace(/^public\//, "");
-    if (!desiredPath) return res.status(400).json({ error: "Caminho é obrigatório" });
-    const { data: profile } = await supabase.from("profiles").select("github_repo,github_minichat_path").eq("id", id).maybeSingle();
+    let filePath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "");
+    if (!filePath) return res.status(400).json({ error: "Caminho do arquivo é obrigatório" });
+    const { data: profile } = await supabase.from("profiles").select("github_repo").eq("id", id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
-    const oldPath = profile.github_minichat_path || null;
     const token = await getGithubToken();
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const repo = profile.github_repo;
-
-    // Garante as configurações de build ANTES do redirecionamento (mesma ordem de
-    // reinstalarMinichatFile) — ensureMinichatRedirect preserva o resto do arquivo, então
-    // rodar nessa ordem garante que o redirecionamento não é perdido depois.
+    const minichatLink = `https://josephpay.com/minichat.html?uid=${id}`;
+    const loaderHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="0;url=${minichatLink}">
+<title>Mini Chat</title>
+<script>window.location.replace(${JSON.stringify(minichatLink)});<\/script>
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:sans-serif">
+<p>Redirecionando…</p>
+</body>
+</html>
+`;
+    let sha;
     try {
-      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
-      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-      const detected = detectRepoFramework(allPaths);
-      if (detected.isBuildProject) {
-        await ensureVercelConfig(repo, headers, detected, id).then(({ changed }) => {
-          if (changed) return supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", id);
-        });
-      }
+      const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, { headers });
+      sha = existing.data.sha;
     } catch (e) {
-      console.warn("[install-minichat] detecção de framework falhou, seguindo assim mesmo:", e.message);
+      if (e.response?.status !== 404) throw e;
     }
-
-    // Não cria mais um arquivo estático no repositório — em vez disso, aponta o caminho
-    // direto pro Mini Chat com uma regra de redirecionamento do próprio Vercel
-    // (ensureMinichatRedirect). Funciona pra qualquer tipo de projeto, mesmo os que a
-    // gente não sabe montar vercel.json de cor, e mesmo com uma rota "pega-tudo" própria
-    // do framework — nossa regra sempre entra na frente de qualquer outra no arquivo.
-    //
-    // Nunca depende do admin escrever ou escolher o caminho certo: escaneia o código do
-    // site sozinho procurando o link real que o botão de "chat"/"atendimento" já usa (o
-    // caso da Lervet foi um botão indo pra "/minichat/index.html", diferente do padrão
-    // "minichat.html") e aponta um redirecionamento pra CADA caminho candidato — cobre o
-    // padrão e qualquer variação real que o site já tenha, tudo de uma vez, sem perguntar.
-    const detectados = await detectMinichatCandidatePaths(repo, headers, token);
-    const todosOsCaminhos = [...new Set([desiredPath, ...detectados])];
-    for (const p of todosOsCaminhos) {
-      await ensureMinichatRedirect(repo, headers, id, p);
-    }
-    // Limpa qualquer arquivo estático de uma instalação com o mecanismo antigo — sobrar
-    // os dois é clutter e pode até atrapalhar dependendo de como o framework prioriza
-    // rota x arquivo estático.
-    await deleteStaleMinichatFile(repo, headers, oldPath, null);
-    for (const p of todosOsCaminhos) {
-      await deleteStaleMinichatFile(repo, headers, p, null);
-      await deleteStaleMinichatFile(repo, headers, `public/${p}`, null);
-    }
-    await supabase.from("profiles").update({ github_minichat_path: desiredPath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
-    // Corrige qualquer link com uid errado nos demais arquivos do repo (ex: botões do site
-    // que apontavam para outro minichat). Roda após salvar github_minichat_path para que o
-    // autoFix já enxergue o caminho correto.
-    autoFixMinichatLink(id).catch(() => {});
-    res.json({ ok: true, file_path: desiredPath, served_path: desiredPath, extra_paths: detectados });
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: "JosephPay: instala página do Mini Chat",
+      content: Buffer.from(loaderHtml, "utf8").toString("base64"),
+      ...(sha ? { sha } : {}),
+    }, { headers });
+    await supabase.from("profiles").update({ github_minichat_path: filePath, github_minichat_installed_at: new Date().toISOString() }).eq("id", id);
+    res.json({ ok: true, file_path: filePath });
   } catch (err) {
     console.error("[github/install-minichat]", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar o Mini Chat no repositório" });
   }
 });
-
-// Confere DE VERDADE se a página do Mini Chat está no ar no domínio do cliente — não
-// basta o commit no GitHub ter dado certo, porque isso não garante que o deploy da
-// Vercel terminou nem que o arquivo caiu no lugar certo (foi exatamente o que enganou
-// o Thomas com o Temakeria Box: commit ok, site nunca atualizou). Busca a URL real e
-// confirma que é de fato a página-redirect do Mini Chat, não a home do site (SPA
-// engolindo a rota) nem um 404.
-// Confere DE VERDADE se o Mini Chat está no ar no domínio do cliente — fonte única
-// de verdade usada tanto pelo botão manual "Verificar" quanto pelo checklist de
-// Ativação e pelo diagnóstico automático (autofixSiteIssues). Ter um commit no
-// GitHub não prova nada sozinho: o deploy pode não ter terminado, o caminho pode
-// estar errado, ou — o caso que enganou o Thomas com a Lervet — pode já existir
-// OUTRO mini chat (de um projeto anterior) publicado nesse mesmo endereço.
-// Uma rota "pega-tudo" no vercel.json (ex: { "source": "/(.*)", "destination": "/api/..." })
-// é normal — às vezes até obrigatória — em frameworks com servidor próprio (SSR/Nitro,
-// como TanStack Start, Remix, Nuxt, SvelteKit). Mas ela também intercepta QUALQUER arquivo
-// novo que a gente colocar em public/ ANTES do Vercel sequer olhar se existe um arquivo
-// estático ali — ou seja, nesses casos, instalar/reinstalar o loader pode nunca aparecer
-// no site, não importa quantas vezes a gente tente, porque a rota nunca deixa a requisição
-// chegar no arquivo estático. Detectar isso evita ficar "reinstalando" às cegas pra sempre.
-function hasCatchAllRewrite(vercelJsonText) {
-  try {
-    const cfg = JSON.parse(vercelJsonText);
-    const regras = [...(cfg.rewrites || []), ...(cfg.routes || [])];
-    return regras.some(r => {
-      const src = (r.source || r.src || "").trim();
-      return /^\^?\/?(\(\.\*\)|\.\*)\/?\$?$/.test(src);
-    });
-  } catch { return false; }
-}
-
-// Mesmo aviso usado tanto na hora de instalar (avisa ANTES de gastar um ciclo tentando)
-// quanto na verificação ao vivo (explica um "não achei" que na real é isso).
-async function catchAllRewriteWarning(repo, headers) {
-  try {
-    const resp = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    const content = Buffer.from(resp.data.content, "base64").toString("utf8");
-    if (hasCatchAllRewrite(content)) {
-      return "Esse repositório tem uma rota que redireciona todo caminho pro próprio app — pode ser o motivo. Se persistir, precisa de uma rota dentro do código do app, não reinstalar de novo.";
-    }
-  } catch {}
-  return "";
-}
-
-// Confere UM caminho específico. Extraído pra ser chamado em lista (verifyMinichatLive)
-// sem repetir a lógica — cada caminho candidato precisa da mesma checagem rigorosa.
-async function verifyMinichatPath(base, servedPath, id, diagnosticoCatchAll) {
-  const url = `${base}/${servedPath}`;
-  // Cache-busting: sem isso, o CDN da Vercel pode devolver uma resposta antiga do cache
-  // mesmo com Cache-Control:no-cache no pedido (isso é respeitado pelo navegador, não
-  // necessariamente pelo edge) — e a gente conclui "não atualizou" quando na real só
-  // pegou uma cópia velha.
-  const cacheBustedUrl = `${url}${url.includes("?") ? "&" : "?"}_jp=${Date.now()}`;
-  const minichatMarker = `https://josephpay.com/minichat.html?uid=${id}`;
-  // Confere a ASSINATURA exata do nosso loader (a tag <meta refresh> com o marker dentro),
-  // não só se o texto do marker aparece em algum lugar da página. Um simples "includes"
-  // dava falso positivo: a página de erro/fallback do site (servida pra qualquer caminho
-  // que não existe) podia conter esse mesmo link em outro lugar — ex: um botão de
-  // navegação que ficou apontando pra cá por engano.
-  const loaderSignature = `<meta http-equiv="refresh" content="0;url=${minichatMarker}">`;
-  try {
-    const resp = await axios.get(cacheBustedUrl, { timeout: 10000, maxRedirects: 0, validateStatus: () => true, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
-    const body = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
-    if (resp.status >= 200 && resp.status < 300 && body.includes(loaderSignature)) {
-      return { status: "ok", url, message: `✓ Confirmado.` };
-    }
-    if (resp.status >= 300 && resp.status < 400 && (resp.headers?.location || "").includes(minichatMarker)) {
-      return { status: "ok", url, message: `✓ Confirmado.` };
-    }
-    // Mensagem principal sempre curta — o diagnóstico técnico completo (a explicação de
-    // por que pode não estar pegando) só vai pra "detail", exibido apenas se o admin
-    // abrir "Detalhes técnicos". E "detail" sempre termina numa ação concreta — nunca só
-    // explica o problema e para aí, sem dizer o que fazer a seguir.
-    const resolucao = "Clique em \"Corrigir botão agora\" abaixo — aponta o botão de verdade do site direto pro Mini Chat, sem depender de caminho nem de redirecionamento nenhum.";
-    if (resp.status === 404) {
-      const porque = await diagnosticoCatchAll();
-      return { status: "nao_encontrado", url, message: `${url} deu 404.`, detail: `${porque || "Ou o deploy ainda não terminou (espere ~1 min), ou esse caminho específico não existe nesse site."} ${resolucao}` };
-    }
-    const porque2 = await diagnosticoCatchAll();
-    return { status: "conteudo_errado", url, message: `${url} ainda não é o Mini Chat.`, detail: `${porque2 || "Provavelmente já existia outra coisa publicada nesse endereço."} ${resolucao}` };
-  } catch (e) {
-    return { status: "erro", url, message: `Não consegui acessar ${url}.` };
-  }
-}
-
-// Procura no repositório do cliente um mini chat PRÓPRIO que ele já tinha (ex: o
-// public/minichat/index.html da CAA Renovations) — arquivo com cara de chat/quiz pelo
-// caminho E com uma lista de perguntas/opções dentro (só o nome não basta: um
-// "ChatIcon.tsx" não é mini chat). Devolve o arquivo, os caminhos em que ele é servido
-// no site e pra onde ele manda o contato (JosephPay, WhatsApp, e-mail).
-async function detectOwnMinichat(repo, headers, token) {
-  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-  const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
-  const candidatos = (treeResp.data.tree || [])
-    .filter(i => i.type === "blob" && i.size < 200000
-      && /\.(html?|tsx|jsx|ts|js|vue|svelte|astro)$/i.test(i.path)
-      && !/(^|\/)(node_modules|dist|build|\.next|components\/ui)\//i.test(i.path)
-      && /(mini-?_?chat|chat|quiz|diagn|pre-?diag|qualif|wizard)/i.test(i.path))
-    // Pasta/arquivo "minichat" primeiro — é o nome mais óbvio.
-    .sort((a, b) => /mini-?_?chat/i.test(b.path) - /mini-?_?chat/i.test(a.path))
-    .slice(0, 6);
-  for (const item of candidatos) {
-    let conteudo = "";
-    try { conteudo = await readGithubFile(repo, item.path, headers, token); } catch { continue; }
-    if (!/options\s*:\s*\[|questions\s*[=:]\s*\[|perguntas\s*[=:]\s*\[/i.test(conteudo)) continue;
-    const destinos = [];
-    // Só o sensor de visitas (sensor.js) não conta — precisa mandar o CONTATO pro
-    // JosephPay (criar lead) ou abrir o nosso Mini Chat.
-    if (/\/api\/leads\/create|\/api\/minichat\/lead-email|josephpay\.com\/minichat/i.test(conteudo)) destinos.push("josephpay");
-    if (/wa\.me|api\.whatsapp\.com/i.test(conteudo)) destinos.push("whatsapp");
-    if (/mailto:/i.test(conteudo)) destinos.push("email");
-    // Caminho em que o arquivo aparece no site: public/minichat/index.html → /minichat/index.html e /minichat/
-    const servido = item.path.replace(/^public\//, "");
-    const caminhos = [servido];
-    if (/(^|\/)index\.html?$/i.test(servido)) caminhos.push(servido.replace(/index\.html?$/i, ""), servido.replace(/\/index\.html?$/i, ""));
-    return { path: item.path, servedPaths: [...new Set(caminhos.filter(Boolean))], destinos };
-  }
-  return null;
-}
-
-async function verifyMinichatLive(id) {
-  const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
-  if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
-  const base = profile.site_url.replace(/\/+$/, "");
-  const token = profile.github_repo ? await getGithubToken() : null;
-  const headers = token ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" } : null;
-  // Lê do vercel.json quais caminhos JÁ estão configurados de verdade (pode ser mais de
-  // um — install/reinstall detectam e apontam vários automaticamente) — fonte de
-  // verdade real, não só o que ficou salvo no banco (pode estar desatualizado).
-  let paths = [];
-  if (headers && profile.github_repo) paths = await getInstalledMinichatPaths(profile.github_repo, headers, id);
-  if (!paths.length) paths = [(profile.github_minichat_path || "minichat.html").replace(/^public\//, "")];
-  // Diagnóstico extra: só roda quando TODAS as checagens falharem, pra explicar o motivo
-  // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
-  const diagnosticoCatchAll = async () => {
-    if (!headers || !profile.github_repo) return "";
-    // Site com servidor próprio (TanStack Start/Lovable, Astro, SvelteKit, Nuxt…) publica
-    // na Vercel num formato próprio que IGNORA as regras do vercel.json — o
-    // redirecionamento nunca vai funcionar ali, não adianta reinstalar. Confirmado na CAA
-    // (02/10): a publicação passava, mas o /minichat.html nunca redirecionava.
-    try {
-      const repoInfo = await axios.get(`https://api.github.com/repos/${profile.github_repo}`, { headers });
-      const tree = await axios.get(`https://api.github.com/repos/${profile.github_repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
-      const det = detectRepoFramework((tree.data.tree || []).filter(i => i.type === "blob").map(i => i.path));
-      if (det.unknownFramework) return " Esse tipo de site (ex: Lovable/TanStack Start) ignora o redirecionamento do vercel.json — por isso esse caminho não abre o Mini Chat, e reinstalar não resolve.";
-    } catch {}
-    const aviso = await catchAllRewriteWarning(profile.github_repo, headers);
-    return aviso ? ` ${aviso}` : "";
-  };
-  let ultimoResultado = null;
-  for (const p of paths) {
-    const resultado = await verifyMinichatPath(base, p.replace(/^public\//, ""), id, diagnosticoCatchAll);
-    if (resultado.status === "ok") { ultimoResultado = resultado; break; }
-    ultimoResultado = resultado;
-  }
-  // O nosso não está no ar — mas o site pode já ter um mini chat PRÓPRIO (caso da CAA).
-  // Nesse caso conta como conectado (pedido do Thomas: não precisar instalar por cima
-  // de um que já existe), avisando com clareza pra onde vão os contatos dele — o caso
-  // da Lervet foi justamente um chat antigo que não falava com a JosephPay.
-  if (ultimoResultado?.status !== "ok" && headers && profile.github_repo) {
-    try {
-      const proprio = await detectOwnMinichat(profile.github_repo, headers, token);
-      if (proprio) {
-        const falaComJosephPay = proprio.destinos.includes("josephpay");
-        const pra = proprio.destinos.filter(d => d !== "josephpay").map(d => d === "email" ? "pro e-mail" : "pro WhatsApp").join(" e ");
-        ultimoResultado = {
-          status: "proprio",
-          path: proprio.path,
-          servedPaths: proprio.servedPaths,
-          destinos: proprio.destinos,
-          message: `O site já tem um Mini Chat próprio (${proprio.path}) — conectado.`,
-          aviso: falaComJosephPay ? null : `Os contatos desse chat vão direto ${pra || "pra fora"} e NÃO entram no CRM do JosephPay. Se quiser que entrem (e chegar por e-mail automático), use "Trocar pelo Mini Chat do JosephPay".`,
-        };
-      }
-    } catch (e) { console.warn("[verifyMinichatLive] detectOwnMinichat:", e.message); }
-  }
-  // Guarda o resultado — é isso que o card do produtor na lista de Clientes usa pra
-  // mostrar a MESMA verdade que aparece dentro do perfil, em vez de um sinal fraco
-  // (visita histórica numa página com "minichat" no nome, que nunca desliga sozinho).
-  await supabase.from("profiles").update({
-    github_minichat_verified_ok: ultimoResultado?.status === "ok" || ultimoResultado?.status === "proprio",
-    github_minichat_verified_at: new Date().toISOString(),
-  }).eq("id", id).then(null, () => {});
-  return ultimoResultado;
-}
-
-app.get("/api/admin/producers/:id/github/verify-minichat", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const result = await verifyMinichatLive(req.params.id);
-    res.json(result);
-  } catch (err) {
-    console.error("[github/verify-minichat]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Ativação robusta: provas de que está funcionando DE VERDADE ────────────────
-// Commit certo no GitHub não é o mesmo que "está no ar" (regra 4). Estas funções dão
-// ao Admin a prova real de cada etapa: a publicação da Vercel passou? O site está no
-// ar e em que hospedagem? O sensor aparece no site e as visitas estão chegando?
-
-// Situação da última publicação, lida do próprio GitHub (a Vercel escreve o resultado
-// de cada deploy no commit) — não precisa de token da Vercel.
-async function getRepoDeployStatus(repo, headers) {
-  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-  const branch = repoInfo.data.default_branch;
-  const [statusResp, commitResp] = await Promise.all([
-    axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}/status`, { headers }),
-    axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}`, { headers }),
-  ]);
-  const st = (statusResp.data.statuses || []).find(x => /vercel/i.test(x.context || "")) || null;
-  let checkRun = null;
-  if (!st) {
-    try {
-      const cr = await axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}/check-runs`, { headers });
-      checkRun = (cr.data.check_runs || []).find(x => /vercel/i.test(x.name || "") || /vercel/i.test(x.app?.slug || "")) || null;
-    } catch {}
-  }
-  const base = { sha: commitResp.data.sha?.slice(0, 7), commitMessage: (commitResp.data.commit?.message || "").split("\n")[0], commitDate: commitResp.data.commit?.committer?.date };
-  if (!st && !checkRun) return { ...base, state: "desconhecido", message: "Não achei nenhuma publicação da Vercel ligada a esse repositório — confira se o projeto está conectado na Vercel." };
-  const raw = st ? st.state : (checkRun.status !== "completed" ? "pending" : checkRun.conclusion === "success" ? "success" : "failure");
-  const desc = st ? (st.description || "") : (checkRun.output?.title || checkRun.conclusion || "");
-  const url = st ? st.target_url : checkRun.details_url;
-  if (raw === "success") return { ...base, state: "ok", url, message: "Publicado na Vercel." };
-  if (raw === "pending") return { ...base, state: "publicando", url, message: "A Vercel está publicando agora (leva ~1 min)." };
-  // Bloqueado: no plano Hobby a Vercel bloqueia commit cujo autor (ou co-autor) não é o
-  // dono do projeto — não é erro do site, é permissão. Visto na CAA em 02/10.
-  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto)." };
-  return { ...base, state: "falhou", url, message: `A última publicação na Vercel falhou${desc ? ` (${desc})` : ""}. O site continua na versão anterior até corrigir.` };
-}
-
-// Onde o site está hospedado, pelos cabeçalhos da resposta. O Mini Chat por
-// redirecionamento (vercel.json) só funciona na Vercel — fora dela, o caminho certo é
-// trocar o botão no código ("Corrigir agora").
-async function detectHosting(siteUrl) {
-  try {
-    const r = await axios.get(siteUrl, { timeout: 10000, maxRedirects: 5, validateStatus: () => true, headers: { "Cache-Control": "no-cache" } });
-    const h = r.headers || {};
-    const server = String(h.server || "").toLowerCase();
-    let host = "desconhecida";
-    if (h["x-vercel-id"] || server.includes("vercel")) host = "vercel";
-    else if (h["x-nf-request-id"] || server.includes("netlify")) host = "netlify";
-    else if (server.includes("github.com") || h["x-github-request-id"]) host = "github-pages";
-    else if (h["cf-ray"] || server.includes("cloudflare")) host = "cloudflare";
-    else if (/wix|squarespace|shopify|wordpress|wp-engine|hostinger|nginx|apache|litespeed/.test(server + " " + String(h["x-powered-by"] || "").toLowerCase())) host = "outra";
-    const body = typeof r.data === "string" ? r.data : "";
-    return { ok: r.status >= 200 && r.status < 400, status: r.status, host, html: body };
-  } catch (e) {
-    return { ok: false, status: 0, host: "desconhecida", html: "", error: e.code || e.message };
-  }
-}
-
-// Sensor de visitas: aparece no HTML do site? As visitas do SITE (não só do Mini Chat)
-// estão chegando? Foi assim que descobrimos que o sensor da CAA estava só dentro do
-// mini chat antigo — o card ficava verde e a home não contava visita nenhuma.
-async function getSensorStatus(id, siteUrl, htmlPronto) {
-  const desde = new Date(Date.now() - 14 * 864e5).toISOString();
-  const { data: visitas } = await supabase.from("visits").select("site_url,page,created_at").eq("owner_id", id).gte("created_at", desde).order("created_at", { ascending: false }).limit(500);
-  const doSite = (visitas || []).filter(v => v.site_url !== "minichat" && !/minichat/i.test(v.page || ""));
-  let noHtml = null;
-  if (siteUrl) {
-    const html = htmlPronto !== undefined ? htmlPronto : (await detectHosting(siteUrl)).html;
-    noHtml = html ? html.includes(`sensor.js?uid=${id}`) : null;
-  }
-  return { noHtml, visitas14d: doSite.length, ultimaVisita: doSite[0]?.created_at || null, soMinichat: !doSite.length && (visitas || []).length > 0 };
-}
-
-// ── "Consertar" vercel.json de site com servidor próprio (Lovable/TanStack Start…) ──
-// Antes da detecção certa (25/08), a JosephPay escrevia a configuração genérica de Vite
-// (framework "vite" + pasta "dist" + rewrite pra index.html) nesses sites. Aqui volta
-// pro que esse tipo de site espera — tira SÓ essas chaves genéricas e marca
-// framework: null (a Vercel usa a saída que o próprio site gera) — e mantém tudo o mais
-// (ex: "redirects"). Sempre com prévia antes; só grava quando o admin confirma.
-const GENERIC_VITE_KEYS = { buildCommand: "npm run build", outputDirectory: "dist", framework: "vite" };
-async function vercelFixPlan(repo, headers) {
-  const repoInfo = await axios.get(`https://api.github.com/repos/${repo}`, { headers });
-  const tree = await axios.get(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(repoInfo.data.default_branch)}`, { headers, params: { recursive: 1 } });
-  const det = detectRepoFramework((tree.data.tree || []).filter(i => i.type === "blob").map(i => i.path));
-  if (!det.unknownFramework) return { needed: false, motivo: "framework_conhecido" };
-  let atualTxt = null, sha = null, atual = {};
-  try {
-    const r = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    sha = r.data.sha; atualTxt = Buffer.from(r.data.content, "base64").toString("utf8");
-    atual = JSON.parse(atualTxt || "{}");
-  } catch (e) { if (e.response?.status === 404) return { needed: false, motivo: "sem_vercel_json" }; if (e instanceof SyntaxError) return { needed: false, motivo: "vercel_json_invalido" }; throw e; }
-  if (!(atual.framework === "vite" && atual.outputDirectory === "dist")) return { needed: false, motivo: "ja_ok" };
-  const proposto = { ...atual };
-  for (const [k, v] of Object.entries(GENERIC_VITE_KEYS)) if (proposto[k] === v) delete proposto[k];
-  if (Array.isArray(proposto.rewrites) && proposto.rewrites.length === 1 && proposto.rewrites[0]?.source === "/(.*)" && proposto.rewrites[0]?.destination === "/index.html") delete proposto.rewrites;
-  const final = { framework: null, ...proposto };
-  return { needed: true, sha, atualTxt, propostoTxt: JSON.stringify(final, null, 2) + "\n" };
-}
-
-app.get("/api/admin/producers/:id/github/vercel-fix", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!p?.github_repo) return res.json({ needed: false, motivo: "sem_repo" });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    res.json(await vercelFixPlan(p.github_repo, { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }));
-  } catch (err) {
-    res.status(500).json({ error: err.response?.data?.message || err.message });
-  }
-});
-
-app.post("/api/admin/producers/:id/github/vercel-fix", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!p?.github_repo) return res.status(400).json({ error: "Sem repositório GitHub vinculado." });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const plano = await vercelFixPlan(p.github_repo, headers);
-    if (!plano.needed) return res.json({ ok: true, already: true });
-    // Só grava exatamente o que o admin viu na prévia — se o arquivo mudou no meio, para.
-    if (req.body?.sha && req.body.sha !== plano.sha) return res.status(409).json({ error: "O vercel.json mudou desde a prévia — abra de novo pra ver a versão atual." });
-    const r = await axios.put(`https://api.github.com/repos/${p.github_repo}/contents/vercel.json`, {
-      message: "JosephPay: conserta vercel.json (site com servidor próprio)",
-      content: Buffer.from(plano.propostoTxt, "utf8").toString("base64"),
-      sha: plano.sha,
-    }, { headers });
-    await supabase.from("profiles").update({ github_vercel_config_sha: r.data?.content?.sha || null }).eq("id", req.params.id).then(null, () => {});
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[vercel-fix]", err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.message || err.message });
-  }
-});
-
-app.get("/api/admin/producers/:id/deploy-status", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: p } = await supabase.from("profiles").select("github_repo").eq("id", req.params.id).maybeSingle();
-    if (!p?.github_repo) return res.json({ state: "sem_repo", message: "Sem repositório GitHub vinculado." });
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    res.json(await getRepoDeployStatus(p.github_repo, { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }));
-  } catch (err) {
-    console.error("[deploy-status]", err.response?.data?.message || err.message);
-    res.status(500).json({ error: err.response?.data?.message || err.message });
-  }
-});
-
-app.get("/api/admin/producers/:id/sensor-status", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: p } = await supabase.from("profiles").select("site_url").eq("id", req.params.id).maybeSingle();
-    res.json(await getSensorStatus(req.params.id, p?.site_url ? p.site_url.replace(/\/+$/, "") : null));
-  } catch (err) {
-    console.error("[sensor-status]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// "Testar tudo": roda todas as provas de uma vez e devolve uma lista simples de
-// ✓ / ⚠️ por etapa — é isso que diz se o cliente está ativado DE VERDADE.
-// Só leitura: não grava nada no repositório nem manda mensagem pra ninguém.
-app.get("/api/admin/producers/:id/activation-test", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { data: p } = await supabase.from("profiles").select("site_url,github_repo,gtm_container_id,minichat_config").eq("id", id).maybeSingle();
-    if (!p) return res.status(404).json({ error: "Produtor não encontrado" });
-    const site = p.site_url ? p.site_url.replace(/\/+$/, "") : null;
-    const token = p.github_repo ? await getGithubToken() : null;
-    const headers = token ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" } : null;
-    const [hosting, deploy, live] = await Promise.all([
-      site ? detectHosting(site) : Promise.resolve(null),
-      headers ? getRepoDeployStatus(p.github_repo, headers).catch(e => ({ state: "erro", message: e.message })) : Promise.resolve(null),
-      p.github_repo ? verifyMinichatLive(id).catch(e => ({ status: "erro", message: e.message })) : Promise.resolve(null),
-    ]);
-    const sensor = await getSensorStatus(id, site, hosting ? hosting.html : undefined);
-    const mc = p.minichat_config || {};
-    const dest = mc.destination_type || (mc.email_destino && !mc.whatsapp_number ? "email" : "whatsapp");
-    const checks = [];
-    const add = (id2, label, ok, detail, warn) => checks.push({ id: id2, label, ok: !!ok, warn: !ok && !!warn, detail });
-    if (!site) add("site", "Site no ar", false, "Cadastre o endereço do site no perfil (Editar) pra eu conseguir testar.");
-    else add("site", "Site no ar", hosting.ok, hosting.ok ? `Abriu normalmente (${hosting.host === "vercel" ? "hospedado na Vercel" : hosting.host === "desconhecida" ? "hospedagem não identificada" : `hospedado em ${hosting.host}`}).` : `Não abriu (${hosting.status || hosting.error}).`);
-    if (deploy) add("deploy", "Última publicação", deploy.state === "ok", deploy.message, deploy.state === "publicando" || deploy.state === "desconhecido");
-    const sensorOk = sensor.noHtml === true || sensor.visitas14d > 0;
-    add("sensor", "Sensor de visitas", sensorOk,
-      sensor.visitas14d > 0 ? `${sensor.visitas14d} visita(s) do site nos últimos 14 dias.`
-        : sensor.noHtml ? "Instalado no site, esperando a primeira visita."
-        : sensor.soMinichat ? "Só chegam visitas da página do mini chat — o sensor não está nas páginas do site. Reinstale no card Sensor."
-        : "Não encontrei o sensor no site nem visitas recentes. Instale no card Sensor.",
-      sensor.noHtml === null && !sensor.visitas14d);
-    if (live) {
-      const okMc = live.status === "ok" || live.status === "proprio";
-      let detail = live.status === "ok" ? "O site abre o Mini Chat do JosephPay." : live.status === "proprio" ? `O site usa um mini chat próprio (${live.path}).${live.aviso ? " Os contatos dele não entram no CRM." : ""}` : live.message;
-      if (!okMc && hosting && hosting.host !== "vercel" && hosting.host !== "desconhecida") detail += ` Como o site não está na Vercel, o redirecionamento não funciona lá — use "Corrigir agora" (troca o botão no código).`;
-      add("minichat_site", "Mini Chat no site", okMc, detail, live.status === "sem_site");
-    }
-    if (p.gtm_container_id && !p.github_repo) {
-      const g = await gtmMinichatStatus(id).catch(e => ({ status: "erro", message: e.message }));
-      add("gtm_botoes", "Botões do site → Mini Chat (GTM)", g.status === "ok", g.message || "Não consegui conferir o GTM.", g.status === "erro");
-    }
-    const cfgOk = dest === "email" ? EMAIL_RE.test(String(mc.email_destino || "")) : dest === "ambos" ? (!!mc.whatsapp_number && EMAIL_RE.test(String(mc.email_destino || ""))) : !!mc.whatsapp_number;
-    add("minichat_config", "Destino dos contatos", cfgOk, cfgOk ? (dest === "email" ? `Chega por e-mail em ${mc.email_destino}.` : dest === "ambos" ? `WhatsApp ${mc.whatsapp_number} + e-mail ${mc.email_destino}.` : `Chega no WhatsApp ${mc.whatsapp_number}.`) : (dest !== "whatsapp" && mc.email_destino && !EMAIL_RE.test(String(mc.email_destino)) ? `"${mc.email_destino}" não é um e-mail válido — corrija no card Mini Chat (ex: nome@gmail.com).` : "Configure o WhatsApp ou o e-mail de destino no card Mini Chat."));
-    if (dest !== "whatsapp") add("email_envio", "Envio automático de e-mail", !!resend, resend ? "Servidor pronto pra enviar. Use \"Enviar e-mail de teste\" no card Mini Chat pra conferir a caixa de entrada." : "RESEND_API_KEY não configurada no servidor — o Mini Chat cai no jeito antigo (abrir o e-mail do visitante).");
-    const okCount = checks.filter(c => c.ok).length;
-    res.json({ checks, okCount, total: checks.length, allOk: okCount === checks.length, testedAt: new Date().toISOString() });
-  } catch (err) {
-    console.error("[activation-test]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Diagnóstico em lote — varre TODOS os produtores com repositório GitHub vinculado
-// procurando exatamente as 3 classes de problema descobertas com o Temakeria Box e o
-// Dr. Ramon (arquivo fora de public/, vercel.json desatualizado, botão de WhatsApp
-// ainda não corrigido). Só leitura — nada é alterado aqui; o admin corrige cada um
-// pelos cards que já existem no perfil do cliente (Mini Chat no site / Botões do site).
-// Existe porque o Thomas pediu que esses erros nunca mais aconteçam com nenhum
-// produtor — não só o que motivou a reclamação — e sem isso não tem como saber quais
-// dos outros clientes têm o mesmo problema sem abrir um por um.
-// Framework que NÃO sabemos montar (TanStack Start do Lovable, Astro...) mas com o
-// vercel.json genérico de Vite que a JosephPay escrevia antes da detecção certa (caso
-// da CAA Renovations, 25/08) — provável deploy quebrado/desatualizado. Só AVISA:
-// corrigir exige olhar o projeto, nunca é automático (regra 6 do CLAUDE.md).
-async function genericViteConfigOnUnknownFramework(repo, headers, detected) {
-  if (!detected.unknownFramework) return null;
-  try {
-    const existing = await axios.get(`https://api.github.com/repos/${repo}/contents/vercel.json`, { headers });
-    let cfgAtual = {};
-    try { cfgAtual = JSON.parse(Buffer.from(existing.data.content, "base64").toString("utf8") || "{}"); } catch { return null; }
-    if (cfgAtual.framework === "vite" && cfgAtual.outputDirectory === "dist") {
-      return { tipo: "vercel_json_generico_em_framework_desconhecido", detalhe: "vercel.json está com a configuração genérica de Vite (framework \"vite\" + pasta \"dist\"), mas o site é de outro tipo (ex: TanStack Start/Lovable). O deploy na Vercel pode estar quebrado ou parado numa versão antiga — revisar o vercel.json à mão." };
-    }
-  } catch (e) { if (e.response?.status !== 404) throw e; }
-  return null;
-}
-
-app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const token = await getGithubToken();
-    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const { data: profiles } = await supabase.from("profiles")
-      .select("id,name,company_name,github_repo,github_minichat_path")
-      .not("github_repo", "is", null);
-
-    const resultados = [];
-    for (const p of (profiles || [])) {
-      const issues = [];
-      try {
-        const repoInfo = await axios.get(`https://api.github.com/repos/${p.github_repo}`, { headers });
-        const branch = repoInfo.data.default_branch;
-        const treeResp = await axios.get(`https://api.github.com/repos/${p.github_repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
-        const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-        const detected = detectRepoFramework(allPaths);
-
-        // Mini Chat não depende mais de arquivo dentro de public/ (usa redirecionamento
-        // no vercel.json agora — checado mais abaixo via verifyMinichatLive). Aqui só
-        // sinaliza vercel.json desatualizado pra framework que sabemos montar de cor —
-        // pra framework desconhecido nem ensureVercelConfig mexeria, então não tem
-        // "desatualizado" que faça sentido reportar.
-        if (detected.isBuildProject && !detected.unknownFramework) {
-          const desired = JSON.stringify(buildVercelConfig(detected), null, 2) + "\n";
-          let atual = null;
-          try {
-            const existing = await axios.get(`https://api.github.com/repos/${p.github_repo}/contents/vercel.json`, { headers });
-            atual = Buffer.from(existing.data.content, "base64").toString("utf8");
-          } catch (e) { if (e.response?.status !== 404) throw e; }
-          // Comparação simples (não faz merge como ensureVercelConfig) — só um sinal pro
-          // admin revisar manualmente; a correção de verdade sempre passa por ele.
-          if (atual === null || !atual.includes(desired.trim())) issues.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json ausente ou parece diferente do esperado pra esse tipo de projeto — revisar." });
-        }
-        const avisoVercel = await genericViteConfigOnUnknownFramework(p.github_repo, headers, detected);
-        if (avisoVercel) issues.push(avisoVercel);
-        // Não basta o commit ter dado certo — confere se o site publicado de verdade
-        // responde com o Mini Chat nesse endereço. Foi exatamente isso que enganou o
-        // Thomas com a Lervet: o checklist mostrava verde porque um arquivo nosso foi
-        // commitado, mas o caminho real do botão do site já tinha outro mini chat.
-        // (Roda antes dos botões pra saber se existe um mini chat próprio aceito.)
-        const live = await verifyMinichatLive(p.id);
-        if (live.status !== "ok" && live.status !== "sem_site" && live.status !== "proprio") {
-          issues.push({ tipo: "minichat_nao_confirmado", detalhe: live.message });
-        }
-        if (live.status === "proprio" && live.aviso) issues.push({ tipo: "minichat_proprio_fora_do_crm", detalhe: `${live.message} ${live.aviso}` });
-        const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
-        const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-        const pendentes = pendingChatLinks(links, minichatLink, live.status === "proprio" ? live.servedPaths : []);
-        if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) ainda não apontam pro Mini Chat (WhatsApp direto ou outro chat/atendimento).`, count: pendentes.length });
-      } catch (e) {
-        issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
-      }
-      resultados.push({ id: p.id, name: p.name, company_name: p.company_name, github_repo: p.github_repo, issues });
-    }
-    res.json({ producers: resultados, checkedAt: new Date().toISOString() });
-  } catch (err) {
-    console.error("[producers/site-audit]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Estado do diagnóstico automático em memória — um job por vez, roda em segundo
-// plano (não bloqueia o admin esperando) e o painel consulta o andamento via polling.
-let siteAuditJob = { running: false, startedAt: null, finishedAt: null, total: 0, done: 0, results: null, error: null };
-
-// Igual ao site-audit acima, só que em vez de só reportar, CORRIGE sozinho: move o
-// Mini Chat pra public/ e garante o vercel.json quando estiver errado (exatamente o
-// que "Reinstalar Mini Chat" já faz manualmente), e aplica os links de WhatsApp
-// pendentes pro Mini Chat certo (o que "Marcar todos" + "Aplicar" já faz manualmente
-// em Botões do site). Roda pra todo produtor com GitHub vinculado — a pedido do
-// Thomas, pra nunca mais precisar abrir cliente por cliente pra achar e corrigir isso.
-// onProgress(done,total) é chamado depois de cada produtor — permite a tela mostrar
-// uma porcentagem de verdade em vez de só "rodando", sem precisar adivinhar.
-async function autofixSiteIssues(onProgress) {
-  const token = await getGithubToken();
-  if (!token) throw new Error("GitHub ainda não conectado");
-  const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-  const { data: profiles } = await supabase.from("profiles")
-    .select("id,name,company_name,github_repo,github_minichat_path")
-    .not("github_repo", "is", null);
-
-  const total = (profiles || []).length;
-  onProgress?.(0, total);
-  const resultados = [];
-  for (const p of (profiles || [])) {
-    const fixed = [];
-    const issues = [];
-    try {
-      const repoInfo = await axios.get(`https://api.github.com/repos/${p.github_repo}`, { headers });
-      const branch = repoInfo.data.default_branch;
-      const treeResp = await axios.get(`https://api.github.com/repos/${p.github_repo}/git/trees/${encodeURIComponent(branch)}`, { headers, params: { recursive: 1 } });
-      const allPaths = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
-      const detected = detectRepoFramework(allPaths);
-
-      // O Mini Chat não depende mais de arquivo dentro de public/ (usa uma regra de
-      // redirecionamento no vercel.json agora — ver mais abaixo) — só garante as
-      // configurações de build aqui, sem essa distinção antiga.
-      if (detected.isBuildProject) {
-        const { changed, skipped } = await ensureVercelConfig(p.github_repo, headers, detected, p.id);
-        if (changed) {
-          await supabase.from("profiles").update({ github_vercel_ready_at: new Date().toISOString() }).eq("id", p.id);
-          fixed.push({ tipo: "vercel_json_desatualizado", detalhe: "vercel.json corrigido." });
-        } else if (skipped === "framework_desconhecido") {
-          const avisoVercel = await genericViteConfigOnUnknownFramework(p.github_repo, headers, detected);
-          issues.push(avisoVercel || { tipo: "vercel_json_desatualizado", detalhe: "Framework que não sei montar vercel.json de cor — não mexi, precisa revisar manualmente." });
-        } else if (skipped === "vercel_json_customizado") {
-          issues.push({ tipo: "vercel_json_desatualizado", detalhe: "Já existe um vercel.json customizado (não fui eu que escrevi) — não sobrescrevi." });
-        }
-      }
-
-      const minichatLink = `https://josephpay.com/minichat.html?uid=${p.id}`;
-      const links = await scanRepoJsxLinks(p.github_repo, headers, token);
-      // Site com mini chat próprio aceito como conectado: link pra ele não é pendência.
-      const live = p.github_minichat_path ? await verifyMinichatLive(p.id) : null;
-      const pendentes = pendingChatLinks(links, minichatLink, live?.status === "proprio" ? live.servedPaths : []);
-      // NUNCA aplica troca de link sozinho, nem um wa.me "inequívoco" — a Lervet provou
-      // que um wa.me também pode ser o passo final de um fluxo de pré-atendimento que o
-      // próprio cliente já construiu (o sendToWhatsApp do mini chat dele), e trocar isso
-      // sozinho vira um loop: quem termina de responder cai de novo no chat em vez de
-      // falar com alguém de verdade. Distinguir "botão que pula o Mini Chat" de "saída
-      // correta de um fluxo que já existe" precisa de alguém olhando o arquivo e o texto
-      // do botão — só isso vira aviso; a troca em si só roda manual, em "Botões do site".
-      if (pendentes.length) {
-        const whatsappCount = pendentes.filter(l => /wa\.me|api\.whatsapp\.com/i.test(l.href)).length;
-        const internoCount = pendentes.length - whatsappCount;
-        issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) pendente(s)${whatsappCount?` (${whatsappCount} WhatsApp`:""}${internoCount?`${whatsappCount?", ":" ("}${internoCount} interno`:""}${whatsappCount||internoCount?")":""} — revisar e aplicar manualmente em "Botões do site".` });
-      }
-
-      // Confirma no site publicado de verdade — se não bater (404, conteúdo errado, ou
-      // já existia OUTRO mini chat nesse endereço, como aconteceu com a Lervet),
-      // reinstala por cima automaticamente. Não pede confirmação porque é automático
-      // (ninguém pra confirmar em segundo plano) e o Thomas foi explícito: todo
-      // produtor sem o nosso Mini Chat de verdade tem que ser atualizado sozinho.
-      // Mini chat PRÓPRIO do site (status "proprio") nunca é reinstalado por cima
-      // sozinho — o Thomas pediu pra ele contar como conectado.
-      if (p.github_minichat_path && live) {
-        if (live.status !== "ok" && live.status !== "sem_site" && live.status !== "proprio") {
-          try {
-            await reinstalarMinichatFile(p.id);
-            fixed.push({ tipo: "minichat_nao_confirmado", detalhe: `Reinstalado por cima (estava: ${live.message}). Confirmação final roda no próximo diagnóstico, depois do deploy.` });
-          } catch (e) {
-            issues.push({ tipo: "minichat_nao_confirmado", detalhe: `Não consegui reinstalar sozinho: ${e.message}` });
-          }
-        }
-      }
-    } catch (e) {
-      issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
-    }
-    resultados.push({ id: p.id, name: p.name, company_name: p.company_name, github_repo: p.github_repo, fixed, issues });
-    onProgress?.(resultados.length, total);
-  }
-  return resultados;
-}
-
-async function runSiteAuditJob() {
-  if (siteAuditJob.running) return;
-  siteAuditJob = { running: true, startedAt: new Date().toISOString(), finishedAt: null, total: 0, done: 0, results: null, error: null };
-  try {
-    const results = await autofixSiteIssues((done, total) => {
-      siteAuditJob.done = done;
-      siteAuditJob.total = total;
-    });
-    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), total: siteAuditJob.total, done: siteAuditJob.done, results, error: null };
-    // Avisa o(s) admin(s) no celular com o resultado — sem isso, rodar sozinho em
-    // segundo plano de nada adianta se ninguém sabe o que ele encontrou/corrigiu.
-    const comAlgumaCoisa = results.filter(p => p.fixed?.length || p.issues?.length);
-    if (comAlgumaCoisa.length) {
-      const corrigidos = comAlgumaCoisa.reduce((a, p) => a + (p.fixed?.length || 0), 0);
-      const pendentes = comAlgumaCoisa.filter(p => p.issues?.length).length;
-      const { data: admins } = await supabase.from("profiles").select("id").eq("role", "admin");
-      const body = `${corrigidos} correção(ões) automática(s)${pendentes ? `, ${pendentes} produtor(es) precisam de revisão manual` : ""}.`;
-      for (const a of (admins || [])) {
-        sendPushToOwner(a.id, { title: "Diagnóstico técnico rodou", body, url: "/" });
-      }
-    }
-  } catch (e) {
-    console.error("[siteAuditJob]", e.message);
-    siteAuditJob = { running: false, startedAt: siteAuditJob.startedAt, finishedAt: new Date().toISOString(), total: siteAuditJob.total, done: siteAuditJob.done, results: null, error: e.message };
-  }
-}
-
-// Dispara o diagnóstico + correção automática em segundo plano — responde na hora,
-// sem o admin precisar esperar com a tela aberta. O andamento é consultado em
-// /api/admin/producers/site-audit/status.
-app.post("/api/admin/producers/site-audit/run", requireAuth, requireAdmin, async (req, res) => {
-  if (siteAuditJob.running) return res.json({ started: false, already_running: true });
-  runSiteAuditJob().catch(() => {});
-  res.json({ started: true });
-});
-
-app.get("/api/admin/producers/site-audit/status", requireAuth, requireAdmin, async (req, res) => {
-  res.json(siteAuditJob);
-});
-
-// ── Aviso no celular quando algo QUEBRA (sites na Vercel) ─────────────────────────
-// A cada 30 min confere, pra todo produtor com site na Vercel: a última publicação
-// passou? O site abre? O Mini Chat continua no site? Manda notificação pro celular do
-// admin SÓ quando algo muda — quebrou (⚠️) ou voltou a funcionar (✓). Nunca repete o
-// mesmo aviso. A primeira rodada depois que o servidor liga só anota como está (não
-// avisa), pra não disparar tudo de novo a cada atualização do servidor.
-// Mini Chat: só avisa se estava funcionando e parou (quem nunca instalou não é "quebra").
-const siteHealth = new Map(); // id -> { deploy, site, minichat } (true = ok)
-let siteHealthBaseline = false;
-let siteHealthRunning = false;
-async function notifyAdmins(title, body) {
-  const { data: admins } = await supabase.from("profiles").select("id").eq("role", "admin");
-  for (const a of (admins || [])) await sendPushToOwner(a.id, { title, body, url: "/" });
-}
-async function runSiteHealthMonitor() {
-  if (siteHealthRunning) return;
-  siteHealthRunning = true;
-  try {
-    const token = await getGithubToken();
-    if (!token) return;
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    const { data: profiles } = await supabase.from("profiles").select("id,name,company_name,site_url,github_repo,disabled_at").not("github_repo", "is", null);
-    for (const p of (profiles || [])) {
-      if (p.disabled_at) continue;
-      const nome = p.company_name || p.name || "Produtor";
-      try {
-        const deploy = await getRepoDeployStatus(p.github_repo, headers).catch(() => null);
-        const site = p.site_url ? await detectHosting(p.site_url.replace(/\/+$/, "")) : null;
-        // Só sites na Vercel (pedido do Thomas, por enquanto).
-        const naVercel = (site && site.host === "vercel") || (deploy && deploy.state !== "desconhecido");
-        if (!naVercel) continue;
-        const live = await verifyMinichatLive(p.id).catch(() => null);
-        const agora = {
-          deploy: deploy ? !(deploy.state === "falhou" || deploy.state === "bloqueado") : true,
-          site: site ? site.ok : true,
-          minichat: live ? (live.status === "ok" || live.status === "proprio") : null,
-        };
-        const antes = siteHealth.get(p.id);
-        siteHealth.set(p.id, agora);
-        if (!siteHealthBaseline || !antes) continue;
-        if (antes.site && !agora.site) await notifyAdmins(`⚠️ ${nome}: site fora do ar`, `${p.site_url} não abriu (${site?.status || site?.error || "sem resposta"}).`);
-        else if (!antes.site && agora.site) await notifyAdmins(`✓ ${nome}: site voltou`, `${p.site_url} está abrindo de novo.`);
-        if (antes.deploy && !agora.deploy) await notifyAdmins(`⚠️ ${nome}: publicação ${deploy.state === "bloqueado" ? "bloqueada" : "falhou"}`, deploy.message);
-        else if (!antes.deploy && agora.deploy) await notifyAdmins(`✓ ${nome}: publicação voltou a funcionar`, "A última publicação na Vercel passou.");
-        if (antes.minichat === true && agora.minichat === false) await notifyAdmins(`⚠️ ${nome}: Mini Chat parou`, live?.message || "O site não abre mais o Mini Chat.");
-        else if (antes.minichat === false && agora.minichat === true) await notifyAdmins(`✓ ${nome}: Mini Chat voltou`, "O site voltou a abrir o Mini Chat.");
-      } catch (e) { console.warn("[siteHealth]", nome, e.message); }
-    }
-    siteHealthBaseline = true;
-  } catch (e) {
-    console.error("[siteHealth]", e.message);
-  } finally {
-    siteHealthRunning = false;
-  }
-}
-setTimeout(() => { runSiteHealthMonitor().catch(() => {}); }, 2 * 60 * 1000);
-setInterval(() => { runSiteHealthMonitor().catch(() => {}); }, 30 * 60 * 1000);
-
-// Botão "Enviar aviso de teste" — confere se as notificações estão chegando no celular.
-app.post("/api/admin/alerts/test", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { count } = await supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("owner_id", req.user.id);
-    if (!count) return res.status(400).json({ error: "Este aparelho ainda não ativou as notificações. Ative em \"Ativar notificações no celular\" (menu) e tente de novo." });
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return res.status(503).json({ error: "Notificações não configuradas no servidor (VAPID)." });
-    await sendPushToOwner(req.user.id, { title: "✓ Avisos funcionando", body: "Você vai receber aqui quando um site quebrar ou voltar a funcionar.", url: "/" });
-    res.json({ ok: true, aparelhos: count });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Roda sozinho uma vez por dia, sem precisar de ninguém clicar em nada — é o "rodar em
-// segundo plano" que o Thomas pediu. Só dispara se não tiver um já em andamento.
-setInterval(() => { runSiteAuditJob().catch(() => {}); }, 24 * 60 * 60 * 1000);
 
 // Prepara o repositório do cliente pra ser importado direto na Vercel — sem
 // precisar pedir pra outra IA arrumar isso toda vez. Detecta se é um projeto
@@ -6371,24 +3410,12 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
     }
 
     let newContent;
-    // Ordem pensada pra nunca derrubar site com servidor próprio (Next, TanStack Start/
-    // Lovable): sempre que existir um <head>/<Head>/<body> de verdade (HTML ou JSX), a tag
-    // <script> vai ali — funciona igual no servidor e no navegador. Só cai no carregador
-    // em JS quando não tem nenhum desses, e mesmo assim protegido pra não rodar no servidor.
-    if (currentContent.match(/<\/head>/)) {
-      newContent = currentContent.replace(/<\/head>/, `  ${sensorSnippet}\n</head>`);
-    } else if (currentContent.match(/<\/HEAD>/i) && !/\.[jt]sx?$/.test(filePath)) {
+    if (currentContent.match(/<\/head>/i)) {
       newContent = currentContent.replace(/<\/head>/i, `  ${sensorSnippet}\n</head>`);
-    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</Head>")) {
-      newContent = currentContent.replace("</Head>", `  <script src="${PUBLIC_URL}/sensor.js?uid=${id}" async></script>\n</Head>`);
-    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</body>")) {
-      newContent = currentContent.replace("</body>", `  <script src="${PUBLIC_URL}/sensor.js?uid=${id}" async></script>\n</body>`);
     } else if (/\.[jt]sx?$/.test(filePath)) {
       // ES module: inject AFTER the last import/require line so the IIFE doesn't
       // appear before import statements (SyntaxError in strict ES modules / Vite).
-      // typeof document: em site com servidor próprio esse arquivo também roda no
-      // servidor, onde "document" não existe — sem essa proteção o site inteiro caía.
-      const loader = `\n// JosephPay sensor\nif (typeof document !== "undefined") (function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';s.async=true;document.head.appendChild(s);})();\n`;
+      const loader = `\n// JosephPay sensor\n(function(){var s=document.createElement('script');s.src='${PUBLIC_URL}/sensor.js?uid=${id}';document.head.appendChild(s);})();\n`;
       const lines = currentContent.split('\n');
       let lastImportLine = -1;
       for (let i = 0; i < lines.length; i++) {
@@ -6465,9 +3492,7 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       console.warn("[sync/history] MP fetch error:", e.message);
     }
 
-    // Checa por asaas_id em TODAS as contas (não só a de quem clicou) — evita
-    // duplicar uma venda que já foi corretamente atribuída a outro produtor.
-    const { data: existingSales } = await supabase.from("sales").select("asaas_id");
+    const { data: existingSales } = await supabase.from("sales").select("asaas_id").eq("owner_id", uid);
     const existingIds = new Set((existingSales || []).map(s => s.asaas_id));
 
     let inserted = 0, skipped = 0, errors = 0;
@@ -6476,24 +3501,6 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       const mpId = String(payment.id);
       if (existingIds.has(mpId)) { skipped++; continue; }
 
-      // Identifica o dono real via external_reference (mesmo formato usado pelo
-      // webhook, api/server.js:761-799) — nunca assume que é quem clicou no botão.
-      let ownerId = null;
-      try {
-        const ref = JSON.parse(payment.external_reference || "");
-        if (ref?.kind === "PLATFORM_SUB") { skipped++; continue; } // mensalidade, não é venda de produto
-        if (ref?.ownerId) {
-          ownerId = ref.ownerId;
-        } else if (ref?.saleId) {
-          const { data: refSale } = await supabase.from("sales").select("owner_id").eq("id", ref.saleId).maybeSingle();
-          ownerId = refSale?.owner_id || null;
-        }
-      } catch { /* external_reference ausente ou inválido */ }
-
-      // Só sincroniza pagamentos que realmente pertencem a quem clicou —
-      // nunca atribui a si mesmo um pagamento de outro produtor.
-      if (!ownerId || ownerId !== uid) { skipped++; continue; }
-
       const grossAmount = Number(payment.transaction_amount || 0);
       const mpFee       = (payment.fee_details || []).reduce((a, f) => a + Number(f.amount || 0), 0);
       const netAmount   = Math.max(0, grossAmount - mpFee);
@@ -6501,6 +3508,11 @@ app.post("/api/sync/history", requireAuth, async (req, res) => {
       const paymentDate = payment.date_approved
         ? new Date(payment.date_approved).toISOString()
         : new Date().toISOString();
+
+      // Identifica owner via external_reference
+      let ownerId = uid;
+      const extRef = payment.external_reference || "";
+      if (extRef.startsWith("owner_")) ownerId = extRef.replace("owner_", "");
 
       // Cria/atualiza customer pelo email
       let customerId = null;
@@ -6573,24 +3585,6 @@ function calcPublicPrice(basePrice, method, installments = 1) {
   };
 }
 
-// Rate limiting para checkout público: 5 tentativas por IP por minuto
-const checkoutRateMap = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of checkoutRateMap) if (now > v.reset) checkoutRateMap.delete(k);
-}, 60000);
-
-function checkoutRateLimit(req, res, next) {
-  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
-  const now = Date.now();
-  const entry = checkoutRateMap.get(ip) || { count: 0, reset: now + 60000 };
-  if (now > entry.reset) { entry.count = 0; entry.reset = now + 60000; }
-  entry.count++;
-  checkoutRateMap.set(ip, entry);
-  if (entry.count > 5) return res.status(429).json({ error: "Muitas tentativas. Aguarde um momento e tente de novo." });
-  next();
-}
-
 /** GET /api/public/products/:id — retorna config do produto (sem dados sensíveis) */
 app.get("/api/public/products/:id", async (req, res) => {
   try {
@@ -6617,7 +3611,7 @@ app.get("/api/public/products/:id", async (req, res) => {
 });
 
 /** POST /api/public/checkout — cria customer + payment no Mercado Pago */
-app.post("/api/public/checkout", checkoutRateLimit, async (req, res) => {
+app.post("/api/public/checkout", async (req, res) => {
   try {
     const { productId, name, email, phone, cpfCnpj, postalCode,
             addressNumber, method, installments = 1, birthday } = req.body;
@@ -6839,16 +3833,14 @@ app.get("/api/health", (req, res) => {
 app.post("/api/customers/add", requireAuth, async (req, res) => {
   const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
-  let telefone = phone?.trim() || null;
-  if (telefone && await ownerUsesBrPhones(req.user.id)) telefone = addMissingNinthDigit(telefone) || telefone;
   const { data, error } = await supabase
     .from("customers")
     .insert({
       owner_id: req.user.id,
       name: name.trim(),
-      phone: telefone,
+      phone: phone?.trim() || null,
       email: email?.trim() || null,
-      birthday: parseBirthdate(birthday || "") || null,
+      birthday: birthday || null,
       source: "manual",
       status: "lead",
     })
@@ -6871,21 +3863,29 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
       name:     c.name.trim(),
       phone:    c.phone?.trim() || null,
       email:    c.email?.trim() || null,
-      // "09/08/2000" cru no banco virava 8 de setembro (formato americano) — normaliza.
-      birthday: parseBirthdate(c.birthday?.trim() || "") || null,
+      birthday: c.birthday?.trim() || null,
       source:   "manual",
       status:   "lead",
     }));
 
   if (!rows.length) return res.json({ inserted: 0 });
 
-  try {
-    const { inserted, duplicated } = await upsertCustomersByPhone(req.user.id, rows);
-    res.json({ inserted, duplicated });
-  } catch (err) {
-    console.error("[customers/import]", err.message);
-    res.status(500).json({ error: err.message });
+  // upsert por nome+owner — evita duplicatas exatas
+  const { data, error } = await supabase
+    .from("customers")
+    .upsert(rows, { onConflict: "owner_id,phone", ignoreDuplicates: true })
+    .select("id");
+
+  if (error) {
+    // fallback: insere um a um ignorando erros individuais
+    let inserted = 0;
+    for (const row of rows) {
+      const { error: e } = await supabase.from("customers").insert(row);
+      if (!e) inserted++;
+    }
+    return res.json({ inserted });
   }
+  res.json({ inserted: data?.length || rows.length });
 });
 
 // Data de nascimento digitada em texto livre pelo visitante do Mini Chat (ex:
@@ -6894,30 +3894,17 @@ app.post("/api/customers/import", requireAuth, async (req, res) => {
 function parseBirthdate(raw) {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.trim();
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // já em ISO
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // DD/MM/AAAA ou DD-MM-AAAA
+  if (m) {
+    const [, d, mo, y] = m;
+    const date = new Date(Number(y), Number(mo) - 1, Number(d));
+    if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
+      return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    return null;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // já em ISO
   if (m) return s;
-  // Qualquer separador entre os três números — "/", "-", ".", espaço — cobre o formato
-  // sugerido (DD/MM/AAAA) e variações que a pessoa acaba digitando no celular.
-  // Ano com 2 dígitos também ("09/08/00") — vira 19xx/20xx pelo que faz sentido.
-  m = s.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4}|\d{2})$/);
-  if (!m) {
-    // Só dígitos, sem separador nenhum — o mais comum no teclado numérico do celular
-    // (ex: "09082000" ou "090800") — sem isso a resposta era descartada e o campo ficava
-    // "não informado" mesmo com a pessoa tendo respondido certinho.
-    const digits = s.replace(/\D/g, "");
-    if (digits.length === 8) m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)];
-    else if (digits.length === 6) m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 6)];
-  }
-  if (!m) return null;
-  let [, d, mo, y] = m;
-  const hoje = new Date();
-  if (String(y).length === 2) y = Number(y) <= hoje.getFullYear() % 100 ? 2000 + Number(y) : 1900 + Number(y);
-  const date = new Date(Number(y), Number(mo) - 1, Number(d));
-  // Data que não existe (31/02), no futuro ou de mais de 120 anos atrás não é aniversário.
-  if (date > hoje || Number(y) < hoje.getFullYear() - 120) return null;
-  if (date.getFullYear() == y && date.getMonth() == mo - 1 && date.getDate() == d) {
-    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
   return null;
 }
 
@@ -6930,156 +3917,6 @@ app.options("/api/leads/create", (req, res) => {
   res.header("Access-Control-Allow-Methods", "POST");
   res.sendStatus(204);
 });
-// ── Aviso pro xPosts (app de gestão de tráfego do Thomas) ─────────────────────
-// Todo contato que o Mini Chat captura é avisado ao xPosts PELO SERVIDOR (a chave
-// nunca vai pro navegador). Só avisa — não muda nada no fluxo do Mini Chat: roda
-// depois que /api/leads/create já respondeu. Cada produtor tem o seu "token do
-// xPosts" (o do link do formulário do cliente lá: /f/<id>/<token>), salvo em
-// minichat_config.xposts_token. Mesmo id (= customers.id) não duplica no xPosts.
-// Se o xPosts não responder 200, o aviso fica em xposts_avisos (migration_v45) e
-// é reenviado sozinho mais tarde; sem a tabela, a reenvio fica só na memória.
-const XPOSTS_LEAD_URL = process.env.XPOSTS_LEAD_URL || "https://socialmediax.vercel.app/api/lead-minichat";
-const XPOSTS_KEY = process.env.XPOSTS_KEY || "";
-const XPOSTS_TOKEN_RE = /^[A-Za-z0-9_-]{6,120}$/;
-const xpostsMemoria = new Map(); // id -> { owner_id, payload, tentativas, proximo_em } (só sem a tabela)
-function limparTokenXposts(v) {
-  let t = String(v || "").trim();
-  if (!t) return null;
-  // Aceita o link inteiro do formulário (https://.../f/<id>/<token>) ou só o token.
-  const m = t.match(/\/f\/[^/\s]+\/([^/?#\s]+)/);
-  if (m) t = m[1];
-  t = t.replace(/[/?#].*$/, "");
-  return XPOSTS_TOKEN_RE.test(t) ? t : undefined;
-}
-function proximaTentativaXposts(tentativas) {
-  const min = Math.min(360, Math.pow(2, Math.max(0, tentativas))); // 1, 2, 4… até 6 h
-  return new Date(Date.now() + min * 60000).toISOString();
-}
-async function postarXposts(payload) {
-  if (!XPOSTS_KEY) return { ok: false, erro: "XPOSTS_KEY não configurada no servidor" };
-  try {
-    const r = await axios.post(XPOSTS_LEAD_URL, payload, {
-      headers: { "x-xposts-key": XPOSTS_KEY, "Content-Type": "application/json" },
-      timeout: 10000,
-      validateStatus: () => true,
-    });
-    if (r.status === 200) return { ok: true };
-    return { ok: false, erro: `xPosts respondeu ${r.status}${r.data?.error ? `: ${String(r.data.error).slice(0, 160)}` : ""}` };
-  } catch (e) {
-    return { ok: false, erro: e.code || e.message || "falha de rede" };
-  }
-}
-async function avisarXposts(ownerId, customer, visitorId) {
-  try {
-    if (!ownerId || !customer?.id) return;
-    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", ownerId).maybeSingle();
-    const token = prof?.minichat_config?.xposts_token;
-    if (!token) return; // produtor sem token do xPosts: nada a avisar
-    // Mensagem = as respostas do Mini Chat (sem nome/telefone/e-mail/nascimento, que já vão separados).
-    let mensagem = "";
-    if (visitorId) {
-      const { data: sessao } = await supabase.from("minichat_sessions").select("answers").eq("owner_id", ownerId).eq("visitor_id", String(visitorId).slice(0, 100)).maybeSingle();
-      mensagem = splitMinichatAnswers(sessao?.answers).respostas
-        .filter(a => a?.answer).map(a => `${String(a.question || "").trim()} ${String(a.answer).trim()}`.trim()).join("\n");
-    }
-    const payload = {
-      cliente: token,
-      id: String(customer.id),
-      nome: customer.name || "",
-      contato: customer.phone || customer.email || "",
-      mensagem,
-      quando: new Date().toISOString(),
-    };
-    const agora = new Date().toISOString();
-    const { error: errFila } = await supabase.from("xposts_avisos").upsert({ id: payload.id, owner_id: ownerId, payload, tentativas: 0, enviado_em: null, proximo_em: agora, ultimo_erro: null, updated_at: agora }, { onConflict: "id" });
-    const res = await postarXposts(payload);
-    if (!errFila) {
-      await supabase.from("xposts_avisos").update(res.ok
-        ? { enviado_em: new Date().toISOString(), tentativas: 1, ultimo_erro: null, updated_at: new Date().toISOString() }
-        : { tentativas: 1, proximo_em: proximaTentativaXposts(1), ultimo_erro: res.erro, updated_at: new Date().toISOString() }).eq("id", payload.id);
-    } else if (!res.ok) {
-      xpostsMemoria.set(payload.id, { owner_id: ownerId, payload, tentativas: 1, proximo_em: proximaTentativaXposts(1), ultimo_erro: res.erro });
-    }
-    if (!res.ok) console.warn("[xposts] aviso não entregue, tenta de novo depois:", res.erro);
-  } catch (e) {
-    console.warn("[xposts] aviso falhou:", e.message);
-  }
-}
-let xpostsReenviando = false;
-async function reenviarAvisosXposts() {
-  if (xpostsReenviando || !XPOSTS_KEY) return;
-  xpostsReenviando = true;
-  try {
-    const agora = new Date().toISOString();
-    const { data: pendentes, error } = await supabase.from("xposts_avisos").select("id,payload,tentativas")
-      .is("enviado_em", null).lte("proximo_em", agora).lt("tentativas", 40).order("proximo_em").limit(50);
-    for (const p of (error ? [] : pendentes || [])) {
-      const res = await postarXposts(p.payload);
-      const n = (p.tentativas || 0) + 1;
-      await supabase.from("xposts_avisos").update(res.ok
-        ? { enviado_em: new Date().toISOString(), tentativas: n, ultimo_erro: null, updated_at: new Date().toISOString() }
-        : { tentativas: n, proximo_em: proximaTentativaXposts(n), ultimo_erro: res.erro, updated_at: new Date().toISOString() }).eq("id", p.id);
-    }
-    for (const [id, p] of xpostsMemoria) {
-      if (p.proximo_em > agora) continue;
-      const res = await postarXposts(p.payload);
-      if (res.ok || p.tentativas >= 40) xpostsMemoria.delete(id);
-      else xpostsMemoria.set(id, { ...p, tentativas: p.tentativas + 1, proximo_em: proximaTentativaXposts(p.tentativas + 1), ultimo_erro: res.erro });
-    }
-  } catch (e) {
-    console.warn("[xposts] reenvio falhou:", e.message);
-  } finally {
-    xpostsReenviando = false;
-  }
-}
-setInterval(() => { reenviarAvisosXposts().catch(() => {}); }, 5 * 60 * 1000);
-setTimeout(() => { reenviarAvisosXposts().catch(() => {}); }, 60 * 1000);
-
-// Token do xPosts por produtor (card "xPosts" na Ativação) — só mexe nesse campo.
-app.get("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
-    const token = prof?.minichat_config?.xposts_token || null;
-    let enviados = 0, pendentes = 0, ultimoEnvio = null, ultimoErro = null, tabela = true;
-    const { data: avisos, error } = await supabase.from("xposts_avisos").select("enviado_em,ultimo_erro,updated_at").eq("owner_id", req.params.id).order("updated_at", { ascending: false }).limit(500);
-    if (error) tabela = false;
-    else {
-      (avisos || []).forEach(a => { if (a.enviado_em) { enviados++; if (!ultimoEnvio || a.enviado_em > ultimoEnvio) ultimoEnvio = a.enviado_em; } else pendentes++; });
-      ultimoErro = (avisos || []).find(a => !a.enviado_em && a.ultimo_erro)?.ultimo_erro || null;
-    }
-    pendentes += [...xpostsMemoria.values()].filter(p => p.owner_id === req.params.id).length;
-    res.json({ token, chaveConfigurada: !!XPOSTS_KEY, tabela, enviados, pendentes, ultimoEnvio, ultimoErro });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-// "Testar conexão": manda { cliente, teste: true } — o xPosts confirma sem criar contato de verdade.
-app.post("/api/admin/producers/:id/xposts/test", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
-    const token = prof?.minichat_config?.xposts_token;
-    if (!token) return res.status(400).json({ error: "Salve o token do xPosts primeiro." });
-    const r = await postarXposts({ cliente: token, teste: true });
-    if (!r.ok) return res.status(502).json({ error: r.erro });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-app.patch("/api/admin/producers/:id/xposts", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const token = limparTokenXposts(req.body?.token);
-    if (token === undefined) return res.status(400).json({ error: "Não reconheci o token. Cole o link do formulário do cliente no xPosts (…/f/<id>/<token>) ou só o token." });
-    const { data: prof } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
-    const minichat_config = { ...(prof?.minichat_config || {}), xposts_token: token };
-    const { error } = await supabase.from("profiles").update({ minichat_config }).eq("id", req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, token });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post("/api/leads/create", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Headers", "Content-Type,X-Owner-Key");
@@ -7107,213 +3944,22 @@ app.post("/api/leads/create", (req, res, next) => {
   const { name, phone, email, birthday } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: "Nome obrigatório" });
 
-  let telefone = phone?.trim() || null;
-  const emailLead = email?.trim() || null;
-  const nascimento = parseBirthdate(birthday);
-  const br = await ownerUsesBrPhones(ownerKey);
-  // Grava só os dígitos (com o 9 do celular, se faltava) — "(24) 99982-9182" e
-  // "24999829182" são o mesmo número e não podem virar dois contatos.
-  if (telefone) {
-    const digitos = telefone.replace(/\D/g, "");
-    if (digitos.length >= 8) telefone = (br && addMissingNinthDigit(digitos)) || digitos;
-  }
-  // Mesma pessoa conversando de novo no Mini Chat não pode virar uma segunda linha no
-  // CRM — só atualiza a contagem de quantas vezes voltou na linha que já existe.
-  // Sem telefone (Mini Chat no modo e-mail pode não pedir), o e-mail faz esse papel.
-  if (telefone || emailLead) {
-    let existente = null;
-    const campos = "id,name,phone,email,birthday,times_seen";
-    if (telefone) {
-      // Busca pelos últimos 8 dígitos e confirma pela chave normalizada (ignora
-      // formatação, 55 e o 9 faltando) — um .eq exato não pegava "(24) 9..." x "249...".
-      const fim = telefone.replace(/\D/g, "").slice(-8);
-      const { data: candidatos } = await supabase.from("customers").select(campos).eq("owner_id", ownerKey).is("deleted_at", null).like("phone", `%${fim.slice(0, 4)}%${fim.slice(4)}%`).limit(50);
-      const chave = phoneMatchKey(telefone, { br });
-      existente = (candidatos || []).find(c => phoneMatchKey(c.phone, { br }) === chave) || null;
-    } else {
-      const { data } = await supabase.from("customers").select(campos).eq("owner_id", ownerKey).is("deleted_at", null).ilike("email", emailLead.replace(/[\\%_]/g, m => "\\" + m)).limit(1).maybeSingle();
-      existente = data || null;
-    }
-    if (existente) {
-      // A pessoa já estava no CRM (ex: veio de uma lista do Google Ads, ou já tinha feito
-      // o Mini Chat antes sem responder tudo). Antes só contava "veio 2x" e JOGAVA FORA o
-      // que ela acabou de responder — era por isso que aparecia "aniversário não
-      // informado" pra quem respondeu. Agora completa o que estava faltando, sem nunca
-      // sobrescrever um dado que já existia.
-      const completar = {};
-      if (!existente.birthday && nascimento) completar.birthday = nascimento;
-      if (!existente.email && emailLead) completar.email = emailLead;
-      const nomeGenerico = !existente.name || /^(Contato( Google)? \d+|Lead Mini Chat \(.*\))$/i.test(existente.name.trim());
-      if (nomeGenerico && name.trim() && !/^Lead Mini Chat \(/i.test(name.trim())) completar.name = name.trim();
-      const { data: atualizado, error: errUpd } = await supabase.from("customers").update({ ...completar, times_seen: (existente.times_seen || 1) + 1, last_seen_at: new Date().toISOString() }).eq("id", existente.id).select().single();
-      if (errUpd) return res.status(500).json({ error: errUpd.message });
-      linkMinichatSessionToCustomer(ownerKey, req.body.visitor_id, atualizado);
-      avisarXposts(ownerKey, atualizado, req.body.visitor_id);
-      return res.json(atualizado);
-    }
-  }
-
   const { data, error } = await supabase
     .from("customers")
     .insert({
       owner_id: profile.id,
       name: name.trim(),
-      phone: telefone,
-      email: emailLead,
-      birthday: nascimento,
+      phone: phone?.trim() || null,
+      email: email?.trim() || null,
+      birthday: parseBirthdate(birthday),
       source: "minichat",
       status: "lead",
-      times_seen: 1,
     })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
   sendPushToOwner(profile.id, { title: "Novo interessado!", body: name.trim(), url: "/" });
-  linkMinichatSessionToCustomer(profile.id, req.body.visitor_id, data);
-  avisarXposts(profile.id, data, req.body.visitor_id);
   res.json(data);
-});
-
-// ── Mini Chat: lead por E-MAIL de verdade (sem depender do app de e-mail do visitante)
-// Antes, o modo "E-mail" do Mini Chat só abria um mailto: no aparelho do visitante — o
-// contato só chegava se a pessoa apertasse "enviar" no app dela (mesmo problema do mini
-// chat próprio da CAA Renovations). Aqui o servidor manda o diagnóstico direto pro
-// e-mail de destino cadastrado no Admin, via Resend (o mesmo já usado nas notificações
-// de venda). Só é chamado pelo minichat.html quando o destino é "email" ou "ambos" —
-// o fluxo de WhatsApp não passa por aqui e não muda em nada.
-//
-// Segurança: o destinatário vem SEMPRE do minichat_config salvo no banco, nunca do
-// corpo da requisição (senão virava um "relay" aberto pra mandar e-mail pra qualquer um).
-const minichatEmailRateMap = new Map();   // owner:visitor -> { count, reset }
-const minichatEmailOwnerRate = new Map(); // owner -> { count, reset }
-const minichatEmailSent = new Map();      // owner:visitor -> timestamp do último envio
-function escHtml(v) {
-  return String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-}
-const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
-function minichatLeadEmailHtml({ brand, lang, lead, answers }) {
-  const t = lang === "en"
-    ? { title: "New lead from your website", sub: "Someone just completed the pre-diagnosis on your website.", contact: "Contact", answers: "Answers", name: "Name", email: "E-mail", phone: "Phone", reply: "Reply to this e-mail to talk to them directly." }
-    : { title: "Novo contato pelo site", sub: "Alguém acabou de completar o diagnóstico no seu site.", contact: "Contato", answers: "Respostas", name: "Nome", email: "E-mail", phone: "Telefone", reply: "Responda este e-mail pra falar direto com a pessoa." };
-  const row = (k, v) => `<tr><td style="padding:12px 18px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;vertical-align:top;padding-right:12px;">${escHtml(k)}</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${escHtml(v)}</td></tr></table></td></tr>`;
-  // Só nome e telefone: o e-mail da pessoa já é o "Responder" (replyTo) — não repete.
-  const contato = [[t.name, lead.name], [t.phone, lead.phone]].filter(([, v]) => v).map(([k, v]) => row(k, v)).join("");
-  const respostas = answers.map(a => row(a.question, a.answer)).join("");
-  const bloco = (titulo, linhas) => linhas ? `<tr><td style="padding:18px 32px 0;"><div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-bottom:8px;">${escHtml(titulo)}</div><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:12px;border:1px solid #2a2a2a;overflow:hidden;">${linhas}</table></td></tr>` : "";
-  return `<!DOCTYPE html><html lang="${lang === "en" ? "en" : "pt-BR"}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0D0D0D;padding:32px 16px;"><tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#0D0D0D;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
-<tr><td style="padding:28px 32px 0;text-align:center;">
-  <div style="color:#888;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">${escHtml(brand)}</div>
-  <h1 style="color:#fff;font-size:22px;font-weight:800;margin:10px 0 6px;">${escHtml(t.title)}</h1>
-  <p style="color:#888;font-size:14px;margin:0;">${escHtml(t.sub)}</p>
-</td></tr>
-${bloco(t.contact, contato)}
-${bloco(t.answers, respostas)}
-<tr><td style="padding:20px 32px 28px;text-align:center;color:#666;font-size:12px;">${lead.email ? escHtml(t.reply) : ""}</td></tr>
-</table></td></tr></table></body></html>`;
-}
-// Botão "Enviar e-mail de teste" do Admin — manda um lead de exemplo pro e-mail de
-// destino SALVO desse produtor, pra conferir se chega (e se não cai no spam) antes
-// de um visitante de verdade usar. Mesmo visual do e-mail real, marcado como teste.
-app.post("/api/admin/producers/:id/minichat/test-email", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { data: profile } = await supabase.from("profiles").select("name,minichat_config").eq("id", req.params.id).maybeSingle();
-    const cfg = profile?.minichat_config || {};
-    const destino = String(cfg.email_destino || "").trim();
-    if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "Salve um e-mail de destino válido primeiro." });
-    if (!resend) return res.status(503).json({ error: "Envio de e-mail não configurado no servidor (RESEND_API_KEY)." });
-    const lang = cfg.language === "en" ? "en" : "pt";
-    const brand = String(cfg.brand_name || profile?.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
-    const exemplo = lang === "en"
-      ? { lead: { name: "Test Lead", email: "test@example.com", phone: "(555) 123-4567" }, answers: [{ question: "Example question", answer: "Example answer" }], subject: `[TEST] New lead from your website — Test Lead` }
-      : { lead: { name: "Contato de Teste", email: "teste@exemplo.com", phone: "(21) 99999-9999" }, answers: [{ question: "Pergunta de exemplo", answer: "Resposta de exemplo" }], subject: `[TESTE] Novo contato pelo site — Contato de Teste` };
-    const { error } = await resend.emails.send({
-      from: `${brand} via JosephPay <noreply@josephpay.com>`,
-      to: destino,
-      subject: exemplo.subject,
-      html: minichatLeadEmailHtml({ brand, lang, lead: exemplo.lead, answers: exemplo.answers }),
-      // "Responder" vai pro e-mail do próprio admin logado — assim o teste mostra na prática
-      // que responder o e-mail do lead fala direto com a pessoa (no real, é o e-mail do lead).
-      ...(EMAIL_RE.test(String(req.user?.email || "")) ? { replyTo: req.user.email } : {}),
-    });
-    if (error) return res.status(502).json({ error: `O serviço de e-mail recusou: ${error.message || "erro desconhecido"}` });
-    res.json({ ok: true, to: destino });
-  } catch (err) {
-    console.error("[admin/producers minichat test-email]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.options("/api/minichat/lead-email", (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-  res.header("Access-Control-Allow-Methods", "POST");
-  res.sendStatus(204);
-});
-app.post("/api/minichat/lead-email", (req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  next();
-}, async (req, res) => {
-  try {
-    const { owner_id, visitor_id, lead, answers } = req.body || {};
-    if (!owner_id || !visitor_id) return res.status(400).json({ error: "Dados incompletos" });
-    const now = Date.now();
-    const visitKey = `${owner_id}:${String(visitor_id).slice(0, 100)}`;
-    // Mesmo visitante clicando de novo (ou o envio automático + o botão) não pode
-    // mandar dois e-mails iguais pro produtor.
-    const ultimo = minichatEmailSent.get(visitKey);
-    if (ultimo && now - ultimo < 30 * 60 * 1000) return res.json({ ok: true, duplicate: true });
-
-    const bump = (map, key, max, windowMs) => {
-      const e = map.get(key) || { count: 0, reset: now + windowMs };
-      if (now > e.reset) { e.count = 0; e.reset = now + windowMs; }
-      e.count++; map.set(key, e);
-      return e.count > max;
-    };
-    if (bump(minichatEmailRateMap, visitKey, 5, 10 * 60 * 1000)) return res.status(429).json({ error: "Limite de requisições atingido" });
-    if (bump(minichatEmailOwnerRate, String(owner_id), 60, 60 * 60 * 1000)) return res.status(429).json({ error: "Limite de requisições atingido" });
-
-    const { data: profile } = await supabase.from("profiles").select("id,name,minichat_config").eq("id", owner_id).maybeSingle();
-    if (!profile) return res.status(401).json({ error: "owner_id inválido" });
-    const cfg = profile.minichat_config || {};
-    const destino = String(cfg.email_destino || "").trim();
-    // fallback:true avisa o Mini Chat pra cair no comportamento antigo (abrir o app de
-    // e-mail do visitante) em vez de mostrar erro — o lead nunca fica sem caminho.
-    if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "E-mail de destino não configurado", fallback: true });
-    if (!resend) return res.status(503).json({ error: "Envio de e-mail indisponível", fallback: true });
-
-    const lang = cfg.language === "en" ? "en" : "pt";
-    const brand = String(cfg.brand_name || profile.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
-    const clean = (v, n) => String(v ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, n);
-    const leadInfo = {
-      name: clean(lead?.name, 120),
-      email: EMAIL_RE.test(clean(lead?.email, 200)) ? clean(lead?.email, 200) : "",
-      phone: clean(lead?.phone, 40),
-    };
-    const respostas = (Array.isArray(answers) ? answers : []).slice(0, 20)
-      .map(a => ({ question: clean(a?.question, 300), answer: clean(a?.answer, 500) }))
-      .filter(a => a.question && a.answer);
-    const quem = leadInfo.name || leadInfo.email || leadInfo.phone || (lang === "en" ? "website visitor" : "visitante do site");
-    const subject = lang === "en" ? `New lead from your website — ${quem}` : `Novo contato pelo site — ${quem}`;
-
-    const { error } = await resend.emails.send({
-      from: `${brand} via JosephPay <noreply@josephpay.com>`,
-      to: destino,
-      subject,
-      html: minichatLeadEmailHtml({ brand, lang, lead: leadInfo, answers: respostas }),
-      ...(leadInfo.email ? { replyTo: leadInfo.email } : {}),
-    });
-    if (error) {
-      console.error("[minichat/lead-email] resend erro:", error.message || error);
-      return res.status(502).json({ error: "Não consegui enviar o e-mail agora", fallback: true });
-    }
-    minichatEmailSent.set(visitKey, now);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[minichat/lead-email]", err.message);
-    res.status(500).json({ error: err.message, fallback: true });
-  }
 });
 
 // ── Mini Chat: rastreio de sessão (até qual pergunta a pessoa chegou, o que
@@ -7332,7 +3978,7 @@ app.post("/api/minichat/track-progress", (req, res, next) => {
   next();
 }, async (req, res) => {
   try {
-    const { owner_id, visitor_id, index, question, answer, questions_total, completed, finished_via, origem } = req.body;
+    const { owner_id, visitor_id, index, question, answer, questions_total, completed, finished_via } = req.body;
     if (!owner_id || !visitor_id) return res.status(400).json({ error: "Dados incompletos" });
 
     // Rate limit: 40 req/min por visitante (um fluxo tem no máximo ~10 perguntas,
@@ -7367,10 +4013,6 @@ app.post("/api/minichat/track-progress", (req, res, next) => {
 
     const { error } = await supabase.from("minichat_sessions").upsert({ ...row, owner_id, visitor_id: row.visitor_id }, { onConflict: "owner_id,visitor_id" });
     if (error) return res.status(500).json({ error: error.message });
-    // De onde a pessoa veio (Google Ads, Instagram...) — gravado à parte e só uma vez por
-    // conversa: se a coluna ainda não existe (migration_v44), nada acima é afetado.
-    const origemLimpa = cleanMinichatOrigem(origem);
-    if (origemLimpa) supabase.from("minichat_sessions").update({ origem: origemLimpa }).eq("owner_id", owner_id).eq("visitor_id", row.visitor_id).is("origem", null).then(() => {}, () => {});
     res.json({ ok: true });
   } catch (err) {
     console.error("[minichat/track-progress]", err.message);
@@ -7576,45 +4218,12 @@ app.options("/api/track/visit", (req, res) => {
 });
 
 // ── Sensor hospedado — uma linha no <head> substitui o bloco inteiro ──────────
-app.get("/sensor.js", async (req, res) => {
+app.get("/sensor.js", (req, res) => {
   const uid = (req.query.uid || "").replace(/[^a-zA-Z0-9\-]/g, "");
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Content-Type", "application/javascript");
   res.header("Cache-Control", "public, max-age=3600");
   if (!uid) return res.send("/* sensor.js: uid ausente */");
-  // Conversão do Google Ads (clique no botão do Mini Chat) — dispara AQUI, no site do
-  // cliente, nunca no minichat.html: é o único jeito do gclid (cookie _gcl_aw, salvo
-  // nesse domínio no momento do clique no anúncio) estar presente quando avisamos o
-  // Google — senão a conversão não se liga à campanha certa. Sensor nunca quebra por
-  // causa disso (try/catch, campos continuam opcionais pro cliente).
-  let convSnippet = "";
-  try {
-    // O sensor nunca esperava banco nenhum antes disso — um banco lento não pode
-    // passar a atrasar o sensor de TODO produtor (mesmo quem não configurou
-    // conversão). 1.2s é de sobra pra uma consulta normal e curto o bastante pra
-    // nunca segurar a resposta do script de verdade.
-    const consulta = supabase.from("profiles").select("minichat_config,github_minichat_path").eq("id", uid).maybeSingle();
-    const limite = new Promise(resolve => setTimeout(() => resolve({ data: null, timeout: true }), 1200));
-    const { data: profile } = await Promise.race([consulta, limite]);
-    const cid = profile?.minichat_config?.google_ads_conversion_id;
-    const clabel = profile?.minichat_config?.google_ads_conversion_label;
-    if (cid && clabel && AW_ID_RE.test(cid)) {
-      const path = profile?.github_minichat_path ? JSON.stringify(profile.github_minichat_path) : "null";
-      convSnippet = `
-var CONV_ID=${JSON.stringify(cid)},CONV_LABEL=${JSON.stringify(clabel)},CONV_PATH=${path},convSent=false;
-function jpFireConv(){
-  if(convSent)return;convSent=true;
-  try{
-    if(typeof window.gtag==="function"){window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});return;}
-    window.dataLayer=window.dataLayer||[];
-    window.gtag=function(){window.dataLayer.push(arguments);};
-    window.gtag('js',new Date());window.gtag('config',CONV_ID);
-    var sc=document.createElement('script');sc.async=true;sc.src='https://www.googletagmanager.com/gtag/js?id='+CONV_ID;document.head.appendChild(sc);
-    window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});
-  }catch(e){}
-}`;
-    }
-  } catch (e) { /* sensor nunca quebra por causa da conversão */ }
   res.send(`(function(){
 var JP="${PUBLIC_URL}";var uid="${uid}";
 var p=window.location.pathname;var ref=document.referrer;
@@ -7622,16 +4231,11 @@ var q=new URLSearchParams(window.location.search);
 var src=q.get("utm_source")||(ref.includes("instagram")||ref.includes("i.instagram.com")?"instagram":ref.includes("google")?"google":ref.includes("facebook")||ref.includes("fb.")?"facebook":ref.includes("whatsapp")||ref.includes("com.whatsapp")?"whatsapp":ref?"referral":"direto");
 var dev=/Mobi|Android/i.test(navigator.userAgent)?"mobile":"desktop";
 var gclid=q.get("gclid")?1:0;
-var fsrc=src,fads=gclid;
-try{var ss=window.sessionStorage;var s0=ss.getItem("jp_src");if(s0&&(!ref||ref.indexOf(window.location.hostname)>-1))fsrc=s0;else ss.setItem("jp_src",src);if(gclid||q.get("gbraid")||q.get("wbraid"))ss.setItem("jp_ads","1");fads=ss.getItem("jp_ads")==="1"?1:0;}catch(e){}
 fetch(JP+"/api/track/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid,domain:window.location.hostname,page:p,referrer:ref,source:src,device:dev,gclid:gclid})}).catch(function(){});
-${convSnippet}
 document.addEventListener("click",function(e){
   var a=e.target&&e.target.closest?e.target.closest("a"):null;
   if(!a||!a.href)return;
   var href=a.href;var type=null;
-  try{if(href.indexOf("minichat")>-1&&href.indexOf("jp_src=")<0){var u=new URL(href,window.location.href);u.searchParams.set("jp_src",fsrc);if(fads)u.searchParams.set("jp_ads","1");a.href=u.toString();}}catch(e){}
-  ${convSnippet ? `try{var rawHref=a.getAttribute("href")||"";if(href.indexOf("minichat")>-1||(CONV_PATH&&rawHref===CONV_PATH))jpFireConv();}catch(e){}` : ""}
   if(href.indexOf("tel:")===0)type="click_ligar";
   else if(href.indexOf("wa.me")>-1||href.indexOf("whatsapp.com")>-1)type="click_whatsapp";
   if(!type)return;
@@ -8108,6 +4712,77 @@ app.post("/api/training/test", requireAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/training/comments/:moduleIndex
+app.get("/api/training/comments/:moduleIndex", requireAuth, async (req, res) => {
+  const mi = parseInt(req.params.moduleIndex);
+  if (![1,2,3,4].includes(mi)) return res.status(400).json({ error: "módulo inválido" });
+  const { data, error } = await supabase
+    .from("training_comments")
+    .select("id, user_id, content, author_name, created_at")
+    .eq("module_index", mi)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /api/training/comments
+app.post("/api/training/comments", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const { module_index, content } = req.body || {};
+  if (![1,2,3,4].includes(module_index)) return res.status(400).json({ error: "módulo inválido" });
+  if (!content || !content.trim()) return res.status(400).json({ error: "comentário vazio" });
+  const { data: profile } = await supabase.from("profiles").select("name").eq("id", uid).maybeSingle();
+  const author_name = profile?.name || "Embaixador";
+  const { data, error } = await supabase.from("training_comments").insert({
+    user_id: uid, module_index,
+    content: content.trim().slice(0, 1000),
+    author_name,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE /api/training/comments/:id
+app.delete("/api/training/comments/:id", requireAuth, async (req, res) => {
+  const { error } = await supabase
+    .from("training_comments")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// POST /api/training/rating
+app.post("/api/training/rating", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const { module_index, rating } = req.body || {};
+  if (![1,2,3,4].includes(module_index)) return res.status(400).json({ error: "módulo inválido" });
+  if (![1,2,3,4,5].includes(rating)) return res.status(400).json({ error: "avaliação inválida" });
+  const col = `ck${module_index}_rating`;
+  const { data: existing } = await supabase.from("training_progress").select("id").eq("user_id", uid).maybeSingle();
+  if (existing) {
+    await supabase.from("training_progress").update({ [col]: rating }).eq("user_id", uid);
+  } else {
+    await supabase.from("training_progress").insert({ user_id: uid, [col]: rating });
+  }
+  res.json({ ok: true });
+});
+
+// POST /api/training/terms
+app.post("/api/training/terms", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase.from("training_progress").select("id").eq("user_id", uid).maybeSingle();
+  if (existing) {
+    await supabase.from("training_progress").update({ terms_accepted_at: now, certificate_issued_at: now }).eq("user_id", uid);
+  } else {
+    await supabase.from("training_progress").insert({ user_id: uid, terms_accepted_at: now, certificate_issued_at: now });
+  }
+  res.json({ ok: true });
 });
 
 // GET /api/admin/training — todos os afiliados com dados de treinamento
