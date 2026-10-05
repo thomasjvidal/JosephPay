@@ -6034,7 +6034,7 @@ function ParceirosAdmin(){
                     <button onClick={doImpersonate} disabled={actionLoading==="impersonate"} style={{flex:1,background:CARD2,border:`1px solid ${GOLD}40`,borderRadius:12,padding:"10px 14px",color:GOLD,fontWeight:700,fontSize:13,cursor:actionLoading==="impersonate"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="impersonate"?"Gerando…":"Entrar como ele →"}</button>
                     <button onClick={doResetSenha} disabled={actionLoading==="reset"} style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontWeight:700,fontSize:13,cursor:actionLoading==="reset"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="reset"?"Resetando…":"Resetar senha"}</button>
                   </div>
-                  {resetResult&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com\nE-mail: ${sel.email}\nSenha: ${resetResult}`} mono/>}
+                  {resetResult&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com/embaixador\nE-mail: ${sel.email}\nSenha: ${resetResult}`} mono/>}
                 </div>
               );
             })()}
@@ -6580,7 +6580,7 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
               {tipo!=="afiliado"&&<div style={{color:MUTED,fontSize:12,marginTop:4}}>Anote a senha agora — ela não fica salva em texto em nenhum lugar. Se precisar depois, use "Resetar senha" no perfil.</div>}
             </div>
             {tipo==="afiliado"?(
-              <CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com\nE-mail: ${result.email}\nSenha: ${result.password}`} mono/>
+              <CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com/embaixador\nE-mail: ${result.email}\nSenha: ${result.password}`} mono/>
             ):(
               <>
                 <CopyField label="E-mail de acesso" value={result.email}/>
@@ -8048,10 +8048,11 @@ function MaquinaTab({onNav}){
 }
 
 function Login({onLogin}){
-  const [role,setRole]=useState(null);
+  const _isEmb=typeof window!=="undefined"&&window.location.pathname.includes("embaixador");
+  const [role,setRole]=useState(_isEmb?"afiliado":null);
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
-  const [step,setStep]=useState(1);
+  const [step,setStep]=useState(_isEmb?2:1);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [resetSent,setResetSent]=useState(false);
