@@ -1812,7 +1812,8 @@ app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => 
     const newId = created.user.id;
 
     await supabase.from("profiles").upsert(
-      { id: newId, name: name.trim(), role: tipo, email: email.trim(), phone: phone?.trim() || null },
+      { id: newId, name: name.trim(), role: tipo, email: email.trim(), phone: phone?.trim() || null,
+        ...(tipo === "afiliado" ? { partner_type: "embaixador" } : {}) },
       { onConflict: "id" }
     );
 
@@ -1879,6 +1880,20 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
     res.json({ ok: true, ...updates });
   } catch (err) {
     console.error("[admin/producers profile]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/producers/:id/impersonate", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("email").eq("id", id).maybeSingle();
+    if (!profile?.email) return res.status(404).json({ error: "Usuário não encontrado" });
+    const { data, error } = await supabase.auth.admin.generateLink({ type: "magiclink", email: profile.email });
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ link: data.properties.action_link });
+  } catch (err) {
+    console.error("[admin/impersonate]", err.message);
     res.status(500).json({ error: err.message });
   }
 });

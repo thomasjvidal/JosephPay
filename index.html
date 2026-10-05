@@ -4180,7 +4180,7 @@ function ClientesAdmin(){
       </div>
       {showAudit&&<SiteAuditModal onClose={()=>setShowAudit(false)} onAbrirCliente={id=>{setShowAudit(false);setSel(id);setSelSubTab("ativacao");}}/>}
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:0}}><Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/afiliado</Btn></div>
+        <div style={{flex:1,minWidth:0}}><Btn sm outline color={GOLD} onClick={()=>setShowCriar(true)}>+ Cadastrar produtor/embaixador</Btn></div>
         <button onClick={()=>setShowAudit(true)} title="Diagnóstico técnico de todos os produtores" style={{width:34,height:34,borderRadius:"50%",background:"transparent",border:`1.5px solid ${BDR}`,color:MUTED,fontSize:14,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="search" s={15}/></button>
       </div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
@@ -5865,6 +5865,8 @@ function ParceirosAdmin(){
   const [loading,setLoading]=useState(true);
   const [sel,setSel]=useState(null);
   const [detail,setDetail]=useState(null);
+  const [actionLoading,setActionLoading]=useState(null);
+  const [resetResult,setResetResult]=useState(null);
   useEffect(()=>{
     (async()=>{
       const d=await apiCall("/api/admin/training");
@@ -5873,9 +5875,25 @@ function ParceirosAdmin(){
     })();
   },[]);
   async function openDetail(u){
-    setSel(u);setDetail(null);
+    setSel(u);setDetail(null);setResetResult(null);
     const d=await apiCall(`/api/admin/training/${u.id}`);
     if(!d?.error)setDetail(d);
+  }
+  async function doImpersonate(){
+    if(!sel)return;
+    setActionLoading("impersonate");
+    const d=await apiCall(`/api/admin/producers/${sel.id}/impersonate`,{method:"POST"});
+    setActionLoading(null);
+    if(d.link)window.open(d.link,"_blank");
+    else alert(d.error||"Erro ao gerar link de acesso");
+  }
+  async function doResetSenha(){
+    if(!sel)return;
+    setActionLoading("reset");
+    const d=await apiCall(`/api/admin/producers/${sel.id}/reset-password`,{method:"POST"});
+    setActionLoading(null);
+    if(d.password)setResetResult(d.password);
+    else alert(d.error||"Erro ao resetar senha");
   }
   const thS={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",padding:"10px 14px",borderBottom:`1px solid ${BDR}`,textAlign:"left",background:CARD};
   const tdS={padding:"10px 14px",fontSize:13,color:TEXT,borderBottom:`1px solid ${BDR}`,verticalAlign:"middle"};
@@ -5889,11 +5907,11 @@ function ParceirosAdmin(){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"18px 20px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:4}}>Treinamento de Parceiros</div>
-        <div style={{color:MUTED,fontSize:13}}>{data.length} afiliado{data.length!==1?"s":""} cadastrado{data.length!==1?"s":""}</div>
+        <div style={{color:MUTED,fontSize:13}}>{data.length} embaixador{data.length!==1?"es":""} cadastrado{data.length!==1?"s":""}</div>
       </div>
       <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,overflow:"hidden"}}>
         {loading?<div style={{padding:32,textAlign:"center",color:MUTED}}>Carregando...</div>:
-         data.length===0?<div style={{padding:32,textAlign:"center",color:MUTED}}>Nenhum afiliado cadastrado.</div>:(
+         data.length===0?<div style={{padding:32,textAlign:"center",color:MUTED}}>Nenhum embaixador cadastrado.</div>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
               <thead><tr>
@@ -5986,6 +6004,11 @@ function ParceirosAdmin(){
                       ))}
                     </div>
                   )}
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    <button onClick={doImpersonate} disabled={actionLoading==="impersonate"} style={{flex:1,background:CARD2,border:`1px solid ${GOLD}40`,borderRadius:12,padding:"10px 14px",color:GOLD,fontWeight:700,fontSize:13,cursor:actionLoading==="impersonate"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="impersonate"?"Gerando…":"Entrar como ele →"}</button>
+                    <button onClick={doResetSenha} disabled={actionLoading==="reset"} style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontWeight:700,fontSize:13,cursor:actionLoading==="reset"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="reset"?"Resetando…":"Resetar senha"}</button>
+                  </div>
+                  {resetResult&&<CopyField label="Nova senha gerada" value={resetResult}/>}
                 </div>
               );
             })()}
@@ -6546,10 +6569,10 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
           </div>
         ):(
           <>
-            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:20}}>Cadastrar {tipo==="afiliado"?"afiliado":"produtor"}</div>
+            <div style={{color:TEXT,fontWeight:800,fontSize:18,marginBottom:20}}>Cadastrar {tipo==="afiliado"?"embaixador":"produtor"}</div>
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div style={{display:"flex",gap:8}}>
-                {[["client","Produtor"],["afiliado","Afiliado"]].map(([v,l])=>(
+                {[["client","Produtor"],["afiliado","Embaixador"]].map(([v,l])=>(
                   <button key={v} onClick={()=>setTipo(v)} style={{flex:1,background:tipo===v?GOLD:CARD2,border:`1px solid ${tipo===v?GOLD:BDR}`,borderRadius:100,padding:"10px",color:tipo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{l}</button>
                 ))}
               </div>
@@ -8095,7 +8118,7 @@ function Login({onLogin}){
             <div style={{...glassSurface,border:`1px solid ${role==="admin"?GOLD+"35":BDR}`,borderRadius:18,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,marginBottom:2}}>
               <div style={{width:40,height:40,borderRadius:12,background:role==="admin"?GOLD:CARD2,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:role==="admin"?16:18,color:role==="admin"?"#0A0A0A":MUTED,flexShrink:0}}>{role==="admin"?"J":role==="afiliado"?"⊙":"◈"}</div>
               <div>
-                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":role==="afiliado"?"Painel do afiliado":"Painel do produtor"}</div>
+                <div style={{color:TEXT,fontWeight:700,fontSize:14}}>{role==="admin"?"Admin · JosephPay":role==="afiliado"?"Painel do embaixador":"Painel do produtor"}</div>
                 <div style={{color:MUTED,fontSize:12,marginTop:2}}>{role==="admin"?"Acesso completo":role==="afiliado"?"Comissões e links":"Suas vendas e receitas"}</div>
               </div>
             </div>
