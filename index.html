@@ -4135,6 +4135,7 @@ function SiteAuditModal({onClose,onAbrirCliente}){
 
 function ClientesAdmin(){
   const [subTab,setSubTab]=useState("produtores");
+  const [listaTipo,setListaTipo]=useState("produtores");
   const [sel,setSel]=useState(null);
   const [selSubTab,setSelSubTab]=useState(null);
   const [selRelatorio,setSelRelatorio]=useState(null);
@@ -4189,6 +4190,8 @@ function ClientesAdmin(){
   const isAtivo=c=>!c.disabled_at;
   const FILTROS=[{id:"todos",label:"Todos"},{id:"ativos",label:"Ativos"},{id:"inativos",label:"Inativos"}];
   const clientsFiltrados=(clients||[]).filter(c=>{
+    if(listaTipo==="produtores"&&c.role!=="client")return false;
+    if(listaTipo==="embaixadores"&&c.role!=="afiliado")return false;
     if(filtro==="ativos")return isAtivo(c);
     if(filtro==="inativos")return !isAtivo(c);
     return true;
@@ -4202,7 +4205,12 @@ function ClientesAdmin(){
       {showCriar&&<CriarContaModal onClose={()=>setShowCriar(false)} onCreated={()=>setRefresh(r=>r+1)}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Clientes</div>
-        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clientsFiltrados.length} produtores`:"—"}</span>
+        <span style={{background:`${GOLD}18`,color:GOLD,fontSize:11,fontWeight:700,padding:"4px 12px",borderRadius:20}}>{clients?`${clientsFiltrados.length} ${listaTipo==="embaixadores"?"embaixadores":"produtores"}`:"—"}</span>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:2}}>
+        {[{id:"produtores",label:"Produtores"},{id:"embaixadores",label:"Embaixadores"}].map(t=>(
+          <button key={t.id} onClick={()=>{setListaTipo(t.id);setFiltro("todos");}} style={{padding:"7px 18px",borderRadius:100,border:`1px solid ${t.id===listaTipo?GOLD+"66":"rgba(255,255,255,0.10)"}`,background:t.id===listaTipo?`${GOLD}1F`:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",color:t.id===listaTipo?GOLD:MUTED,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F}}>{t.label}</button>
+        ))}
       </div>
       {showAudit&&<SiteAuditModal onClose={()=>setShowAudit(false)} onAbrirCliente={id=>{setShowAudit(false);setSel(id);setSelSubTab("ativacao");}}/>}
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -4225,7 +4233,7 @@ function ClientesAdmin(){
           <button onClick={()=>{setErroClients(false);setClients(null);setRefresh(r=>r+1);}} style={{background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"8px 16px",color:MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>Tentar de novo</button>
         </div>
       )}
-      {clients!==null&&clients.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum produtor cadastrado.</div>}
+      {clients!==null&&clientsFiltrados.length===0&&<div style={{padding:"20px",color:MUTED,fontSize:13,textAlign:"center"}}>{listaTipo==="embaixadores"?"Nenhum embaixador cadastrado.":"Nenhum produtor cadastrado."}</div>}
       {clientsOrdenados.map((c,i)=>(
         <div key={c.id||i} onClick={()=>setSel(c.id)} style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:"14px 16px",cursor:"pointer",transition:"border-color 0.15s"}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:11}}>
