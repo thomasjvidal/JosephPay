@@ -5411,17 +5411,27 @@ function DisparosTab({onWapChange,onEmailChange}){
 }
 
 function TreinamentoTab(){
+  const [view,setView]=useState("home"); // "home"|"module"|"test"|"terms"|"cert"
+  const [activeModule,setActiveModule]=useState(0);
+  const [moduleTab,setModuleTab]=useState("comentarios");
   const [prog,setProg]=useState(null);
   const [loading,setLoading]=useState(true);
-  const [ckPhase,setCkPhase]=useState([0,0,0,0]); // 0=scenario 1=refs 2=done
-  const [ckSel,setCkSel]=useState([null,null,null,null]);
-  const [ckRes,setCkRes]=useState([null,null,null,null]);
-  const [qPhase,setQPhase]=useState("idle"); // idle|active|result
-  const [qIdx,setQIdx]=useState(0);
-  const [qAnswers,setQAnswers]=useState([]);
-  const [qSel,setQSel]=useState(null);
-  const [qResult,setQResult]=useState(null);
   const [busy,setBusy]=useState(false);
+  // checkpoint quiz
+  const [ckSel,setCkSel]=useState(null);
+  const [ckResult,setCkResult]=useState(null);
+  // final test
+  const [qPhase,setQPhase]=useState("idle");  const [qIdx,setQIdx]=useState(0);
+  const [qSel,setQSel]=useState(null);
+  const [qAnswers,setQAnswers]=useState([]);
+  const [qResult,setQResult]=useState(null);
+  // comments
+  const [comments,setComments]=useState([]);
+  const [commentText,setCommentText]=useState("");
+  const [commentsLoading,setCommentsLoading]=useState(false);
+  // rating
+  const [myRating,setMyRating]=useState(null);
+  const [hoverRating,setHoverRating]=useState(null);
 
   const CK_DATA=[
     {title:"Módulo 1 — Entendendo o JosephPay",
@@ -5464,33 +5474,55 @@ function TreinamentoTab(){
   async function load(){
     setLoading(true);
     const d=await apiCall("/api/training/progress");
-    if(!d?.error){
-      setProg(d);
-      const ph=[0,0,0,0];
-      [1,2,3,4].forEach((n,i)=>{if(d[`ck${n}_completed_at`])ph[i]=2;});
-      setCkPhase(ph);
-    }
+    if(!d?.error) setProg(d);
     setLoading(false);
   }
 
-  async function verifyCk(idx){
-    const sel=ckSel[idx];
-    if(sel===null)return;
+  async function openModule(idx){
+    setActiveModule(idx);
+    setCkSel(null);setCkResult(null);
+    setModuleTab("comentarios");
+    setView("module");
+    loadComments(idx+1);
+    setMyRating(null);setHoverRating(null);
+  }
+
+  async function loadComments(mi){
+    setCommentsLoading(true);
+    const d=await apiCall(`/api/training/comments/${mi}`);
+    if(!d?.error) setComments(Array.isArray(d)?d:[]);
+    setCommentsLoading(false);
+  }
+
+  async function addComment(){
+    if(!commentText.trim())return;
     setBusy(true);
-    const d=await apiCall("/api/training/checkpoint",{method:"POST",body:JSON.stringify({ck_index:idx,selected_index:sel})});
-    if(!d?.error){
-      setCkRes(prev=>{const n=[...prev];n[idx]=d;return n;});
-      setCkPhase(prev=>{const n=[...prev];n[idx]=2;return n;});
-      await load();
-    }
+    const d=await apiCall("/api/training/comments",{method:"POST",body:JSON.stringify({module_index:activeModule+1,content:commentText.trim()})});
+    if(!d?.error){setComments(prev=>[d,...prev]);setCommentText("");}
     setBusy(false);
+  }
+
+  async function deleteComment(id){
+    await apiCall(`/api/training/comments/${id}`,{method:"DELETE"});
+    setComments(prev=>prev.filter(c=>c.id!==id));
+  }
+
+  async function saveRating(r){
+    setMyRating(r);
+    await apiCall("/api/training/rating",{method:"POST",body:JSON.stringify({module_index:activeModule+1,rating:r})});
+    await load();
+  }
+
+  async function verifyCk(){
+    if(ckSel===null)return;
+    setBusy(true);
+    const d=await apiCall("/api/training/checkpoint",{method:"POST",body:JSON.stringify({ck_index:activeModule,selected_index:ckSel})});
+    if(!d?.error){setCkResult(d);await load();}    setBusy(false);
   }
 
   function advanceQ(){
     if(qSel===null)return;
-    const ans=[...qAnswers];
-    ans[qIdx]=qSel;
-    setQAnswers(ans);
+    const ans=[...qAnswers];ans[qIdx]=qSel;setQAnswers(ans);
     if(qIdx===QUIZ_Q.length-1){submitTest(ans);}
     else{setQIdx(qIdx+1);setQSel(null);}
   }
@@ -5502,6 +5534,13 @@ function TreinamentoTab(){
     setBusy(false);
   }
 
+  async function acceptTerms(){
+    setBusy(true);
+    const d=await apiCall("/api/training/terms",{method:"POST"});
+    if(!d?.error){await load();setView("cert");}
+    setBusy(false);
+  }
+
   const cksDone=[1,2,3,4].filter(n=>prog?.[`ck${n}_completed_at`]).length;
   const testPassed=!!prog?.final_test_passed;
   const totalPct=(cksDone*20)+(testPassed?20:0);
@@ -5509,176 +5548,342 @@ function TreinamentoTab(){
   const optSt=(active)=>({display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?`${GOLD}12`:CARD2,border:`1px solid ${active?GOLD:BDR}`,borderRadius:10,cursor:"pointer"});
   const btnSt=(dis)=>({background:dis?BDR:GOLD,color:dis?MUTED:"#0D0D0D",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:dis?"not-allowed":"pointer"});
 
-  if(loading)return <div style={{color:MUTED,padding:40,textAlign:"center"}}>Carregando treinamento...</div>;
+  const optSt=(active,correct)=>{
+    let bg="transparent",border=BDR,color=TEXT;
+    if(correct===true){bg=`${GREEN}18`;border=`${GREEN}60`;color=GREEN;}
+    else if(correct===false){bg="rgba(239,68,68,0.1)";border="rgba(239,68,68,0.3)";color=RED;}
+    else if(active){bg=`${GOLD}14`;border=GOLD;color=GOLD;}
+    return{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:bg,border:`1px solid ${border}`,borderRadius:12,cursor:correct!==undefined?"default":"pointer",transition:"all .15s"};
+  };
+  const btnPrimary=(dis)=>({background:dis?`rgba(255,255,255,0.06)`:GOLD,color:dis?"rgba(255,255,255,0.25)":"#0D0D0D",border:"none",borderRadius:12,padding:"12px 22px",fontWeight:700,fontSize:14,cursor:dis?"not-allowed":"pointer",fontFamily:F,transition:"all .15s"});
+  const backBtn=()=><button onClick={()=>setView("home")} style={{background:"none",border:"none",color:MUTED,fontSize:13,fontFamily:F,cursor:"pointer",padding:"0 0 4px",textAlign:"left",display:"flex",alignItems:"center",gap:6,marginBottom:2}}><span style={{fontSize:16}}>←</span> Módulos</button>;
 
-  return(
+  if(loading)return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {[1,2,3,4].map(i=><div key={i} className="sk" style={{height:68,borderRadius:16}}/>)}
+    </div>
+  );
+
+  // ── CERTIFICATE ──
+  if(view==="cert")return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {/* Barra de progresso */}
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-          <div style={{color:TEXT,fontWeight:700,fontSize:15}}>Progresso do Treinamento</div>
-          <div style={{color:GOLD,fontWeight:800,fontSize:16}}>{totalPct}%</div>
+      {backBtn()}
+      <div style={{...glassSurface,borderRadius:22,padding:"44px 24px",textAlign:"center"}}>
+        <div style={{fontSize:52,marginBottom:16}}>🎓</div>
+        <div style={{color:GOLD,fontWeight:800,fontSize:20,marginBottom:6}}>Parabéns, Embaixador!</div>
+        <div style={{color:TEXT,fontWeight:600,fontSize:15,marginBottom:4}}>Certificado JosephPay</div>
+        <div style={{color:MUTED,fontSize:13,marginBottom:24}}>{prog?.final_test_last_score}/10 pontos{prog?.certificate_issued_at?" · "+new Date(prog.certificate_issued_at).toLocaleDateString("pt-BR"):""}</div>
+        <div style={{background:`${GREEN}10`,border:`1px solid ${GREEN}30`,borderRadius:14,padding:"16px",color:GREEN,fontSize:13,fontWeight:600,lineHeight:1.6}}>
+          Você está habilitado a representar o JosephPay como Embaixador Oficial.        </div>
+      </div>
+    </div>
+  );
+
+  // ── TERMS ──
+  if(view==="terms")return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {backBtn()}
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Etapa final</div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:18,marginBottom:4}}>Termos do Embaixador</div>
+          <div style={{color:MUTED,fontSize:13}}>Leia e aceite para emitir seu certificado.</div>
         </div>
-        <div style={{height:5,background:BDR,borderRadius:3,overflow:"hidden",marginBottom:12}}>
-          <div style={{height:"100%",width:`${totalPct}%`,background:`linear-gradient(90deg,${GOLD},${GOLD2})`,transition:"width .4s"}}/>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-          {[1,2,3,4].map(n=>(
-            <span key={n} style={{fontSize:12,color:prog?.[`ck${n}_completed_at`]?GREEN:MUTED,display:"flex",alignItems:"center",gap:4}}>
-              <span style={{fontSize:13}}>{prog?.[`ck${n}_completed_at`]?"✓":"○"}</span>Módulo {n}
-            </span>
+        <div style={{padding:"20px",maxHeight:340,overflowY:"auto",display:"flex",flexDirection:"column",gap:0}}>
+          {["Apresentar o JosephPay com precisão, sem prometer resultados garantidos de leads, vendas ou ROI.",
+            "Não fazer afirmações que não estejam alinhadas com as capacidades reais da plataforma.",
+            "Encaminhar o cliente à equipe Novarks após o fechamento, facilitando a comunicação.",
+            "Respeitar os termos de uso da plataforma e as diretrizes comerciais da Novarks.",
+            "Manter conduta ética e profissional em todas as interações com potenciais clientes.",
+            "Não utilizar o nome JosephPay ou Novarks de forma que possa gerar confusão ou dano à marca.",
+          ].map((t,i,a)=>(
+            <div key={i} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:i<a.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
+              <span style={{color:GOLD,fontWeight:700,fontSize:13,flexShrink:0,minWidth:16}}>{i+1}.</span>
+              <span style={{color:TEXT,fontSize:13,lineHeight:1.65}}>{t}</span>
+            </div>
           ))}
-          <span style={{fontSize:12,color:testPassed?GREEN:MUTED,display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
-            <span style={{fontSize:13}}>{testPassed?"✓":"○"}</span>Teste Final
-          </span>
+        </div>
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",padding:"20px"}}>
+          <button style={{...btnPrimary(busy),width:"100%",textAlign:"center"}} disabled={busy} onClick={acceptTerms}>
+            {busy?"Processando…":"Aceitar e emitir certificado 🎓"}
+          </button>
         </div>
       </div>
+    </div>
+  );
 
-      {/* Módulos com Checkpoints */}
-      {CK_DATA.map((ck,idx)=>{
-        const done=ckPhase[idx]===2;
-        const res=ckRes[idx];
-        return(
-          <div key={idx} style={{background:CARD,border:`1px solid ${done?GOLD+"50":BDR}`,borderRadius:16,overflow:"hidden"}}>
-            <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
-              <div style={{width:28,height:28,borderRadius:"50%",background:done?GOLD:BDR,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:done?"#0D0D0D":MUTED,fontWeight:700,flexShrink:0}}>{done?"✓":idx+1}</div>
-              <div style={{flex:1,color:TEXT,fontWeight:600,fontSize:14}}>{ck.title}</div>
-              {done&&<span style={{fontSize:11,color:GREEN,fontWeight:700,letterSpacing:.06,textTransform:"uppercase"}}>Concluído</span>}
+  // ── TEST ──
+  if(view==="test")return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <button onClick={()=>{setView("home");setQPhase("idle");}} style={{background:"none",border:"none",color:MUTED,fontSize:13,fontFamily:F,cursor:"pointer",padding:"0 0 4px",textAlign:"left",display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:16}}>←</span> Módulos</button>
+      <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Certificação</div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:18,marginBottom:2}}>Teste Final</div>
+          <div style={{color:MUTED,fontSize:12}}>10 perguntas · mínimo 80% para aprovação</div>
+        </div>
+        {testPassed&&(
+          <div style={{padding:"24px 20px",textAlign:"center"}}>
+            <div style={{background:`${GREEN}10`,border:`1px solid ${GREEN}28`,borderRadius:16,padding:"24px"}}>
+              <div style={{color:GREEN,fontWeight:700,fontSize:18,marginBottom:4}}>Aprovado! ✓</div>
+              <div style={{color:MUTED,fontSize:13,marginBottom:16}}>{prog?.final_test_last_score}/10 pontos</div>
+              <button style={btnPrimary(false)} onClick={()=>setView(prog?.terms_accepted_at?"cert":"terms")}>{prog?.terms_accepted_at?"Ver certificado →":"Ir para os termos →"}</button>
             </div>
-            {!done&&(
-              <div style={{padding:"0 20px 20px"}}>
-                {ckPhase[idx]===0&&(
-                  <div>
-                    <div style={lbl}>Situação</div>
-                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:14,fontSize:14,color:TEXT,lineHeight:1.7,marginBottom:14}}>{ck.scenario}</div>
-                    <div style={lbl}>Como você responderia?</div>
-                    <textarea style={{width:"100%",minHeight:80,background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,color:TEXT,fontSize:14,padding:"10px 12px",resize:"vertical",fontFamily:F,outline:"none",boxSizing:"border-box",lineHeight:1.6}} placeholder="Escreva seu raciocínio livremente. Na próxima etapa você compara com pontos de referência."/>
-                    <div style={{display:"flex",justifyContent:"flex-end",marginTop:12}}>
-                      <button style={btnSt(false)} onClick={()=>setCkPhase(prev=>{const n=[...prev];n[idx]=1;return n;})}>Ver referências →</button>
-                    </div>
-                  </div>
-                )}
-                {ckPhase[idx]===1&&(
-                  <div>
-                    <div style={lbl}>Pontos de uma boa resposta</div>
-                    <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"12px 14px",marginBottom:16}}>
-                      {ck.points.map((p,pi)=>(
-                        <div key={pi} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:pi<ck.points.length-1?`1px solid ${BDR}`:"none"}}>
-                          <span style={{color:GOLD,flexShrink:0}}>·</span>
-                          <span style={{fontSize:13,color:TEXT,lineHeight:1.5}}>{p}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{height:1,background:BDR,margin:"0 0 16px"}}/>
-                    <div style={lbl}>Pergunta rápida</div>
-                    <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:12,lineHeight:1.5}}>{ck.q}</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {ck.opts.map((o,oi)=>(
-                        <div key={oi} onClick={()=>setCkSel(prev=>{const n=[...prev];n[idx]=oi;return n;})} style={optSt(ckSel[idx]===oi)}>
-                          <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${ckSel[idx]===oi?GOLD:MUTED}`,background:ckSel[idx]===oi?GOLD:"transparent",flexShrink:0}}/>
-                          <span style={{fontSize:14,color:TEXT}}>{o}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{display:"flex",justifyContent:"flex-end",marginTop:14}}>
-                      <button style={btnSt(ckSel[idx]===null||busy)} disabled={ckSel[idx]===null||busy} onClick={()=>verifyCk(idx)}>Verificar →</button>
-                    </div>
-                  </div>
-                )}
-              </div>
+          </div>
+        )}
+        {!testPassed&&qPhase==="idle"&&(
+          <div style={{padding:"20px"}}>
+            {prog?.final_test_attempts>0&&(
+              <div style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BDR}`,borderRadius:12,padding:"14px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{color:MUTED,fontSize:13}}>Última tentativa</span>
+                <span style={{color:RED,fontWeight:700,fontSize:14}}>{prog.final_test_last_score}/10</span>              </div>
             )}
-            {done&&res&&(
-              <div style={{padding:"0 20px 20px"}}>
-                <div style={{background:res.correct?`${GREEN}12`:`${GOLD}10`,border:`1px solid ${res.correct?GREEN+"40":GOLD+"40"}`,borderRadius:10,padding:"10px 14px",fontSize:13}}>
-                  {res.correct?<span style={{color:GREEN,fontWeight:700}}>✓ Correto</span>:<span style={{color:GOLD,fontWeight:700}}>Concluído</span>}
-                  {!res.correct&&<span style={{color:MUTED,marginLeft:8}}>— a resposta correta foi opção {res.correct_index+1}</span>}
+            <button style={btnPrimary(false)} onClick={()=>{setQPhase("active");setQIdx(0);setQAnswers([]);setQSel(null);setQResult(null);}}>
+              {prog?.final_test_attempts>0?"↺ Tentar novamente":"Iniciar Teste →"}
+            </button>
+          </div>
+        )}
+        {qPhase==="active"&&(
+          <div style={{padding:"20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <span style={{color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>Pergunta {qIdx+1}/{QUIZ_Q.length}</span>
+              <div style={{height:3,width:100,background:"rgba(255,255,255,0.08)",borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${(qIdx+1)/QUIZ_Q.length*100}%`,background:GOLD,transition:"width .3s"}}/>
+              </div>
+            </div>
+            <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:14,lineHeight:1.7}}>{QUIZ_Q[qIdx].q}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {QUIZ_Q[qIdx].opts.map((o,oi)=>(
+                <div key={oi} onClick={()=>setQSel(oi)} style={optSt(qSel===oi,undefined)}>
+                  <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${qSel===oi?GOLD:"rgba(255,255,255,0.2)"}`,background:qSel===oi?GOLD:"transparent",flexShrink:0,transition:"all .15s"}}/>
+                  <span style={{fontSize:13,color:TEXT,lineHeight:1.5}}>{o}</span>
                 </div>
+              ))}
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
+              <button style={btnPrimary(qSel===null||busy)} disabled={qSel===null||busy} onClick={advanceQ}>
+                {busy?"Enviando…":qIdx===QUIZ_Q.length-1?"Finalizar →":"Próxima →"}              </button>
+            </div>
+          </div>
+        )}
+        {qPhase==="result"&&qResult&&(
+          <div style={{padding:"20px"}}>
+            <div style={{background:qResult.passed?`${GREEN}12`:"rgba(239,68,68,0.08)",border:`1px solid ${qResult.passed?GREEN+"35":"rgba(239,68,68,0.3)"}`,borderRadius:16,padding:"28px 20px",textAlign:"center",marginBottom:16}}>
+              <div style={{fontSize:44,fontWeight:800,color:qResult.passed?GREEN:TEXT,marginBottom:4}}>{qResult.score}<span style={{fontSize:22,color:MUTED,fontWeight:400}}>/{qResult.total}</span></div>
+              <div style={{color:MUTED,fontSize:13,marginBottom:10}}>{qResult.pct}% de aproveitamento</div>
+              <div style={{fontWeight:700,color:qResult.passed?GREEN:RED,fontSize:14}}>{qResult.passed?"Parabéns, você está certificado!":"Abaixo dos 80%. Revise e tente novamente."}</div>
+            </div>
+            {qResult.passed
+              ?<button style={btnPrimary(false)} onClick={()=>setView(prog?.terms_accepted_at?"cert":"terms")}>Ir para os termos →</button>
+              :<button style={btnPrimary(false)} onClick={()=>setQPhase("idle")}>↺ Tentar novamente</button>
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── MODULE ──
+  if(view==="module"){
+    const ck=CK_DATA[activeModule];
+    const ckDone=!!prog?.[`ck${activeModule+1}_completed_at`];
+    function embedUrl(url){
+      if(!url)return null;
+      if(url.includes("youtu")){const id=url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1];return id?`https://www.youtube.com/embed/${id}?rel=0`:null;}
+      if(url.includes("vimeo")){const id=url.match(/vimeo\.com\/(\d+)/)?.[1];return id?`https://player.vimeo.com/video/${id}`:null;}
+      return url;
+    }
+    const embed=embedUrl(ck.video||null);
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {backBtn()}
+        <div>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Módulo {activeModule+1} de 4</div>
+          <div style={{color:TEXT,fontWeight:700,fontSize:18,lineHeight:1.3}}>{ck.title.replace(/^Módulo \d+ — /,"")}</div>
+        </div>
+        <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
+          {/* Vídeo ou conteúdo texto */}
+          {embed?(
+            <div style={{position:"relative",paddingBottom:"56.25%",height:0,background:"#000",borderRadius:"20px 20px 0 0",overflow:"hidden"}}>
+              <iframe src={embed} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}} allowFullScreen/>
+            </div>
+          ):(
+            <div style={{padding:"22px 20px"}}>
+              <div style={{fontSize:10,fontWeight:700,color:GOLD,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Situação prática</div>
+              <div style={{borderLeft:`3px solid ${GOLD}50`,padding:"14px 16px",marginBottom:22,fontStyle:"italic",fontSize:14,color:TEXT,lineHeight:1.75,background:"rgba(255,255,255,0.025)",borderRadius:"0 12px 12px 0"}}>
+                "{ck.scenario}"
               </div>
-            )}
+              <div style={{fontSize:10,fontWeight:700,color:GREEN,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Pontos de uma boa resposta</div>
+              <div style={{background:`${GREEN}07`,border:`1px solid ${GREEN}20`,borderRadius:14,overflow:"hidden"}}>
+                {ck.points.map((p,pi)=>(
+                  <div key={pi} style={{display:"flex",gap:12,padding:"13px 16px",borderBottom:pi<ck.points.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>
+                    <span style={{color:GREEN,flexShrink:0,marginTop:1,fontSize:13}}>✓</span>
+                    <span style={{fontSize:13,color:TEXT,lineHeight:1.65}}>{p}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Quiz (se não concluído) */}
+          {!ckDone&&(
+            <>
+              <div style={{height:1,background:"rgba(255,255,255,0.07)",margin:"0 20px"}}/>
+              <div style={{padding:"20px"}}>
+                <div style={{fontSize:10,fontWeight:700,color:GOLD,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>Verificação rápida</div>
+                <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:14,lineHeight:1.65}}>{ck.q}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {ck.opts.map((o,oi)=>{
+                    const isCorr=ckResult&&oi===ckResult.correct_index?true:ckResult&&ckSel===oi&&!ckResult.correct?false:undefined;
+                    return(
+                      <div key={oi} onClick={()=>!ckResult&&setCkSel(oi)} style={optSt(ckSel===oi,isCorr)}>
+                        <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${ckSel===oi?GOLD:"rgba(255,255,255,0.2)"}`,background:ckSel===oi?GOLD:"transparent",flexShrink:0,transition:"all .15s"}}/>
+                        <span style={{fontSize:13,color:TEXT,lineHeight:1.5}}>{o}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!ckResult&&(
+                  <div style={{display:"flex",justifyContent:"flex-end",marginTop:14}}>
+                    <button style={btnPrimary(ckSel===null||busy)} disabled={ckSel===null||busy} onClick={verifyCk}>
+                      {busy?"Verificando…":"Confirmar →"}
+                    </button>
+                  </div>
+                )}
+                {ckResult&&!ckResult.correct&&(
+                  <div style={{marginTop:12,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"12px 14px",fontSize:13,color:RED}}>
+                    Resposta incorreta. A opção correta era a {(ckResult.correct_index||0)+1}. Continue revisando!
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {/* Banner concluído */}
+          {ckDone&&(
+            <div style={{padding:"0 20px 16px"}}>
+              <div style={{background:`${GREEN}10`,border:`1px solid ${GREEN}28`,borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{color:GREEN,fontSize:18}}>✓</span>
+                <span style={{color:GREEN,fontWeight:700,fontSize:14}}>Módulo concluído</span>
+              </div>
+            </div>
+          )}
+          {/* Tab bar */}
+          <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex"}}>
+            {[{id:"comentarios",label:"💬 Comentários"},{id:"avaliacao",label:"⭐ Avaliação"}].map(t=>(
+              <button key={t.id} onClick={()=>setModuleTab(t.id)} style={{flex:1,background:"none",border:"none",borderBottom:moduleTab===t.id?`2px solid ${GOLD}`:"2px solid transparent",padding:"13px 8px",fontFamily:F,fontWeight:700,fontSize:12,color:moduleTab===t.id?GOLD:MUTED,cursor:"pointer",transition:"all .15s"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {/* Comentários */}
+          {moduleTab==="comentarios"&&(
+            <div style={{padding:"16px 20px 22px"}}>
+              <textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Compartilhe sua experiência com este módulo…" style={{width:"100%",minHeight:72,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:TEXT,fontSize:13,padding:"11px 13px",resize:"none",fontFamily:F,outline:"none",lineHeight:1.6,boxSizing:"border-box",marginBottom:10}}/>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
+                <button style={btnPrimary(!commentText.trim()||busy)} disabled={!commentText.trim()||busy} onClick={addComment}>{busy?"Enviando…":"Comentar"}</button>
+              </div>
+              {commentsLoading?(
+                <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"16px 0"}}>Carregando…</div>
+              ):comments.length===0?(
+                <div style={{color:MUTED,fontSize:13,textAlign:"center",padding:"16px 0"}}>Seja o primeiro a comentar.</div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {comments.map(c=>(
+                    <div key={c.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        <span style={{color:TEXT,fontWeight:700,fontSize:13}}>{c.author_name}</span>
+                        <span style={{color:MUTED,fontSize:11}}>{new Date(c.created_at).toLocaleDateString("pt-BR")}</span>
+                      </div>
+                      <div style={{color:TEXT,fontSize:13,lineHeight:1.6}}>{c.content}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Avaliação */}
+          {moduleTab==="avaliacao"&&(
+            <div style={{padding:"28px 20px 32px",textAlign:"center"}}>
+              <div style={{color:TEXT,fontWeight:600,fontSize:14,marginBottom:20}}>Como você avalia este módulo?</div>
+              <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:16}}>
+                {[1,2,3,4,5].map(s=>(
+                  <span key={s} onClick={()=>saveRating(s)} onMouseEnter={()=>setHoverRating(s)} onMouseLeave={()=>setHoverRating(null)} style={{fontSize:34,cursor:"pointer",color:s<=(hoverRating||myRating||0)?GOLD:"rgba(255,255,255,0.13)",transition:"color .1s,transform .1s",display:"inline-block",transform:hoverRating===s?"scale(1.25)":"scale(1)"}}>★</span>
+                ))}
+              </div>
+              {myRating&&<div style={{color:GOLD,fontWeight:600,fontSize:13}}>{myRating} estrela{myRating>1?"s":""} — obrigado!</div>}
+            </div>
+          )}
+        </div>
+        {/* Navegar para próximo */}
+        {ckDone&&activeModule<3&&(
+          <button style={{...btnPrimary(false),width:"100%",textAlign:"center"}} onClick={()=>openModule(activeModule+1)}>Próximo módulo →</button>
+        )}
+        {ckDone&&activeModule===3&&cksDone>=4&&(
+          <button style={{...btnPrimary(false),width:"100%",textAlign:"center"}} onClick={()=>setView("test")}>Ir para o Teste Final →</button>
+        )}
+      </div>
+    );
+  }
+
+  // ── HOME ──
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {/* Progresso */}
+      <div style={{...glassSurface,borderRadius:18,padding:"20px 20px",marginBottom:2}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{color:TEXT,fontWeight:700,fontSize:15}}>Seu progresso</div>
+          <div style={{color:GOLD,fontWeight:800,fontSize:22}}>{totalPct}%</div>
+        </div>
+        <div style={{height:5,background:"rgba(255,255,255,0.07)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
+          <div style={{height:"100%",width:`${totalPct}%`,background:`linear-gradient(90deg,${GOLD},${GOLD2})`,borderRadius:3,transition:"width .5s"}}/>
+        </div>
+        <div style={{color:MUTED,fontSize:12}}>{cksDone} de 4 módulos concluídos{testPassed?" · Certificado emitido":""}</div>
+      </div>
+
+      {/* Módulos */}
+      {CK_DATA.map((ck,i)=>{
+        const done=!!prog?.[`ck${i+1}_completed_at`];
+        const locked=i>0&&!prog?.[`ck${i}_completed_at`];
+        const rating=prog?.[`ck${i+1}_rating`];
+        return(
+          <div key={i} onClick={()=>!locked&&openModule(i)} style={{...glassSurface,borderRadius:16,padding:"15px 18px",display:"flex",alignItems:"center",gap:14,cursor:locked?"default":"pointer",opacity:locked?0.42:1,transition:"opacity .15s"}}>
+            <div style={{width:40,height:40,borderRadius:12,background:done?`${GREEN}18`:locked?"rgba(255,255,255,0.04)":`${GOLD}12`,border:`1.5px solid ${done?GREEN+"40":locked?"rgba(255,255,255,0.07)":GOLD+"28"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {done?<span style={{color:GREEN,fontWeight:700,fontSize:17}}>✓</span>
+               :locked?<span style={{color:"rgba(255,255,255,0.18)",fontSize:14}}>🔒</span>
+               :<span style={{color:GOLD,fontWeight:700,fontSize:15}}>{i+1}</span>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:3}}>{done?"Concluído":locked?"Bloqueado":"Disponível"}</div>
+              <div style={{color:TEXT,fontWeight:600,fontSize:14,lineHeight:1.35}}>{ck.title.replace(/^Módulo \d+ — /,"")}</div>
+              {rating&&<div style={{marginTop:4}}>{[1,2,3,4,5].map(s=><span key={s} style={{fontSize:11,color:s<=rating?GOLD:"rgba(255,255,255,0.12)"}}>★</span>)}</div>}
+            </div>
+            {!locked&&<span style={{color:MUTED,fontSize:22,opacity:0.35,lineHeight:1}}>›</span>}
           </div>
         );
       })}
 
       {/* Teste Final */}
-      <div style={{background:CARD,border:`1px solid ${testPassed?GOLD+"50":BDR}`,borderRadius:16,overflow:"hidden"}}>
-        <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:28,height:28,borderRadius:"50%",background:testPassed?GOLD:BDR,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:testPassed?"#0D0D0D":MUTED,fontWeight:700,flexShrink:0}}>{testPassed?"✓":"★"}</div>
-          <div style={{flex:1,color:TEXT,fontWeight:600,fontSize:14}}>Teste Final de Certificação</div>
-          {testPassed&&<span style={{fontSize:11,color:GREEN,fontWeight:700,letterSpacing:.06,textTransform:"uppercase"}}>Aprovado</span>}
+      <div onClick={()=>cksDone>=4&&setView("test")} style={{...glassSurface,borderRadius:16,padding:"15px 18px",display:"flex",alignItems:"center",gap:14,cursor:cksDone>=4?"pointer":"default",opacity:cksDone>=4?1:0.38}}>
+        <div style={{width:40,height:40,borderRadius:12,background:testPassed?`${GREEN}18`:cksDone>=4?`${GOLD}12`:"rgba(255,255,255,0.04)",border:`1.5px solid ${testPassed?GREEN+"40":cksDone>=4?GOLD+"28":"rgba(255,255,255,0.07)"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{color:testPassed?GREEN:cksDone>=4?GOLD:"rgba(255,255,255,0.18)",fontWeight:700,fontSize:15}}>{testPassed?"✓":"★"}</span>
         </div>
-
-        {cksDone<4&&!testPassed&&(
-          <div style={{padding:"0 20px 20px",color:MUTED,fontSize:13}}>Complete os 4 módulos para desbloquear o Teste Final.</div>
-        )}
-
-        {cksDone>=4&&!testPassed&&qPhase==="idle"&&(
-          <div style={{padding:"0 20px 20px"}}>
-            <div style={{color:MUTED,fontSize:13,marginBottom:12}}>10 perguntas · mínimo 80% para aprovação · tentativas ilimitadas</div>
-            {prog?.final_test_attempts>0&&(
-              <div style={{background:CARD2,border:`1px solid ${BDR}`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13}}>
-                <span style={{color:MUTED}}>Última tentativa: </span>
-                <span style={{color:TEXT,fontWeight:600}}>{prog.final_test_last_score}/10 ({prog.final_test_last_pct}%)</span>
-                <span style={{marginLeft:8,color:RED,fontWeight:600,fontSize:11,textTransform:"uppercase"}}>Reprovado</span>
-              </div>
-            )}
-            <button style={btnSt(false)} onClick={()=>{setQPhase("active");setQIdx(0);setQAnswers([]);setQSel(null);setQResult(null);}}>
-              {prog?.final_test_attempts>0?"↺ Tentar novamente":"Iniciar Teste"}
-            </button>
-          </div>
-        )}
-
-        {qPhase==="active"&&(
-          <div style={{padding:"0 20px 20px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.1,textTransform:"uppercase"}}>Pergunta {qIdx+1} de {QUIZ_Q.length}</div>
-              <div style={{height:4,width:100,background:BDR,borderRadius:2,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${(qIdx+1)/QUIZ_Q.length*100}%`,background:GOLD,transition:"width .3s"}}/>
-              </div>
-            </div>
-            <div style={{fontSize:14,color:TEXT,fontWeight:600,marginBottom:14,lineHeight:1.6}}>{QUIZ_Q[qIdx].q}</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {QUIZ_Q[qIdx].opts.map((o,oi)=>(
-                <div key={oi} onClick={()=>setQSel(oi)} style={optSt(qSel===oi)}>
-                  <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${qSel===oi?GOLD:MUTED}`,background:qSel===oi?GOLD:"transparent",flexShrink:0}}/>
-                  <span style={{fontSize:14,color:TEXT}}>{o}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",justifyContent:"flex-end",marginTop:14}}>
-              <button style={btnSt(qSel===null||busy)} disabled={qSel===null||busy} onClick={advanceQ}>
-                {qIdx===QUIZ_Q.length-1?"Finalizar Teste":"Próxima pergunta"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {qPhase==="result"&&qResult&&(
-          <div style={{padding:"0 20px 20px"}}>
-            <div style={{background:qResult.passed?`${GREEN}12`:`${GOLD}10`,border:`1px solid ${qResult.passed?GREEN+"40":GOLD+"40"}`,borderRadius:12,padding:"16px 18px",textAlign:"center",marginBottom:14}}>
-              <div style={{fontSize:34,fontWeight:800,color:qResult.passed?GREEN:TEXT}}>{qResult.score}/{qResult.total}</div>
-              <div style={{fontSize:14,color:MUTED,marginTop:2}}>{qResult.pct}%</div>
-              <div style={{marginTop:8,fontWeight:700,color:qResult.passed?GREEN:RED,fontSize:14}}>{qResult.passed?"Parabéns! Você está aprovado.":"Abaixo do mínimo de 80%. Revise e tente novamente."}</div>
-            </div>
-            {!qResult.passed&&(
-              <div style={{display:"flex",justifyContent:"center"}}>
-                <button style={btnSt(false)} onClick={()=>setQPhase("idle")}>↺ Tentar novamente</button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {testPassed&&(
-          <div style={{padding:"0 20px 20px"}}>
-            <div style={{background:`${GREEN}10`,border:`1px solid ${GREEN}30`,borderRadius:12,padding:"14px 16px",display:"flex",gap:10,alignItems:"center"}}>
-              <span style={{fontSize:22,flexShrink:0}}>🎓</span>
-              <div>
-                <div style={{color:GREEN,fontWeight:700,fontSize:14,marginBottom:2}}>Treinamento Concluído</div>
-                <div style={{color:MUTED,fontSize:12}}>Aprovado com {prog?.final_test_last_score}/10{prog?.final_test_first_passed_at?" · "+new Date(prog.final_test_first_passed_at).toLocaleDateString("pt-BR"):""}</div>
-              </div>
-            </div>
-          </div>
-        )}
+        <div style={{flex:1}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:3}}>{testPassed?"Aprovado":cksDone>=4?"Disponível":"Complete os módulos"}</div>
+          <div style={{color:TEXT,fontWeight:600,fontSize:14}}>Teste Final de Certificação</div>
+          {testPassed&&prog?.final_test_last_score!=null&&<div style={{color:GREEN,fontSize:12,marginTop:2}}>Nota: {prog.final_test_last_score}/10</div>}
+        </div>
+        {cksDone>=4&&<span style={{color:MUTED,fontSize:22,opacity:0.35,lineHeight:1}}>›</span>}
       </div>
+
+      {/* Termos & Certificado */}
+      <div onClick={()=>testPassed&&setView(prog?.terms_accepted_at?"cert":"terms")} style={{...glassSurface,borderRadius:16,padding:"15px 18px",display:"flex",alignItems:"center",gap:14,cursor:testPassed?"pointer":"default",opacity:testPassed?1:0.32}}>
+        <div style={{width:40,height:40,borderRadius:12,background:prog?.certificate_issued_at?`${GREEN}18`:testPassed?`${GOLD}12`:"rgba(255,255,255,0.04)",border:`1.5px solid ${prog?.certificate_issued_at?GREEN+"40":testPassed?GOLD+"28":"rgba(255,255,255,0.07)"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:18}}>{prog?.certificate_issued_at?"✓":"🎓"}</span>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:3}}>{prog?.certificate_issued_at?"Emitido":testPassed?"Disponível":"Bloqueado"}</div>
+          <div style={{color:TEXT,fontWeight:600,fontSize:14}}>Termos e Certificado</div>
+        </div>
+        {testPassed&&<span style={{color:MUTED,fontSize:22,opacity:0.35,lineHeight:1}}>›</span>}      </div>
     </div>
   );
 }

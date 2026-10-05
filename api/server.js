@@ -4714,6 +4714,77 @@ app.post("/api/training/test", requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/training/comments/:moduleIndex
+app.get("/api/training/comments/:moduleIndex", requireAuth, async (req, res) => {
+  const mi = parseInt(req.params.moduleIndex);
+  if (![1,2,3,4].includes(mi)) return res.status(400).json({ error: "módulo inválido" });
+  const { data, error } = await supabase
+    .from("training_comments")
+    .select("id, user_id, content, author_name, created_at")
+    .eq("module_index", mi)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /api/training/comments
+app.post("/api/training/comments", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const { module_index, content } = req.body || {};
+  if (![1,2,3,4].includes(module_index)) return res.status(400).json({ error: "módulo inválido" });
+  if (!content || !content.trim()) return res.status(400).json({ error: "comentário vazio" });
+  const { data: profile } = await supabase.from("profiles").select("name").eq("id", uid).maybeSingle();
+  const author_name = profile?.name || "Embaixador";
+  const { data, error } = await supabase.from("training_comments").insert({
+    user_id: uid, module_index,
+    content: content.trim().slice(0, 1000),
+    author_name,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE /api/training/comments/:id
+app.delete("/api/training/comments/:id", requireAuth, async (req, res) => {
+  const { error } = await supabase
+    .from("training_comments")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// POST /api/training/rating
+app.post("/api/training/rating", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const { module_index, rating } = req.body || {};
+  if (![1,2,3,4].includes(module_index)) return res.status(400).json({ error: "módulo inválido" });
+  if (![1,2,3,4,5].includes(rating)) return res.status(400).json({ error: "avaliação inválida" });
+  const col = `ck${module_index}_rating`;
+  const { data: existing } = await supabase.from("training_progress").select("id").eq("user_id", uid).maybeSingle();
+  if (existing) {
+    await supabase.from("training_progress").update({ [col]: rating }).eq("user_id", uid);
+  } else {
+    await supabase.from("training_progress").insert({ user_id: uid, [col]: rating });
+  }
+  res.json({ ok: true });
+});
+
+// POST /api/training/terms
+app.post("/api/training/terms", requireAuth, async (req, res) => {
+  const uid = req.user.id;
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase.from("training_progress").select("id").eq("user_id", uid).maybeSingle();
+  if (existing) {
+    await supabase.from("training_progress").update({ terms_accepted_at: now, certificate_issued_at: now }).eq("user_id", uid);
+  } else {
+    await supabase.from("training_progress").insert({ user_id: uid, terms_accepted_at: now, certificate_issued_at: now });
+  }
+  res.json({ ok: true });
+});
+
 // GET /api/admin/training — todos os afiliados com dados de treinamento
 app.get("/api/admin/training", requireAuth, requireAdmin, async (req, res) => {
   try {
