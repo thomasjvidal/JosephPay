@@ -4110,7 +4110,19 @@ function ClientPanel({clientName,userEmail,onLogout,userRole}){
   ];
   const TITLES={dashboard:displayName,produtos:"Produtos",clientes:"Clientes",disparos:"Disparos",maquina:"Máquina",chat:"Chat IA",treinamento:"Treinamento"};
   const VIEWS={
-    dashboard:<InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
+    dashboard: userRole==="afiliado"
+      ? <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"linear-gradient(135deg,rgba(212,175,55,0.18) 0%,rgba(212,175,55,0.06) 100%)",border:"1px solid rgba(212,175,55,0.28)",borderRadius:18,padding:"22px 20px",display:"flex",alignItems:"center",gap:18}}>
+            <div style={{fontSize:32,lineHeight:1}}>◎</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:GOLD,fontFamily:SF,fontWeight:700,fontSize:15,marginBottom:4}}>Programa de Embaixadores</div>
+              <div style={{color:MUTED,fontFamily:F,fontSize:13}}>Complete os módulos de treinamento e desbloqueie seus benefícios.</div>
+            </div>
+            <button onClick={()=>onNav("treinamento")} style={{background:GOLD,color:"#0a0a0a",border:"none",borderRadius:12,padding:"10px 18px",fontFamily:SF,fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Iniciar Programa</button>
+          </div>
+          <InicioTab accent={accent} isDeise={false} onNav={onNav}/>
+        </div>
+      : <InicioTab accent={accent} isDeise={false} onNav={onNav}/>,
     produtos:<ProdutosTab accent={accent} isDeise={false}/>,
     clientes:<ClientesTab targetCustomerId={navCustomerId} navSubTab={navSubTab}/>,
     disparos:<DisparosTab onWapChange={v=>setWapConnected(v)} onEmailChange={v=>setEmailConnected(v)}/>,
@@ -6054,7 +6066,7 @@ function Login({onLogin}){
             <button onClick={()=>{setRole("afiliado");setStep(2);}} style={{background:CARD,border:`1px solid rgba(212,175,55,0.08)`,borderRadius:18,padding:"18px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
               <div style={{width:44,height:44,borderRadius:14,background:CARD2,border:`1px solid ${BDR}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,color:MUTED}}>⊙</div>
               <div>
-                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou afiliado</div>
+                <div style={{color:TEXT,fontFamily:SF,fontWeight:700,fontSize:15}}>Sou embaixador</div>
                 <div style={{color:MUTED,fontFamily:F,fontSize:12,marginTop:2}}>Acompanhe suas comissões</div>
                 <span style={{background:"rgba(255,255,255,0.06)",color:MUTED,fontSize:10,fontWeight:700,padding:"2px 10px",borderRadius:20,display:"inline-block",marginTop:6}}>Afiliado</span>
               </div>
