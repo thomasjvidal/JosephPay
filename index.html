@@ -5544,10 +5544,6 @@ function TreinamentoTab(){
   const cksDone=[1,2,3,4].filter(n=>prog?.[`ck${n}_completed_at`]).length;
   const testPassed=!!prog?.final_test_passed;
   const totalPct=(cksDone*20)+(testPassed?20:0);
-  const lbl={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",marginBottom:8};
-  const optSt=(active)=>({display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?`${GOLD}12`:CARD2,border:`1px solid ${active?GOLD:BDR}`,borderRadius:10,cursor:"pointer"});
-  const btnSt=(dis)=>({background:dis?BDR:GOLD,color:dis?MUTED:"#0D0D0D",border:"none",borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:dis?"not-allowed":"pointer"});
-
   const optSt=(active,correct)=>{
     let bg="transparent",border=BDR,color=TEXT;
     if(correct===true){bg=`${GREEN}18`;border=`${GREEN}60`;color=GREEN;}
