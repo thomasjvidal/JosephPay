@@ -1884,6 +1884,19 @@ app.patch("/api/admin/producers/:id/profile", requireAuth, requireAdmin, async (
   }
 });
 
+app.delete("/api/admin/producers/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (id === req.user.id) return res.status(400).json({ error: "Não é possível excluir sua própria conta." });
+    const { error } = await supabase.auth.admin.deleteUser(id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[admin/producers delete]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/admin/producers/:id/impersonate", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;

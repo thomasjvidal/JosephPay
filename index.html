@@ -3514,6 +3514,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [uploadingAvatar,setUploadingAvatar]=useState(false);
   const [isDisabled,setIsDisabled]=useState(!!c?.disabled_at);
   const [togglingActive,setTogglingActive]=useState(false);
+  const [excluindo,setExcluindo]=useState(false);
   const [deletingSale,setDeletingSale]=useState(null);
   const excluirVenda=async(s)=>{
     const nomeVenda=s.customers?.name||"essa venda";
@@ -3531,6 +3532,15 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
     const d=await apiCall(`/api/admin/producers/${c.id}/toggle-active`,{method:'POST'});
     setTogglingActive(false);
     if(!d.error){setIsDisabled(!isDisabled);onUpdated&&onUpdated();}
+  };
+  const excluirProdutor=async()=>{
+    if(!window.confirm(`Excluir ${c.name} permanentemente? Isso apaga a conta e todos os dados. Não pode ser desfeito.`))return;
+    setExcluindo(true);
+    const d=await apiCall(`/api/admin/producers/${c.id}`,{method:'DELETE'});
+    setExcluindo(false);
+    if(d?.error){alert(d.error);return;}
+    onUpdated&&onUpdated();
+    onBack&&onBack();
   };
   useEffect(()=>{
     if(!c)return;
@@ -3691,6 +3701,11 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
             <Btn sm outline color={GOLD}>Configurar taxa</Btn>
             <Btn sm outline color={RED}>Bloquear acesso</Btn>
+          </div>
+          <div style={{border:`1px solid rgba(239,68,68,0.25)`,borderRadius:16,padding:"16px 18px"}}>
+            <div style={{color:"rgba(239,68,68,0.6)",fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Zona crítica</div>
+            <div style={{color:MUTED,fontSize:12,marginBottom:12,lineHeight:1.5}}>Excluir apaga a conta, todos os contatos e dados deste produtor. Não pode ser desfeito.</div>
+            <button onClick={excluirProdutor} disabled={excluindo} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.35)",borderRadius:100,padding:"10px 20px",color:RED,fontWeight:700,fontSize:13,cursor:excluindo?"not-allowed":"pointer",fontFamily:F}}>{excluindo?"Excluindo…":"Excluir este produtor"}</button>
           </div>
         </>
       )}
@@ -6551,20 +6566,26 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
             <div style={{textAlign:"center",padding:"4px 0 14px"}}>
               <div style={{color:GREEN,fontSize:36,marginBottom:8}}>✓</div>
               <div style={{color:TEXT,fontWeight:800,fontSize:17}}>Conta criada!</div>
-              <div style={{color:MUTED,fontSize:12,marginTop:4}}>Anote a senha agora — ela não fica salva em texto em nenhum lugar. Se precisar depois, use "Resetar senha" no perfil.</div>
+              {tipo!=="afiliado"&&<div style={{color:MUTED,fontSize:12,marginTop:4}}>Anote a senha agora — ela não fica salva em texto em nenhum lugar. Se precisar depois, use "Resetar senha" no perfil.</div>}
             </div>
-            <CopyField label="E-mail de acesso" value={result.email}/>
-            <CopyField label="Senha" value={result.password}/>
-            <CopyField label="Script do sensor (colar no <head> do site)" value={result.sensorSnippet} mono/>
-            <div style={{background:"rgba(212,175,55,0.06)",border:"1px solid rgba(212,175,55,0.18)",borderRadius:14,padding:"14px",marginTop:6,marginBottom:10}}>
-              <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Configurar Mini Chat (opcional)</div>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Número de WhatsApp</div>
-              <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="5524999999999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
-              <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome usado na saudação</div>
-              <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome do cliente" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
-              <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
-              {miniSaved&&<CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${result.id}`}/>}
-            </div>
+            {tipo==="afiliado"?(
+              <CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com\nE-mail: ${result.email}\nSenha: ${result.password}`} mono/>
+            ):(
+              <>
+                <CopyField label="E-mail de acesso" value={result.email}/>
+                <CopyField label="Senha" value={result.password}/>
+                <CopyField label="Script do sensor (colar no <head> do site)" value={result.sensorSnippet} mono/>
+                <div style={{background:"rgba(212,175,55,0.06)",border:"1px solid rgba(212,175,55,0.18)",borderRadius:14,padding:"14px",marginTop:6,marginBottom:10}}>
+                  <div style={{color:GOLD,fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Configurar Mini Chat (opcional)</div>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Número de WhatsApp</div>
+                  <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="5524999999999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8}}/>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Nome usado na saudação</div>
+                  <input value={brandName} onChange={e=>setBrandName(e.target.value)} placeholder="Nome do cliente" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10}}/>
+                  <button onClick={salvarMinichat} style={{width:"100%",background:miniSaved?`${GREEN}18`:GOLD,border:miniSaved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:miniSaved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>{miniSaved?"✓ Salvo":"Salvar Mini Chat"}</button>
+                  {miniSaved&&<CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${result.id}`}/>}
+                </div>
+              </>
+            )}
             <button onClick={onClose} style={{width:"100%",background:"transparent",border:`1.5px solid ${BDR}`,borderRadius:100,padding:14,color:MUTED,fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:F}}>Fechar</button>
           </div>
         ):(
@@ -6595,28 +6616,15 @@ function CriarContaModal({onClose,onCreated,tipoInicial}){
                 <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Telefone (opcional)</div>
                 <input value={telefone} onChange={e=>setTelefone(e.target.value)} placeholder="(24) 99999-9999" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
               </div>
-              <div>
-                <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Valor da ativação (R$, opcional)</div>
-                <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12}}>
-                  <span style={{padding:"0 14px",color:GOLD,fontWeight:700,fontSize:16}}>R$</span>
-                  <input value={ativacaoValor} onChange={e=>setAtivacaoValor(e.target.value)} placeholder="300" style={{flex:1,background:"none",border:"none",padding:"13px 14px 13px 0",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+              {tipo!=="afiliado"&&(
+                <div>
+                  <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Valor da ativação (R$, opcional)</div>
+                  <div style={{display:"flex",alignItems:"center",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12}}>
+                    <span style={{padding:"0 14px",color:GOLD,fontWeight:700,fontSize:16}}>R$</span>
+                    <input value={ativacaoValor} onChange={e=>setAtivacaoValor(e.target.value)} placeholder="300" style={{flex:1,background:"none",border:"none",padding:"13px 14px 13px 0",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
+                  </div>
+                  <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se você já cobrou esse cliente pela ativação (fora da plataforma), registra aqui pra entrar no seu saldo de saque.</div>
                 </div>
-                <div style={{color:MUTED,fontSize:11,marginTop:4,lineHeight:1.4}}>Se você já cobrou esse cliente pela ativação (fora da plataforma), registra aqui pra entrar no seu saldo de saque.</div>
-              </div>
-              {tipo==="afiliado"&&(
-                <>
-                  <div>
-                    <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Produto vinculado</div>
-                    <select value={productId} onChange={e=>setProductId(e.target.value)} style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:14,outline:"none",fontFamily:F,appearance:"none"}}>
-                      <option value="">Selecionar depois</option>
-                      {(produtos||[]).map(p=>(<option key={p.id} value={p.id}>{p.name}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{color:MUTED,fontSize:10,fontWeight:600,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Comissão (%)</div>
-                    <input value={comissao} onChange={e=>setComissao(e.target.value)} placeholder="10" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"13px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F}}/>
-                  </div>
-                </>
               )}
               {error&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"10px 14px",color:RED,fontSize:13}}>{error}</div>}
               <button onClick={criar} disabled={loading} style={{background:loading?"rgba(212,175,55,0.4)":GOLD,border:"none",borderRadius:100,padding:14,color:"#0C0C0C",fontWeight:700,fontSize:14,cursor:loading?"not-allowed":"pointer",fontFamily:F}}>{loading?"Criando…":"Criar conta →"}</button>
