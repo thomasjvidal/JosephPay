@@ -2897,7 +2897,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     setResetting(true);
     const d=await apiCall(`/api/admin/producers/${c.id}/reset-password`,{method:'POST'});
     setResetting(false);
-    if(!d.error)setResetResult(d.password);
+    if(!d.error)setResetResult({email:d.email||c.email,password:d.password});
   };
   const [promptText,setPromptText]=useState(null);
   const [gerandoSugestoes,setGerandoSugestoes]=useState(false);
@@ -3032,11 +3032,11 @@ function AtivacaoAdmin({c,initialOpen,done}){
         <div style={{color:MUTED,fontSize:11,marginTop:6,lineHeight:1.4}}>A própria IA do JosephPay lê os dados reais desse cliente e sugere melhorias direto aqui — não precisa mais sair pro ChatGPT.</div>
       </div>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Senha de acesso</div>
-      {resetResult?<CopyField label="Nova senha" value={resetResult}/>:
+      {resetResult?<CopyField label="Nova senha" value={resetResult.password||resetResult}/>:
         <Btn sm outline color={RED} onClick={resetarSenha}>{resetting?"Gerando…":"Resetar senha"}</Btn>}
       {resetResult&&(
         <button onClick={()=>{
-          const msg=`*_Segue acesso completo_*:\n\n*Aplicativo*: https://josephpay.com\n*Entrar como*: 'Sou Produtor'\n\n*Credenciais de acesso*:\n*E-mail*: ${c.email||""}\n*Senha*: ${resetResult}`;
+          const msg=`*_Segue acesso completo_*:\n\n*Aplicativo*: https://josephpay.com/produtor\n*Entrar como*: 'Sou Produtor'\n\n*Credenciais de acesso*:\n*E-mail*: ${(resetResult.email||c.email)||""}\n*Senha*: ${resetResult.password||resetResult}`;
           navigator.clipboard?.writeText(msg);
         }} style={{width:"100%",background:"transparent",border:`1px solid ${GOLD}40`,borderRadius:100,padding:11,color:GOLD,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F,marginTop:8,display:"inline-flex",alignItems:"center",gap:6}}><Ic n="copy" s={13}/> Copiar mensagem de acesso pra mandar pro produtor</button>
       )}
@@ -3539,7 +3539,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
     setGerandoAcesso(true);
     const d=await apiCall(`/api/admin/producers/${c.id}/reset-password`,{method:'POST'});
     setGerandoAcesso(false);
-    if(d?.password)setAcessoSenha(d.password);
+    if(d?.password)setAcessoSenha({email:d.email||c.email,password:d.password});
     else alert(d?.error||"Erro ao gerar senha");
   };
   const excluirProdutor=async()=>{
@@ -3660,7 +3660,7 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       </div>
       {showContatos&&<AdicionarContatosModal ownerId={c.id} nome={nome} onClose={()=>setShowContatos(false)} onCreated={()=>{setContatosVersao(v=>v+1);onUpdated&&onUpdated();}}/>}
       <button onClick={gerarCopiarAcesso} disabled={gerandoAcesso} style={{width:"100%",background:CARD2,border:`1px solid ${GOLD}40`,borderRadius:14,padding:"12px",color:GOLD,fontWeight:700,fontSize:13,cursor:gerandoAcesso?"not-allowed":"pointer",fontFamily:F}}>{gerandoAcesso?"Gerando…":"Copiar acesso"}</button>
-      {acessoSenha&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com\nE-mail: ${c.email}\nSenha: ${acessoSenha}`} mono/>}
+      {acessoSenha&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com${c.role==="afiliado"?"/embaixador":"/produtor"}\nE-mail: ${acessoSenha.email||""}\nSenha: ${acessoSenha.password}`} mono/>}
       <Btn sm outline color={GOLD} onClick={()=>setShowContatos(true)}>+ Adicionar contatos</Btn>
       <div style={{display:"flex",gap:6}}>
         {[{id:"geral",label:"Visão geral"},{id:"ativacao",label:<><Ic n="zap" s={13}/> Ativação</>},{id:"minichat",label:<><Ic n="chart" s={13}/> Mini Chat</>}].map(t=>(
@@ -5926,7 +5926,7 @@ function ParceirosAdmin(){
     setActionLoading("reset");
     const d=await apiCall(`/api/admin/producers/${sel.id}/reset-password`,{method:"POST"});
     setActionLoading(null);
-    if(d.password)setResetResult(d.password);
+    if(d.password)setResetResult({email:d.email||sel.email,password:d.password});
     else alert(d.error||"Erro ao resetar senha");
   }
   const thS={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",padding:"10px 14px",borderBottom:`1px solid ${BDR}`,textAlign:"left",background:CARD};
@@ -6042,7 +6042,7 @@ function ParceirosAdmin(){
                     <button onClick={doImpersonate} disabled={actionLoading==="impersonate"} style={{flex:1,background:CARD2,border:`1px solid ${GOLD}40`,borderRadius:12,padding:"10px 14px",color:GOLD,fontWeight:700,fontSize:13,cursor:actionLoading==="impersonate"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="impersonate"?"Gerando…":"Entrar como ele →"}</button>
                     <button onClick={doResetSenha} disabled={actionLoading==="reset"} style={{flex:1,background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"10px 14px",color:TEXT,fontWeight:700,fontSize:13,cursor:actionLoading==="reset"?"not-allowed":"pointer",fontFamily:F}}>{actionLoading==="reset"?"Resetando…":"Resetar senha"}</button>
                   </div>
-                  {resetResult&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com/embaixador\nE-mail: ${sel.email}\nSenha: ${resetResult}`} mono/>}
+                  {resetResult&&<CopyField label="Dados de acesso (copie e envie)" value={`Acesse: https://josephpay.com/embaixador\nE-mail: ${resetResult.email||""}\nSenha: ${resetResult.password}`} mono/>}
                 </div>
               );
             })()}
@@ -8056,11 +8056,13 @@ function MaquinaTab({onNav}){
 }
 
 function Login({onLogin}){
-  const _isEmb=typeof window!=="undefined"&&window.location.pathname.includes("embaixador");
-  const [role,setRole]=useState(_isEmb?"afiliado":null);
+  const _path=typeof window!=="undefined"?window.location.pathname:"";
+  const _isEmb=_path.includes("embaixador");
+  const _isProd=_path.includes("produtor");
+  const [role,setRole]=useState(_isEmb?"afiliado":_isProd?"client":null);
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
-  const [step,setStep]=useState(_isEmb?2:1);
+  const [step,setStep]=useState(_isEmb||_isProd?2:1);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [resetSent,setResetSent]=useState(false);

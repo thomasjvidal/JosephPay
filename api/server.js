@@ -1845,9 +1845,10 @@ app.post("/api/admin/producers/:id/reset-password", requireAuth, requireAdmin, a
   try {
     const { id } = req.params;
     const newPassword = generatePassword();
-    const { error } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
+    const { data: updated, error } = await supabase.auth.admin.updateUserById(id, { password: newPassword });
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ id, password: newPassword });
+    const email = updated?.user?.email || null;
+    res.json({ id, password: newPassword, email });
   } catch (err) {
     console.error("[admin/producers reset-password]", err.message);
     res.status(500).json({ error: err.message });
