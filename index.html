@@ -306,6 +306,7 @@ const GOLD="#D4AF37", GOLD2="#F2CA50", GREEN="#22C55E", RED="#EF4444", BLUE="#5B
 const BG="#131312", CARD="#1C1C1A", CARD2="#20201E", CARD3="#2A2A29";
 const BDR="rgba(255,255,255,0.06)", MUTED="#B0A894", TEXT="#F2EFEA";
 const F="'Inter',system-ui,sans-serif", SF="'Newsreader',Georgia,serif";
+const glassSurface={background:"rgba(19,19,18,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,0.06)"};
 
 const mkData=(n,base,variance)=>Array.from({length:n},(_,i)=>({i,v:Math.max(0,base+Math.floor((Math.random()-0.4)*variance))}));
 const PERIODS={
