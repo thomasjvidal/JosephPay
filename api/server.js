@@ -5830,7 +5830,10 @@ async function getRepoDeployStatus(repo, headers) {
     axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}/status`, { headers }),
     axios.get(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}`, { headers }),
   ]);
-  const st = (statusResp.data.statuses || []).find(x => /vercel/i.test(x.context || "")) || null;
+  // Mais de um projeto da Vercel pode publicar o mesmo repositório (DISASTEX tem dois):
+  // se QUALQUER um publicou, o site está atualizado — prioriza o que deu certo.
+  const vercelStatuses = (statusResp.data.statuses || []).filter(x => /vercel/i.test(x.context || ""));
+  const st = vercelStatuses.find(x => x.state === "success") || vercelStatuses.find(x => x.state === "pending") || vercelStatuses[0] || null;
   let checkRun = null;
   if (!st) {
     try {
@@ -5851,7 +5854,7 @@ async function getRepoDeployStatus(repo, headers) {
   if (raw === "pending") return { ...base, state: "publicando", url, message: "A Vercel está publicando agora (leva ~1 min)." };
   // Bloqueado: no plano Hobby a Vercel bloqueia commit cujo autor (ou co-autor) não é o
   // dono do projeto — não é erro do site, é permissão. Visto na CAA em 02/10.
-  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto)." };
+  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: `O site continua no ar normalmente, com a versão anterior. Só a última mudança ("${base.commitMessage}") não foi publicada: a Vercel (plano grátis) barra commit de quem não é dono do projeto. Se essa mudança importa, abra o link e clique em Redeploy.` };
   return { ...base, state: "falhou", url, message: `A última publicação na Vercel falhou${desc ? ` (${desc})` : ""}. O site continua na versão anterior até corrigir.` };
 }
 

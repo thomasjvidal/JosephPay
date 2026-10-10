@@ -1620,7 +1620,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
           <div style={{...glassInset,marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:deployCor,flexShrink:0}}/>
-              <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Publicação bloqueada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
+              <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Última mudança não publicada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
               <button onClick={carregarDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F}}>Atualizar</button>
             </div>
             <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{deploy.message}</div>
