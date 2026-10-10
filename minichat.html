@@ -455,6 +455,7 @@
     let GREETING_NAME = "Nexy";
     let AVATAR_URL = "";
     let REDIRECT_LINK = "";
+    let THANKS_LINK = ""; // página de obrigado/grupo — só se o Admin marcou "Sim"
     let EMAIL_DESTINO = "";
     let DESTINATION_TYPE = "whatsapp";
     let CLOSING_MESSAGE = "Podemos conversar?";
@@ -736,6 +737,7 @@
                 GREETING_NAME = cfg?.greeting_name || resolvedName || GREETING_NAME;
                 if (cfg?.avatar_url) AVATAR_URL = cfg.avatar_url;
                 if (cfg?.redirect_link) REDIRECT_LINK = cfg.redirect_link;
+                if (cfg?.thanks_enabled && /^https?:\/\//i.test(cfg?.thanks_link || "")) THANKS_LINK = cfg.thanks_link;
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
                 if (cfg?.destination_type) DESTINATION_TYPE = cfg.destination_type;
@@ -1187,6 +1189,7 @@
             redirectStatus.textContent = useRedirect ? T().opening : T().openingWhatsapp;
 
             setTimeout(() => {
+                armThanksRedirect();
                 window.open(targetUrl, '_blank');
                 setTimeout(() => {
                     redirectStatus.textContent = T().retryClick;
@@ -1209,7 +1212,29 @@
         openMailto();
     }
 
+    // Página de obrigado / grupo (só produtor que marcou "Sim" no Admin): depois que a
+    // pessoa toca em enviar (e-mail ou WhatsApp), sai pro app e VOLTA pro Mini Chat, segue
+    // sozinha pro link — com ?lang=en|es se o Mini Chat não for em português. Sem isso
+    // ligado, nada muda. O envio em si (e-mail/WhatsApp) é exatamente o mesmo.
+    let thanksArmed = false;
+    function goToThanks() {
+        if (!thanksArmed || !THANKS_LINK) return;
+        thanksArmed = false;
+        let url = THANKS_LINK;
+        try { const u = new URL(THANKS_LINK); if (LANG !== 'pt' && !u.searchParams.has('lang')) u.searchParams.set('lang', LANG); url = u.toString(); } catch (e) {}
+        window.location.href = url;
+    }
+    function armThanksRedirect() {
+        if (!THANKS_LINK || thanksArmed) return;
+        thanksArmed = true;
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(goToThanks, 600); });
+        window.addEventListener('pageshow', () => setTimeout(goToThanks, 600));
+        // Computador sem app de e-mail/WhatsApp (a página nem sai da tela): segue mesmo assim.
+        setTimeout(goToThanks, 6000);
+    }
+
     function openMailto() {
+        armThanksRedirect();
         const subject = T().emailSubject(String(userData.nome || '').trim() || GREETING_NAME);
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage('email'))}`;
         setTimeout(() => {

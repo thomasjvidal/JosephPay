@@ -2045,6 +2045,11 @@ function addMissingNinthDigit(raw) {
 // nesses, a regra do 9 nunca roda.
 // Idiomas do Mini Chat: pt (padrão), en e es (es desde 10/10 — DISASTEX).
 const MINICHAT_LANGS = ["pt", "en", "es"];
+function cleanHttpLink(v) {
+  const t = String(v || "").trim();
+  if (!t) return null;
+  try { const u = new URL(/^https?:\/\//i.test(t) ? t : `https://${t}`); return /^https?:$/.test(u.protocol) ? u.toString().slice(0, 500) : null; } catch { return null; }
+}
 const cleanMinichatLang = v => (MINICHAT_LANGS.includes(v) ? v : "pt");
 
 async function ownerUsesBrPhones(ownerId) {
@@ -3023,7 +3028,7 @@ function cleanHexColor(v) {
 app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message, language, template, accent_color, bg_color } = req.body;
+    const { whatsapp_number, brand_name, greeting_name, avatar_url, redirect_link, email_destino, destination_type, questions, objetivo_options, business_context, closing_message, language, template, accent_color, bg_color, thanks_enabled, thanks_link } = req.body;
     // Atualização parcial: só mexe nos campos que vieram no corpo, mantendo o resto do que já
     // estava salvo — assim a tela de "Ativação" e a tela de "Perguntas" podem salvar separadas,
     // sem uma apagar o que a outra já tinha configurado.
@@ -3072,6 +3077,11 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       // nunca injetar CSS arbitrário na página pública do Mini Chat.
       accent_color: accent_color !== undefined ? cleanHexColor(accent_color) : (existing.accent_color ?? null),
       bg_color: bg_color !== undefined ? cleanHexColor(bg_color) : (existing.bg_color ?? null),
+      // Página de obrigado / grupo depois do envio (pedido do Thomas, 10/10 — DISASTEX).
+      // Desligada por padrão: só quem marcar "Sim" no Admin tem; o resto fica igual.
+      // Só http(s), pra nunca virar javascript:/data: na página pública.
+      thanks_enabled: thanks_enabled !== undefined ? !!thanks_enabled : (existing.thanks_enabled ?? false),
+      thanks_link: thanks_link !== undefined ? cleanHttpLink(thanks_link) : (existing.thanks_link ?? null),
       // Token do xPosts (card "xPosts") — salvo por /xposts; aqui só é mantido.
       xposts_token: existing.xposts_token ?? null,
     };

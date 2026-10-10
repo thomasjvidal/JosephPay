@@ -402,3 +402,13 @@ JS que ele carrega (`<script src>`/modulepreload, mesma origem, até 25). Achou 
 conta como feito quando o Mini Chat está confirmado no site (o vercel.json só importa pro redirecionamento).
 Visto na DISASTEX (10/10): botão certo no ar e o card dizia "Ainda não está no ar".
 
+## Página de obrigado / grupo depois do envio (opcional, por produtor)
+
+Card Mini Chat → "Página de obrigado / grupo depois do envio?" Não (padrão) | Sim + link
+(`minichat_config.thanks_enabled` / `thanks_link`, só http(s) — `cleanHttpLink`). Com "Sim", o
+`minichat.html` (`armThanksRedirect()`) leva a pessoa pro link quando ela volta do app de e-mail ou do
+WhatsApp (ou 6 s depois, no computador), com `?lang=en|es` se o Mini Chat não for em português. Com "Não"
+nada muda, e o envio em si (e-mail/WhatsApp) é sempre o mesmo. É separado do "Redirecionamento final"
+(`redirect_link`, que troca o botão do WhatsApp). A página fica no site do cliente — ex: DISASTEX
+`/gracias` (¡Felicidades! + botão pro grupo do WhatsApp).
+

@@ -2846,6 +2846,9 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
+  // Página de obrigado / grupo depois do envio — desligada por padrão, liga só pra quem tem.
+  const [obrigadoAtivo,setObrigadoAtivo]=useState(!!c.minichat_config?.thanks_enabled);
+  const [obrigadoLink,setObrigadoLink]=useState(c.minichat_config?.thanks_link||"");
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
   const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
@@ -2874,7 +2877,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   useEffect(()=>{
     if(!minichatMounted.current){minichatMounted.current=true;return;}
     setMiniSaved(false);
-  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,emailDestino,destinoTipo,objetivoOptions,businessContext,idioma,modelo,corFundo,corDestaque]);
+  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,obrigadoAtivo,obrigadoLink,emailDestino,destinoTipo,objetivoOptions,businessContext,idioma,modelo,corFundo,corDestaque]);
   const enviarFoto=async(e)=>{
     const file=e.target.files[0];if(!file)return;
     e.target.value="";
@@ -2895,6 +2898,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     setErroSalvar("");
     if(destinoTipo!=="email"&&!wapNum.trim()){setErroSalvar("Preencha o número de WhatsApp.");return;}
     if(destinoTipo!=="whatsapp"&&!emailDestino.trim()){setErroSalvar("Preencha o e-mail de destino.");return;}
+    if(obrigadoAtivo&&!/^(https?:\/\/)?[^\s.]+\.[^\s]+$/i.test(obrigadoLink.trim())){setErroSalvar("Cole o link da página de obrigado / grupo (ex: https://site.com/obrigado) ou marque \"Não\".");return;}
     if(destinoTipo!=="whatsapp"&&!emailValido(emailDestino)){setErroSalvar(`"${emailDestino.trim()}" não é um e-mail válido — falta a parte antes do @ (ex: nome@gmail.com).`);return;}
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({
       whatsapp_number:wapNum.trim(),
@@ -2902,6 +2906,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       greeting_name:brandName.trim(),
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
+      thanks_enabled:obrigadoAtivo,
+      thanks_link:obrigadoLink.trim(),
       email_destino:emailDestino.trim(),
       destination_type:destinoTipo,
       objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
@@ -3037,6 +3043,15 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Mensagem final ao lead</div>
       <input value={closingMsg} onChange={e=>setClosingMsg(e.target.value)} placeholder='Frase de encerramento (padrão: "Podemos conversar?")' style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Aparece no final da mensagem que vai para o WhatsApp do produtor. Deixe em branco para usar "Podemos conversar?".</div>
+
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Página de obrigado / grupo depois do envio?</div>
+      <div style={{display:"flex",gap:6,marginBottom:obrigadoAtivo?8:4}}>
+        {[[false,"Não"],[true,"Sim"]].map(([v,label])=>(
+          <button key={label} onClick={()=>setObrigadoAtivo(v)} style={{flex:1,background:obrigadoAtivo===v?GOLD:"none",border:`1px solid ${obrigadoAtivo===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:obrigadoAtivo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
+        ))}
+      </div>
+      {obrigadoAtivo&&<input value={obrigadoLink} onChange={e=>setObrigadoLink(e.target.value)} placeholder="Link da página (ex: https://site.com/obrigado ou link do grupo)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>}
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Com "Sim", depois que a pessoa envia (e-mail ou WhatsApp) e volta pro Mini Chat, ela vai sozinha pra esse link. Com "Não" (padrão), nada muda.</div>
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
       <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento final (opcional — sobrepõe WhatsApp/E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
