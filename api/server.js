@@ -4669,6 +4669,34 @@ async function getGithubToken() {
   return row?.access_token || null;
 }
 
+// Contas extras do GitHub (migration_v47): site de cliente em outra conta do GitHub/Vercel.
+// Toda chamada a api.github.com/repos/<dono>/... usa o token da conta dona quando existe —
+// assim o commit sai com o autor certo e a Vercel (Hobby) não bloqueia a publicação. Feito
+// por interceptor pra valer em TODO lugar que mexe no repo do cliente (sensor, Mini Chat,
+// botões, fotos, vercel.json, diagnóstico), sem mudar nenhum desses fluxos.
+// Sem a tabela, nada muda: tudo continua usando a conexão principal.
+let githubExtraTokensCache = { ts: 0, map: new Map() };
+async function getGithubExtraTokens(force = false) {
+  if (!force && Date.now() - githubExtraTokensCache.ts < 60 * 1000) return githubExtraTokensCache.map;
+  const map = new Map();
+  try {
+    const { data, error } = await supabase.from("github_extra_tokens").select("owner,access_token");
+    if (!error) for (const r of data || []) if (r.owner && r.access_token) map.set(r.owner.toLowerCase(), r.access_token);
+  } catch {}
+  githubExtraTokensCache = { ts: Date.now(), map };
+  return map;
+}
+axios.interceptors.request.use(async (config) => {
+  const m = /^https:\/\/api\.github\.com\/repos\/([^/]+)\//i.exec(config.url || "");
+  if (!m || config.jpTokenProprio) return config;
+  const tok = (await getGithubExtraTokens()).get(decodeURIComponent(m[1]).toLowerCase());
+  if (tok) {
+    if (typeof config.headers?.set === "function") config.headers.set("Authorization", `Bearer ${tok}`);
+    else config.headers = { ...(config.headers || {}), Authorization: `Bearer ${tok}` };
+  }
+  return config;
+});
+
 app.get("/api/admin/github/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { data } = await supabase.from("platform_github_auth").select("connected_login,updated_at").eq("id", 1).maybeSingle();
@@ -4726,6 +4754,56 @@ app.get("/api/admin/github/callback", async (req, res) => {
 
 app.post("/api/admin/github/disconnect", requireAuth, requireAdmin, async (req, res) => {
   await supabase.from("platform_github_auth").delete().eq("id", 1);
+  res.json({ ok: true });
+});
+
+// Contas extras (migration_v47). O token nunca volta pro navegador — só dono, conta e data.
+app.get("/api/admin/github/extra-tokens", requireAuth, requireAdmin, async (req, res) => {
+  const { data, error } = await supabase.from("github_extra_tokens").select("owner,token_login,updated_at").order("owner");
+  if (error) return res.json({ contas: [], semTabela: true });
+  res.json({ contas: data || [] });
+});
+
+app.post("/api/admin/github/extra-tokens", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const repoTeste = String(req.body?.repo || "").trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+    if (!token) return res.status(400).json({ error: "Cole o token da conta do GitHub." });
+    const h = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    let login;
+    try {
+      login = (await axios.get("https://api.github.com/user", { headers: h })).data?.login;
+    } catch {
+      return res.status(400).json({ error: "O GitHub não aceitou esse token. Confira se copiou inteiro e se ele não expirou." });
+    }
+    // Dono = dono do repositório informado (pode ser uma organização), senão a própria conta do token.
+    let owner = login;
+    if (repoTeste) {
+      if (!/^[^/\s]+\/[^/\s]+$/.test(repoTeste)) return res.status(400).json({ error: "Repositório no formato dono/nome (ex: WeNovarks/meu-site)." });
+      let info;
+      try {
+        info = (await axios.get(`https://api.github.com/repos/${repoTeste}`, { headers: h, jpTokenProprio: true })).data;
+      } catch {
+        return res.status(400).json({ error: `Esse token não enxerga o repositório ${repoTeste}. Dê acesso a ele na hora de criar o token.` });
+      }
+      if (info?.permissions && !info.permissions.push) return res.status(400).json({ error: `Esse token só tem leitura em ${repoTeste}. Ele precisa de permissão de escrita (Contents: Read and write).` });
+      owner = info?.owner?.login || repoTeste.split("/")[0];
+    }
+    const { error } = await supabase.from("github_extra_tokens").upsert({
+      owner: owner.toLowerCase(), access_token: token, token_login: login, updated_at: new Date().toISOString(),
+    });
+    if (error) return res.status(500).json({ error: /github_extra_tokens/.test(error.message) ? "Falta rodar o SQL supabase/migration_v47.sql no Supabase." : error.message });
+    await getGithubExtraTokens(true);
+    res.json({ ok: true, owner, login });
+  } catch (err) {
+    console.error("[github/extra-tokens]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/github/extra-tokens/:owner", requireAuth, requireAdmin, async (req, res) => {
+  await supabase.from("github_extra_tokens").delete().eq("owner", String(req.params.owner).toLowerCase());
+  await getGithubExtraTokens(true);
   res.json({ ok: true });
 });
 
@@ -4828,7 +4906,23 @@ app.get("/api/admin/github/repos", requireAuth, requireAdmin, async (req, res) =
       headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
       params: { per_page: 100, sort: "updated" },
     });
-    res.json({ repos: (resp.data || []).map(r => ({ fullName: r.full_name, defaultBranch: r.default_branch })) });
+    const repos = (resp.data || []).map(r => ({ fullName: r.full_name, defaultBranch: r.default_branch }));
+    // Repositórios das contas extras também aparecem (sem precisar convidar como colaborador).
+    const vistos = new Set(repos.map(r => r.fullName.toLowerCase()));
+    for (const tok of new Set((await getGithubExtraTokens()).values())) {
+      try {
+        const extra = await axios.get("https://api.github.com/user/repos", {
+          headers: { Authorization: `Bearer ${tok}`, Accept: "application/vnd.github+json" },
+          params: { per_page: 100, sort: "updated" },
+        });
+        for (const r of extra.data || []) {
+          if (vistos.has(r.full_name.toLowerCase())) continue;
+          vistos.add(r.full_name.toLowerCase());
+          repos.push({ fullName: r.full_name, defaultBranch: r.default_branch });
+        }
+      } catch (e) { console.warn("[github/repos extra]", e.response?.status || e.message); }
+    }
+    res.json({ repos });
   } catch (err) {
     console.error("[github/repos]", err.response?.data || err.message);
     res.status(500).json({ error: "Falha ao buscar repositórios do GitHub" });
@@ -5797,7 +5891,7 @@ async function getRepoDeployStatus(repo, headers) {
   if (raw === "pending") return { ...base, state: "publicando", url, message: "A Vercel está publicando agora (leva ~1 min)." };
   // Bloqueado: no plano Hobby a Vercel bloqueia commit cujo autor (ou co-autor) não é o
   // dono do projeto — não é erro do site, é permissão. Visto na CAA em 02/10.
-  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto)." };
+  if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto). Pra não acontecer de novo: em Integrações → GitHub, adicione o token da conta dona desse repositório (Contas extras)." };
   return { ...base, state: "falhou", url, message: `A última publicação na Vercel falhou${desc ? ` (${desc})` : ""}. O site continua na versão anterior até corrigir.` };
 }
 

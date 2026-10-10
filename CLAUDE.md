@@ -373,3 +373,15 @@ resposta" (JSON). "✨ Gerar com IA" continua existindo, só foi pra "Mais opç�
 - Resposta ≠ 200 → fica em `xposts_avisos` (migration_v45) e `reenviarAvisosXposts()` tenta de novo a
   cada 5 min com espera crescente (até 6 h, 40 tentativas). Sem a tabela, o reenvio fica só na memória.
 - O PATCH do Mini Chat só MANTÉM `xposts_token` (quem grava é `/xposts`), pra salvar o Mini Chat não apagar o token.
+
+## GitHub: contas extras (site em outro GitHub/Vercel)
+
+Site de cliente no GitHub e na Vercel de OUTRA conta (ex: Disastex, `WeNovarks`): a Vercel
+(plano Hobby) bloqueia a publicação de commit cujo autor não é o dono. Solução: em
+Integrações → GitHub → "Contas extras", o admin cola o token (fine-grained, Contents: Read
+and write) da conta dona (`github_extra_tokens`, migration_v47). Um interceptor do axios em
+`api/server.js` troca o token em TODA chamada `api.github.com/repos/<dono>/...` — sensor, Mini
+Chat, botões, fotos, vercel.json, diagnóstico — sem mudar esses fluxos. A conexão principal
+(`platform_github_auth`, id 1) continua igual; `/github/repos` lista também os repositórios das
+contas extras. O token nunca volta pro navegador. Nunca fixe `author`/`committer` nos commits
+pro repo do cliente, senão a Vercel volta a bloquear.

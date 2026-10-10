@@ -1070,6 +1070,68 @@ function GithubAdmin(){
           <Btn sm outline color={RED} onClick={desconectar}>Desconectar</Btn>
         </div>
       )}
+      {status&&status.connected&&<GithubContasExtras/>}
+    </div>
+  );
+}
+
+// Site de cliente que está no GitHub/Vercel de OUTRA conta: com o token da conta dona, o
+// JosephPay grava no repositório como ela — e a Vercel (plano grátis) para de bloquear a
+// publicação. Não troca a conexão principal acima (migration_v47).
+function GithubContasExtras(){
+  const [contas,setContas]=useState(null);
+  const [semTabela,setSemTabela]=useState(false);
+  const [aberto,setAberto]=useState(false);
+  const [token,setToken]=useState("");
+  const [repo,setRepo]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const [msg,setMsg]=useState(null);
+  const load=()=>apiCall('/api/admin/github/extra-tokens').then(d=>{setContas(d?.contas||[]);setSemTabela(!!d?.semTabela);});
+  useEffect(()=>{load();},[]);
+  const salvar=async()=>{
+    setSalvando(true);setMsg(null);
+    const d=await apiCall('/api/admin/github/extra-tokens',{method:'POST',body:JSON.stringify({token,repo})});
+    setSalvando(false);
+    if(d?.ok){setMsg({ok:true,t:`Pronto: repositórios de ${d.owner} agora são gravados como ${d.login}.`});setToken("");setRepo("");setAberto(false);load();}
+    else setMsg({ok:false,t:d?.error||"Não consegui salvar."});
+  };
+  const remover=async(owner)=>{
+    if(!window.confirm(`Remover a conta extra de ${owner}? Os repositórios dela voltam a usar a conexão principal.`))return;
+    await apiCall(`/api/admin/github/extra-tokens/${encodeURIComponent(owner)}`,{method:'DELETE'});
+    load();
+  };
+  const campo={width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,fontFamily:F,marginBottom:8,outline:"none"};
+  return(
+    <div style={{marginTop:18,paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+      <div style={{color:TEXT,fontWeight:700,fontSize:13,marginBottom:4}}>Contas extras</div>
+      <div style={{color:MUTED,fontSize:12,lineHeight:1.5,marginBottom:12}}>Pra site de cliente que está no GitHub e na Vercel de outra conta. Com o token da conta dona, o JosephPay grava no código como ela e a Vercel para de bloquear a publicação.</div>
+      {semTabela&&<div style={{...glassInset,color:GOLD,fontSize:12,marginBottom:10}}>Falta rodar o SQL <b>supabase/migration_v47.sql</b> no Supabase.</div>}
+      {(contas||[]).map(c=>(
+        <div key={c.owner} style={{...glassInset,display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"10px 14px"}}>
+          <span style={{width:7,height:7,borderRadius:"50%",background:GREEN,flexShrink:0}}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{c.owner}</div>
+            <div style={{color:MUTED,fontSize:11}}>grava como {c.token_login||c.owner}</div>
+          </div>
+          <button onClick={()=>remover(c.owner)} style={{background:"none",border:"none",color:RED,fontSize:12,cursor:"pointer",fontFamily:F}}>Remover</button>
+        </div>
+      ))}
+      {msg&&<div style={{color:msg.ok?GREEN:RED,fontSize:12,margin:"6px 0 10px",lineHeight:1.5}}>{msg.t}</div>}
+      {!aberto?(
+        <button onClick={()=>{setAberto(true);setMsg(null);}} style={pillBtn(false,false)}>+ Adicionar conta</button>
+      ):(
+        <div style={glassInset}>
+          <div style={{color:MUTED,fontSize:12,lineHeight:1.6,marginBottom:10}}>
+            Na conta do GitHub <b style={{color:TEXT}}>dona do site</b> (a mesma ligada à Vercel do site): <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" style={{color:GOLD}}>criar token ↗</a> → escolha o repositório do site → em Permissões, <b style={{color:TEXT}}>Contents: Read and write</b> → gerar e colar aqui.
+          </div>
+          <input value={repo} onChange={e=>setRepo(e.target.value)} placeholder="Repositório (ex: WeNovarks/meu-site)" style={campo} autoCapitalize="off" autoCorrect="off"/>
+          <input value={token} onChange={e=>setToken(e.target.value)} placeholder="Token (github_pat_...)" type="password" style={campo} autoCapitalize="off" autoCorrect="off"/>
+          <div style={{display:"flex",gap:8,marginTop:4}}>
+            <button onClick={()=>{setAberto(false);setToken("");}} style={{...pillBtn(false,false),flex:1,height:44,fontSize:14}}>Cancelar</button>
+            <button onClick={salvar} disabled={salvando||!token.trim()} style={{...pillBtn(true,salvando||!token.trim()),flex:1,height:44,fontSize:14}}>{salvando?"Testando…":"Salvar"}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
