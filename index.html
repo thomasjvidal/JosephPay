@@ -3400,6 +3400,11 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     const d=await apiCall(`/api/admin/producers/${c.id}/activation-test`);
     setTestando(false);
     setTeste(d?.error?{error:d.error}:d);
+    // O checklist lá em cima usa a verificação feita quando a tela abriu — se o "Testar
+    // tudo" acabou de confirmar o Mini Chat no site, o checklist acompanha na hora (antes
+    // ficava "Mini Chat no site ✓" aqui e "Mini Chat instalado no site" vermelho em cima).
+    const mc=(d?.checks||[]).find(x=>x.id==="minichat_site");
+    if(mc&&!mc.warn)setMinichatVerified(!!mc.ok);
   };
   const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
 
