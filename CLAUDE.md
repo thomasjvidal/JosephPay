@@ -402,3 +402,11 @@ JS que ele carrega (`<script src>`/modulepreload, mesma origem, até 25). Achou 
 conta como feito quando o Mini Chat está confirmado no site (o vercel.json só importa pro redirecionamento).
 Visto na DISASTEX (10/10): botão certo no ar e o card dizia "Ainda não está no ar".
 
+## Modo E-mail: "Redirecionamento final" depois de enviar
+
+Com destino "E-mail" e `redirect_link` salvo, o `minichat.html` (`armRedirectAfterEmail()`) leva a pessoa pro
+link quando ela volta do app de e-mail (ou 6 s depois, no computador), com `?lang=en|es` se o Mini Chat não
+for em português. Sem link salvo nada muda; o envio do e-mail é o mesmo. Uso: DISASTEX → página
+`/gracias` no site deles ("¡Felicidades!" + botão pro grupo do WhatsApp) — a página fica no site do
+cliente, não no JosephPay (pedido do Thomas).
+

@@ -3040,7 +3040,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
 
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
       <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento final (opcional — sobrepõe WhatsApp/E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
-      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preenchido, o botão final abre apenas esse link — útil para Calendly, página de vendas, etc.</div>
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preenchido, o botão final abre apenas esse link — útil para Calendly, página de vendas, etc. No modo E-mail, abre sozinho depois que a pessoa envia o e-mail e volta pra página (ex: página de "parabéns, entre no grupo").</div>
 
       {(miniSaved||c.minichat_config)&&<div style={{marginBottom:14}}><CopyField label="Link do Mini Chat" value={`https://josephpay.com/minichat.html?uid=${c.id}`}/></div>}
       {wapNum.trim()&&<div style={{marginBottom:14}}><CopyField label="Link do WhatsApp" value={`https://wa.me/${normalizeWhatsappDigits(wapNum)}`}/></div>}
