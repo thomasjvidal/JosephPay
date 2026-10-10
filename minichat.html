@@ -1230,7 +1230,8 @@
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(goToThanks, 600); });
         window.addEventListener('pageshow', () => setTimeout(goToThanks, 600));
         // Computador sem app de e-mail/WhatsApp (a página nem sai da tela): segue mesmo assim.
-        setTimeout(goToThanks, 6000);
+        // Só com a página NA TELA — nunca tira a pessoa do app de e-mail antes de ela enviar.
+        setTimeout(() => { if (document.visibilityState === 'visible') goToThanks(); }, 6000);
     }
 
     function openMailto() {
