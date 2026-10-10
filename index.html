@@ -1625,7 +1625,7 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
             </div>
             <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{deploy.message}</div>
             {deploy.commitMessage&&<div style={{color:MUTED,fontSize:11,marginTop:4,opacity:0.8}}>Último commit: “{deploy.commitMessage}”{deploy.commitDate?` · ${new Date(deploy.commitDate).toLocaleString('pt-BR')}`:""}</div>}
-            {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>Abrir na Vercel ↗</a>}
+            {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>{deploy.via==="github-actions"?"Abrir no GitHub ↗":"Abrir na Vercel ↗"}</a>}
           </div>
         )}
         {readyAt&&!editing?(
@@ -2816,6 +2816,15 @@ const DEFAULT_MINICHAT_QUESTIONS_EN=[
   {text:"Got it.",subtext:"What's your biggest challenge today?",options:["People ask the price and vanish","I explain everything by text","I don't look professional","No online authority"]},
   {text:"Last question.",subtext:"If you had a website today, the top priority would be?",options:["Show my services clearly","Get more contacts","Have a professional link","Booking system"]},
 ];
+const DEFAULT_MINICHAT_QUESTIONS_ES=[
+  {text:"¡Hola! Hagamos un diagnóstico rápido de tu presencia en línea.\n\nToma menos de un minuto.",subtext:"¿Cuál es tu objetivo principal hoy?",options:["Conseguir más clientes","Transmitir más confianza","Tener un link profesional","Recibir más reservas"]},
+  {text:"Perfecto.",subtext:"¿Cuál es tu situación actual?",options:["No tengo sitio web","Solo Instagram","Sitio web desactualizado","El sitio no convierte"]},
+  {text:"Entendido.",subtext:"¿Cuál es tu mayor desafío hoy?",options:["Preguntan el precio y desaparecen","Explico todo por mensaje","No me veo profesional","Sin autoridad en línea"]},
+  {text:"Última pregunta.",subtext:"Si tuvieras un sitio web hoy, ¿cuál sería la prioridad?",options:["Mostrar bien mis servicios","Conseguir más contactos","Tener un link profesional","Sistema de reservas"]},
+];
+// Idiomas do Mini Chat (perfil do produtor): pt (padrão), en, es.
+const mcLang=v=>v==="en"||v==="es"?v:"pt";
+const MC_LANG_LABEL={pt:"idioma Português",en:"idioma English",es:"idioma Español"};
 function AtivacaoAdmin({c,initialOpen,done}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||c.phone||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
@@ -2828,7 +2837,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
   // Idioma só do Mini Chat (pt/en) e modelo visual (whatsapp/email) — padrão é o de sempre.
-  const [idioma,setIdioma]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [idioma,setIdioma]=useState(mcLang(c.minichat_config?.language));
   const [modelo,setModelo]=useState(c.minichat_config?.template==="email"?"email":"whatsapp");
   const [corFundo,setCorFundo]=useState(c.minichat_config?.bg_color||"#0f1a3a");
   const [corDestaque,setCorDestaque]=useState(c.minichat_config?.accent_color||"#c91d2a");
@@ -2931,7 +2940,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       if(novo&&st.email_destino&&!emailDestino.trim()){setEmailDestino(st.email_destino);feitos.push("e-mail de destino");}
       if(novo&&st.whatsapp_number&&!wapNum.trim()){setWapNum(st.whatsapp_number);feitos.push("WhatsApp");}
       if(novo&&st.destination_type&&!mc.destination_type){setDestinoTipo(st.destination_type);feitos.push(st.destination_type==="email"?"destino E-mail":"destino WhatsApp");}
-      if(novo&&st.language&&!mc.language){setIdioma(st.language);feitos.push(st.language==="en"?"idioma English":"idioma Português");}
+      if(novo&&st.language&&!mc.language){setIdioma(mcLang(st.language));feitos.push(MC_LANG_LABEL[mcLang(st.language)]);}
       if(novo&&(st.bg_color||st.accent_color)&&!mc.template){setModelo("email");if(st.bg_color)setCorFundo(st.bg_color);if(st.accent_color)setCorDestaque(st.accent_color);feitos.push("visual e cores do site");}
       if(st.brand_name&&!mc.brand_name&&(!brandName.trim()||brandName===c.name)){setBrandName(st.brand_name);feitos.push("nome");}
       if(st.business_context&&!mc.business_context&&!businessContext.trim()){setBusinessContext(st.business_context);feitos.push("sobre o negócio");}
@@ -2966,7 +2975,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       </>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Idioma do Mini Chat</div>
       <div style={{display:"flex",gap:6,marginBottom:4}}>
-        {[["pt","🇧🇷 Português"],["en","🇺🇸 English"]].map(([v,label])=>(
+        {[["pt","🇧🇷 Português"],["en","🇺🇸 English"],["es","🇪🇸 Español"]].map(([v,label])=>(
           <button key={v} onClick={()=>setIdioma(v)} style={{flex:1,background:idioma===v?GOLD:"none",border:`1px solid ${idioma===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:idioma===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
         ))}
       </div>
@@ -3056,7 +3065,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
 
 function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [open,setOpen]=useState(false);
-  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:(c.minichat_config?.language==="en"?DEFAULT_MINICHAT_QUESTIONS_EN:DEFAULT_MINICHAT_QUESTIONS).map(q=>({...q,options:[...q.options]})));
+  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:(c.minichat_config?.language==="en"?DEFAULT_MINICHAT_QUESTIONS_EN:c.minichat_config?.language==="es"?DEFAULT_MINICHAT_QUESTIONS_ES:DEFAULT_MINICHAT_QUESTIONS).map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(!!c.minichat_config?.questions?.length);
@@ -3074,8 +3083,9 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     const nome=c.minichat_config?.brand_name||c.company_name||c.name||"este cliente";
     const area=nicho.trim();
     const en=c.minichat_config?.language==="en";
+    const es=c.minichat_config?.language==="es";
     const qtd=Math.max(questions.length,4);
-    const prompt=`Crie ${qtd} perguntas de qualificação para o mini chat de pré-diagnóstico do site de ${nome}${area?` (${area})`:""}.\n\nUse tudo o que você já sabe sobre esse cliente: serviços, público, diferenciais e o jeito de falar da marca. O objetivo é descobrir o que a pessoa procura e quão pronta ela está pra fechar.\n\nRegras:\n- ${en?"Escreva TUDO em inglês (o público é americano).":"Escreva tudo em português do Brasil."}\n- Cada pergunta tem: um texto curto de transição (ex: "${en?"Perfect!":"Perfeito!"}"), a pergunta objetiva e de 3 a 4 opções curtas (máx. 5 palavras cada).\n- A 1ª pergunta deve ser sobre o serviço/produto que a pessoa procura (use os serviços reais).\n- Inclua uma pergunta sobre QUANDO ela quer começar (ex: "${en?"As soon as possible":"Quanto antes"}", "${en?"This month":"Este mês"}", "${en?"Just researching":"Só estou pesquisando"}").\n- Não pergunte nome, telefone, e-mail nem data de nascimento (o mini chat já pergunta no final).\n\nResponda SOMENTE com um JSON puro, sem markdown, neste formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
+    const prompt=`Crie ${qtd} perguntas de qualificação para o mini chat de pré-diagnóstico do site de ${nome}${area?` (${area})`:""}.\n\nUse tudo o que você já sabe sobre esse cliente: serviços, público, diferenciais e o jeito de falar da marca. O objetivo é descobrir o que a pessoa procura e quão pronta ela está pra fechar.\n\nRegras:\n- ${en?"Escreva TUDO em inglês (o público é americano).":es?"Escreva TUDO em espanhol latino-americano, tratando por \"tú\".":"Escreva tudo em português do Brasil."}\n- Cada pergunta tem: um texto curto de transição (ex: "${en?"Perfect!":"Perfeito!"}"), a pergunta objetiva e de 3 a 4 opções curtas (máx. 5 palavras cada).\n- A 1ª pergunta deve ser sobre o serviço/produto que a pessoa procura (use os serviços reais).\n- Inclua uma pergunta sobre QUANDO ela quer começar (ex: "${en?"As soon as possible":"Quanto antes"}", "${en?"This month":"Este mês"}", "${en?"Just researching":"Só estou pesquisando"}").\n- Não pergunte nome, telefone, e-mail nem data de nascimento (o mini chat já pergunta no final).\n\nResponda SOMENTE com um JSON puro, sem markdown, neste formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
     try{await navigator.clipboard.writeText(prompt);}catch{window.prompt("Copie o prompt:",prompt);}
     setPromptCopiado(true);setShowJsonImport(true);setTimeout(()=>setPromptCopiado(false),2500);
   };
@@ -3086,10 +3096,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   // Idioma e destino acompanham AO VIVO o que está escolhido no card "Mini Chat" (mesmo
   // antes de salvar) — antes liam só o que estava salvo quando a tela abriu, e a caixa
   // "Sempre incluídas no final" ficava em português com o perfil já em English.
-  const [idiomaMc,setIdiomaMc]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [idiomaMc,setIdiomaMc]=useState(mcLang(c.minichat_config?.language));
   const [destinoMc,setDestinoMc]=useState(c.minichat_config?.destination_type||"whatsapp");
   useEffect(()=>{
-    const h=e=>{if(e.detail?.id!==c.id)return;if(e.detail.language)setIdiomaMc(e.detail.language);if(e.detail.destination_type)setDestinoMc(e.detail.destination_type);};
+    const h=e=>{if(e.detail?.id!==c.id)return;if(e.detail.language)setIdiomaMc(mcLang(e.detail.language));if(e.detail.destination_type)setDestinoMc(e.detail.destination_type);};
     window.addEventListener("minichat-config-change",h);
     return ()=>window.removeEventListener("minichat-config-change",h);
   },[c.id]);
@@ -3103,7 +3113,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     if(!d?.questions?.length){if(!auto)setMsg(d?.error||"Não consegui importar as perguntas.");return;}
     setQuestions(d.questions);setSaved(false);
     if(d.settings?.business_context&&!nicho.trim())setNicho(d.settings.business_context);
-    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':"";
+    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':d.language==="es"&&idiomaMc!=="es"?' Estão em espanhol — confira "Idioma do Mini Chat" no card Mini Chat.':"";
     setImportInfo(`✓ Puxei ${d.questions.length} pergunta(s) do mini chat que já existe no site (${(d.source||[]).join(", ")}). Revise e toque em "Salvar perguntas".${avisoIdioma}`);
   };
   // Padrão: cliente com repositório e sem perguntas próprias salvas → ao abrir o card,
@@ -3229,8 +3239,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta os dados de contato antes de liberar o botão final — pra garantir que todo interessado que aparece no CRM já venha com contato real. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.{destinoMc==="email"?" Como o destino deste cliente é E-mail, também pergunta o e-mail da pessoa.":""}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {(destinoMc==="email"
-              ?(idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?","What's your date of birth? (so we can send you a little gift on your birthday 🎁)"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?","Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)"])
-              :(idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
+              ?(idiomaMc==="es"?["¿Cuál es tu nombre completo?","¿Cuál es tu mejor e-mail?","¿Y tu número de teléfono?","¿Cuál es tu fecha de nacimiento? (para enviarte un regalito en tu cumpleaños 🎁)"]:idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?","What's your date of birth? (so we can send you a little gift on your birthday 🎁)"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?","Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)"])
+              :(idiomaMc==="es"?["¿Cuál es tu nombre completo?","¿Cuál es tu número de WhatsApp?","¿Cuál es tu fecha de nacimiento?"]:idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
             ).map((q,i)=>(
               <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>
             ))}
@@ -3249,15 +3259,17 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   // Mesmo formato da mensagem real do Mini Chat (buildMessage em minichat.html):
   // nome + respostas, sem telefone/e-mail/aniversário, negrito do WhatsApp.
   const en=idiomaMc==="en";
-  const marca=c.minichat_config?.brand_name||c.name||(en?"[producer name]":"[nome do produtor]");
-  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `— *${r}* ${en?"[answer]":"[resposta]"}`;}).join("\n");
+  const es=idiomaMc==="es";
+  const marca=c.minichat_config?.brand_name||c.name||(en?"[producer name]":es?"[nombre del negocio]":"[nome do produtor]");
+  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:es?`Pregunta ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `— *${r}* ${en?"[answer]":es?"[respuesta]":"[resposta]"}`;}).join("\n");
+  if(es)return `¡Hola, *${marca}*! 👋\n\nSoy *Juan Pérez* y acabo de hacer el prediagnóstico en su sitio web.\n\n📋 *Mi perfil*\n${linhas}\n`;
   return en?`Hi *${marca}*! 👋\n\nI'm *John Smith* and I just finished the pre-diagnosis on your website.\n\n📋 *My profile*\n${linhas}\n`:`Olá, *${marca}*! 👋\n\nSou *João Silva* e acabei de fazer o pré-diagnóstico no seu site.\n\n📋 *Meu perfil*\n${linhas}\n`;
 })()}
                 </div>
                 <input
                   value={closingMsg}
                   onChange={e=>{setClosingMsg(e.target.value);setSaved(false);}}
-                  placeholder={idiomaMc==="en"?"Can we talk?":"Podemos conversar?"}
+                  placeholder={idiomaMc==="en"?"Can we talk?":idiomaMc==="es"?"¿Podemos conversar?":"Podemos conversar?"}
                   style={{width:"100%",background:"transparent",border:"none",borderTop:`1px dashed #ccc`,outline:"none",fontFamily:"sans-serif",fontSize:12,color:"#111",padding:"6px 0 2px",lineHeight:1.5}}
                 />
                 <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
@@ -3967,7 +3979,7 @@ function MinichatMetricasAdmin({c}){
       {/* Horários */}
       {(d.horarios||[]).some(h=>h.conversas>0)&&(
         <div style={glassCard()}>
-          {titulo("Horário das conversas",d.idioma==="en"?"Horário de Nova York.":"Horário de Brasília.")}
+          {titulo("Horário das conversas",d.idioma==="en"||d.idioma==="es"?"Horário de Nova York.":"Horário de Brasília.")}
           {d.horarios.map((h,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
               <span style={{color:MUTED,fontSize:12,width:52}}>{h.faixa}</span>

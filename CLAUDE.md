@@ -373,3 +373,21 @@ resposta" (JSON). "✨ Gerar com IA" continua existindo, só foi pra "Mais opç�
 - Resposta ≠ 200 → fica em `xposts_avisos` (migration_v45) e `reenviarAvisosXposts()` tenta de novo a
   cada 5 min com espera crescente (até 6 h, 40 tentativas). Sem a tabela, o reenvio fica só na memória.
 - O PATCH do Mini Chat só MANTÉM `xposts_token` (quem grava é `/xposts`), pra salvar o Mini Chat não apagar o token.
+
+## Mini Chat em espanhol (10/10, DISASTEX)
+
+- `minichat_config.language` aceita `pt` | `en` | `es` (`cleanMinichatLang()` no servidor, `mcLang()` no
+  Admin). `I18N.es` no `minichat.html`: data dia/mês, telefone livre (igual ao inglês). Os textos de `pt`
+  continuam intocados.
+- Espanhol também: nunca passa pela regra do 9 (`ownerUsesBrPhones` só vale pra `pt`), métricas no
+  horário de Nova York, e-mail do lead em espanhol, IA gera perguntas em espanhol (`minichatLangInstruction`),
+  🔥 quente reconhece "Lo antes posible"/"Cuanto antes".
+
+## Site com Vercel em OUTRA conta (publicação pelo GitHub Actions)
+
+Quando a Vercel do cliente não está ligada direto ao GitHub, quem publica é uma rotina do GitHub Actions
+com a chave da Vercel do cliente (segredo `VERCEL_TOKEN`) — ex: DISASTEX (`WeNovarks/pixel-perfect-match`).
+`getRepoDeployStatus()` cai em `getActionsDeployStatus()` (rotina com "vercel" no nome/arquivo). Se a
+rotina "passou" mas pulou o passo de publicar (sem a chave), conta como **falhou** — o site no ar não mudou.
+O JosephPay continua só gravando no GitHub; nunca precisa de acesso à Vercel do cliente.
+

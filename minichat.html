@@ -552,6 +552,51 @@
             ],
             defaultClosing: "Can we talk?",
         },
+        // Espanhol (pedido do Thomas, 10/10 — DISASTEX: público latino nos EUA). Data no
+        // formato dia/mês, telefone livre (número estrangeiro, igual ao inglês).
+        es: {
+            locale: 'es', htmlLang: 'es',
+            headerSubtitle: 'Atención en línea', headerSubtitleEmail: 'Diagnóstico rápido', titleSuffix: 'Atención en línea',
+            placeholder: 'Escribe tu respuesta...',
+            analysisDone: 'Análisis completo. ✓', preparing: 'Preparando tu diagnóstico...',
+            resultTitle: 'Análisis Completo', resultSubtitle: 'Tu diagnóstico está listo. Estás a un paso de hablar con nosotros.',
+            resultSubtitleEmail: 'Tu diagnóstico está listo. Estamos enviando tus respuestas.',
+            profileTitle: 'TU PERFIL', questionN: n => `Pregunta ${n}`,
+            whatsappBtn: '📱 Enviar por WhatsApp', emailBtn: '✉️ Enviar por e-mail',
+            sending: 'Enviando...', ready: '✓ ¡Listo!', opening: 'Abriendo...', openingWhatsapp: 'Abriendo WhatsApp...',
+            retryClick: '¿No se abrió? Toca el botón de nuevo.', continueBtn: '↗ Continuar', openWhatsappBtn: '📱 Abrir WhatsApp',
+            openingEmail: '✓ Abriendo e-mail…', retryEmail: '¿No se abrió? Toca de nuevo.',
+            emailSent: '✓ ¡Enviado!', emailSentAmbos: '✓ También enviado por e-mail', emailSentStatus: name => `Recibimos tus respuestas. ${name} se pondrá en contacto contigo pronto.`,
+            emailSubject: name => `Prediagnóstico — ${name}`,
+            msgHello: n => `¡Hola, ${n}! 👋`,
+            msgIntro: n => `Soy ${n} y acabo de hacer el prediagnóstico en su sitio web.`,
+            msgIntroNoName: 'Acabo de hacer el prediagnóstico en su sitio web.',
+            msgProfile: 'Mi perfil', msgPhone: 'Teléfono',
+            invalidEmail: 'Hmm, ese e-mail no parece válido. ¿Puedes revisarlo y escribirlo de nuevo?',
+            invalidDate: 'No entendí la fecha 🙂 Puedes escribirla así: 09/08/2000',
+            invalidPhone: 'Ese número parece incompleto. ¿Puedes escribirlo con el código de área?',
+            dateOrder: 'dmy',
+            defaultQ: {
+                produtoText: "¡Hola! 👋 Hagamos un diagnóstico rápido para atenderte mejor.", produtoSub: "¿Qué estás buscando hoy?", produtoLabel: "Interés principal",
+                objetivoText: "Perfecto.", objetivoSub: "¿Cuál es tu objetivo?", objetivoLabel: "Objetivo",
+                quandoText: "Entendido.", quandoSub: "¿Cuándo piensas empezar?", quandoLabel: "Momento para empezar",
+                quando: ["Lo antes posible", "Este mes", "En los próximos meses", "Solo estoy investigando"],
+                produtoFallback: ["Ya sé lo que quiero", "Quiero conocer las opciones", "Tengo una duda", "Otro"],
+                objetivoFallback: ["Empezar lo antes posible", "Conocer mejor primero", "Comparar opciones", "Resolver dudas"],
+            },
+            contact: [
+                { id: 'nome',       text: "Genial, ya casi terminamos.", subtext: "¿Cuál es tu nombre completo?",      label: "Nombre",              type: 'text', placeholder: 'Escribe tu nombre…' },
+                { id: 'telefone',   text: "Perfecto.",                   subtext: "¿Cuál es tu número de WhatsApp?",   label: "WhatsApp",            type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Última pregunta.",            subtext: "¿Cuál es tu fecha de nacimiento?",  label: "Fecha de nacimiento", type: 'text', placeholder: 'DD/MM/AAAA' },
+            ],
+            contactEmail: [
+                { id: 'nome',     text: "Genial, ya casi terminamos.", subtext: "¿Cuál es tu nombre completo?", label: "Nombre",   type: 'text', placeholder: 'Escribe tu nombre…' },
+                { id: 'email',    text: "Perfecto.",                   subtext: "¿Cuál es tu mejor e-mail?",    label: "E-mail",   type: 'email', placeholder: 'tu@email.com' },
+                { id: 'telefone', text: "Muy bien.",                   subtext: "¿Y tu número de teléfono?",    label: "Teléfono", type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Última pregunta.",          subtext: "¿Cuál es tu fecha de nacimiento? (para enviarte un regalito en tu cumpleaños 🎁)", label: "Fecha de nacimiento", type: 'text', placeholder: 'DD/MM/AAAA' },
+            ],
+            defaultClosing: "¿Podemos conversar?",
+        },
     };
     const T = () => I18N[LANG] || I18N.pt;
     const JOSEPHPAY_API = "https://josephpay-production.up.railway.app";
@@ -694,7 +739,7 @@
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
                 if (cfg?.destination_type) DESTINATION_TYPE = cfg.destination_type;
-                if (cfg?.language === "en") LANG = "en";
+                if (cfg?.language === "en" || cfg?.language === "es") LANG = cfg.language;
                 if (cfg?.template === "email") TEMPLATE = "email";
                 applyLanguageAndTemplate(cfg);
                 {

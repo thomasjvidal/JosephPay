@@ -2040,12 +2040,16 @@ function addMissingNinthDigit(raw) {
   return prefixo + d.slice(0, 2) + "9" + d.slice(2);
 }
 
-// Produtor com Mini Chat em inglês (ex: CAA, clientes nos EUA) tem número estrangeiro
-// de 10 dígitos que pode parecer um celular brasileiro sem o 9 — nesses, a regra do
-// 9 nunca roda.
+// Produtor com Mini Chat em inglês ou espanhol (ex: CAA, DISASTEX, clientes nos EUA) tem
+// número estrangeiro de 10 dígitos que pode parecer um celular brasileiro sem o 9 —
+// nesses, a regra do 9 nunca roda.
+// Idiomas do Mini Chat: pt (padrão), en e es (es desde 10/10 — DISASTEX).
+const MINICHAT_LANGS = ["pt", "en", "es"];
+const cleanMinichatLang = v => (MINICHAT_LANGS.includes(v) ? v : "pt");
+
 async function ownerUsesBrPhones(ownerId) {
   const { data } = await supabase.from("profiles").select("minichat_config").eq("id", ownerId).maybeSingle();
-  return data?.minichat_config?.language !== "en";
+  return cleanMinichatLang(data?.minichat_config?.language) === "pt";
 }
 
 async function upsertCustomersByPhone(ownerId, rows) {
@@ -2275,7 +2279,7 @@ function cleanMinichatOrigem(v) {
 }
 // "Quente" = respondeu algo que indica pressa ("Quanto antes", "Este mês", "As soon as
 // possible"...). Só olha as respostas de múltipla escolha — nunca nome/telefone.
-const MC_QUENTE_RE = /(quanto antes|o mais r[aá]pido|o quanto antes|este m[eê]s|esse m[eê]s|esta semana|essa semana|\bhoje\b|\bagora\b|imediat|urgente|urg[eê]ncia|j[aá] quero|pront[oa] pra|as soon as possible|\basap\b|this month|this week|\btoday\b|right away|immediately|\burgent|\bnow\b|ready to)/i;
+const MC_QUENTE_RE = /(quanto antes|o mais r[aá]pido|o quanto antes|este m[eê]s|esse m[eê]s|esta semana|essa semana|\bhoje\b|\bagora\b|imediat|urgente|urg[eê]ncia|j[aá] quero|pront[oa] pra|as soon as possible|\basap\b|this month|this week|\btoday\b|right away|immediately|\burgent|\bnow\b|ready to|lo antes posible|cuanto antes|lo m[aá]s pronto|\bhoy\b|\bahora\b|inmediat|listo para)/i;
 // Nome/telefone/e-mail/nascimento também ficam em answers (perguntas de contato do
 // minichat.html) — nunca entram nas métricas como "resposta"; o nome vira só rótulo.
 const MC_CONTATO_RE = /^(qual seu nome completo|qual seu telefone com whatsapp|qual sua data de nascimento|qual seu melhor e-mail|e qual seu telefone|what's your full name|what's your whatsapp number|what's your date of birth|what's your best e-mail|and your phone number)/i;
@@ -2385,7 +2389,6 @@ app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin,
     const { data: profile } = await supabase.from("profiles").select("id,name,company_name,minichat_config").eq("id", id).maybeSingle();
     if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
     const mc = profile.minichat_config || {};
-    const en = mc.language === "en";
     const perguntasConfig = (mc.questions || []).map(q => q.subtext || q.text).filter(Boolean);
     const nOpcoes = perguntasConfig.length || 3;
 
@@ -2479,7 +2482,8 @@ app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin,
     };
 
     // 6) Horário em que as conversas acontecem (fuso do produtor)
-    const tz = en ? "America/New_York" : "America/Sao_Paulo";
+    // Inglês e espanhol: clientes nos EUA (CAA, DISASTEX) → horário de Nova York.
+    const tz = cleanMinichatLang(mc.language) === "pt" ? "America/Sao_Paulo" : "America/New_York";
     const FAIXAS = [["00-06h", 0, 6], ["06-12h", 6, 12], ["12-18h", 12, 18], ["18-24h", 18, 24]];
     const horarios = FAIXAS.map(([faixa]) => ({ faixa, conversas: 0 }));
     sessoes.forEach(s => {
@@ -2513,7 +2517,7 @@ app.get("/api/admin/producers/:id/minichat/insights", requireAuth, requireAdmin,
     }
 
     res.json({
-      dias, idioma: en ? "en" : "pt",
+      dias, idioma: cleanMinichatLang(mc.language),
       origemDisponivel: sessoes.some(s => "origem" in s),
       conversas: sessoes.length, conversasAnterior: anteriores.length,
       perguntas: atuais, perguntasAntigas: perguntas.filter(p => !p.atual),
@@ -2535,7 +2539,7 @@ app.post("/api/admin/producers/:id/minichat/suggest-question", requireAuth, requ
     const { data: profile } = await supabase.from("profiles").select("minichat_config").eq("id", req.params.id).maybeSingle();
     const mc = profile?.minichat_config || {};
     const en = mc.language === "en";
-    const prompt = `Você melhora perguntas de um mini chat de pré-diagnóstico no site de um negócio${mc.business_context ? ` (contexto: ${String(mc.business_context).slice(0, 400)})` : ""}. ${desistencia ? `${desistencia}% das pessoas desistem nesta pergunta.` : ""} Pergunta atual: "${pergunta}"${opcoes.length ? `. Opções: ${opcoes.join(" | ")}` : ""}.\n\nSugira 3 versões mais curtas, simples e convidativas${en ? ", em INGLÊS (o público é americano)" : ", em português"}, mantendo o mesmo objetivo. Responda SOMENTE um array JSON de objetos {"pergunta": "...", "opcoes": ["..."]}.`;
+    const prompt = `Você melhora perguntas de um mini chat de pré-diagnóstico no site de um negócio${mc.business_context ? ` (contexto: ${String(mc.business_context).slice(0, 400)})` : ""}. ${desistencia ? `${desistencia}% das pessoas desistem nesta pergunta.` : ""} Pergunta atual: "${pergunta}"${opcoes.length ? `. Opções: ${opcoes.join(" | ")}` : ""}.\n\nSugira 3 versões mais curtas, simples e convidativas${en ? ", em INGLÊS (o público é americano)" : mc.language === "es" ? ", em ESPANHOL latino-americano" : ", em português"}, mantendo o mesmo objetivo. Responda SOMENTE um array JSON de objetos {"pergunta": "...", "opcoes": ["..."]}.`;
     let reply = null;
     for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: "Sugira." }]); break; } catch {} }
     if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: "Sugira." }]); } catch {} }
@@ -2633,9 +2637,9 @@ app.post("/api/admin/producers/:id/avatar", requireAuth, requireAdmin, async (re
 // das perguntas geradas em inglês — o resto do prompt continua em português (é só
 // instrução pra IA, o visitante nunca vê).
 function minichatLangInstruction(language) {
-  return language === "en"
-    ? "Escreva TUDO (text, subtext e options) em inglês americano natural — o Mini Chat desse cliente é em inglês."
-    : "Português do Brasil.";
+  if (language === "en") return "Escreva TUDO (text, subtext e options) em inglês americano natural — o Mini Chat desse cliente é em inglês.";
+  if (language === "es") return "Escreva TUDO (text, subtext e options) em espanhol latino-americano natural, tratando por \"tú\" — o Mini Chat desse cliente é em espanhol.";
+  return "Português do Brasil.";
 }
 
 app.post("/api/admin/producers/:id/minichat/generate-question", requireAuth, requireAdmin, async (req, res) => {
@@ -2805,7 +2809,7 @@ function extractMinichatSettings(conteudo) {
   if (bg) out.bg_color = bg;
   if (accent) out.accent_color = accent;
   const lang = conteudo.match(/<html[^>]*\blang=["']([a-z]{2})/i);
-  if (lang) out.language = lang[1].toLowerCase() === "en" ? "en" : "pt";
+  if (lang) out.language = cleanMinichatLang(lang[1].toLowerCase());
   // Só e-mail (mailto) e nenhum WhatsApp → o chat original manda o lead por e-mail.
   if (out.email_destino && !out.whatsapp_number) out.destination_type = "email";
   else if (out.whatsapp_number && !out.email_destino) out.destination_type = "whatsapp";
@@ -2834,7 +2838,7 @@ async function importMinichatFromRepo(repo) {
 Para cada pergunta: "text" é a frase de transição/saudação antes da pergunta (pode ser vazia), "subtext" é a pergunta em si, "options" são as opções de resposta.
 "business" é uma frase curta (máx 25 palavras), no idioma do código, descrevendo o negócio/serviço que dá pra deduzir do conteúdo (ou vazio se não der).
 Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
-{"language":"pt ou en","business":"...","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
+{"language":"pt, en ou es","business":"...","questions":[{"text":"...","subtext":"...","options":["...","..."]}]}`;
   const userMsg = trechos.join("\n\n").slice(0, 16000);
   let reply = null, lastErr = null;
   for (const key of GROQ_KEYS) {
@@ -2855,7 +2859,7 @@ Responda em JSON puro, sem markdown, sem texto fora do JSON, no formato exato:
     }))
     .filter(q => (q.text || q.subtext) && q.options.length >= 2)
     .slice(0, 10);
-  if (!settings.language && parsed?.language) settings.language = parsed.language === "en" ? "en" : "pt";
+  if (!settings.language && parsed?.language) settings.language = cleanMinichatLang(parsed.language);
   if (parsed?.business) settings.business_context = String(parsed.business).trim().slice(0, 300);
   const data = { found: true, source: fontes.map(f => f.path), questions, settings, aiFailed: reply === null || !questions.length };
   // Falha da IA não fica em cache (tenta de novo na próxima abertura).
@@ -3060,7 +3064,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       destination_type: destination_type !== undefined ? (destination_type || "whatsapp") : (existing.destination_type ?? "whatsapp"),
       // Idioma só do Mini Chat (textos fixos, perguntas de contato, e-mail do lead) —
       // "pt" é o padrão, então todo produtor que já existe continua exatamente igual.
-      language: language !== undefined ? (language === "en" ? "en" : "pt") : (existing.language ?? "pt"),
+      language: language !== undefined ? cleanMinichatLang(language) : (existing.language ?? "pt"),
       // Modelo visual: "whatsapp" (o de sempre, padrão) ou "email" (tela escura com
       // resumo do projeto, inspirado no mini chat da CAA Renovations).
       template: template !== undefined ? (template === "email" ? "email" : "whatsapp") : (existing.template ?? "whatsapp"),
@@ -5789,7 +5793,11 @@ async function getRepoDeployStatus(repo, headers) {
     } catch {}
   }
   const base = { sha: commitResp.data.sha?.slice(0, 7), commitMessage: (commitResp.data.commit?.message || "").split("\n")[0], commitDate: commitResp.data.commit?.committer?.date };
-  if (!st && !checkRun) return { ...base, state: "desconhecido", message: "Não achei nenhuma publicação da Vercel ligada a esse repositório — confira se o projeto está conectado na Vercel." };
+  if (!st && !checkRun) {
+    const viaActions = await getActionsDeployStatus(repo, headers, commitResp.data.sha).catch(() => null);
+    if (viaActions) return { ...base, ...viaActions };
+    return { ...base, state: "desconhecido", message: "Não achei nenhuma publicação da Vercel ligada a esse repositório — confira se o projeto está conectado na Vercel." };
+  }
   const raw = st ? st.state : (checkRun.status !== "completed" ? "pending" : checkRun.conclusion === "success" ? "success" : "failure");
   const desc = st ? (st.description || "") : (checkRun.output?.title || checkRun.conclusion || "");
   const url = st ? st.target_url : checkRun.details_url;
@@ -5799,6 +5807,30 @@ async function getRepoDeployStatus(repo, headers) {
   // dono do projeto — não é erro do site, é permissão. Visto na CAA em 02/10.
   if (/blocked/i.test(desc)) return { ...base, state: "bloqueado", url, message: "A Vercel bloqueou a publicação: o autor do último commit não tem permissão no projeto da Vercel. Abra o link e clique em Redeploy (ou peça pro dono do projeto)." };
   return { ...base, state: "falhou", url, message: `A última publicação na Vercel falhou${desc ? ` (${desc})` : ""}. O site continua na versão anterior até corrigir.` };
+}
+
+// Site cuja Vercel está em OUTRA conta (sem ligação direta Vercel ↔ GitHub): quem publica
+// é uma rotina do GitHub Actions com a chave da Vercel do cliente (VERCEL_TOKEN) — ex:
+// DISASTEX (pixel-perfect-match, 10/10). Aí não existe status "Vercel" no commit; lê a
+// rotina cujo nome/arquivo fala em Vercel. Se ela "passou" mas pulou o passo de publicar
+// (chave não cadastrada), conta como falha — o site no ar não mudou.
+async function getActionsDeployStatus(repo, headers, sha) {
+  const runs = await axios.get(`https://api.github.com/repos/${repo}/actions/runs`, { headers, params: { head_sha: sha, per_page: 20 } });
+  const run = (runs.data.workflow_runs || []).find(r => /vercel/i.test(`${r.name || ""} ${r.path || ""}`));
+  if (!run) return null;
+  const url = run.html_url;
+  const via = "github-actions";
+  if (run.status !== "completed") return { state: "publicando", url, via, message: "A rotina do GitHub está publicando na Vercel agora (leva ~1–2 min)." };
+  if (run.conclusion !== "success") return { state: "falhou", url, via, message: `A rotina do GitHub que publica na Vercel falhou (${run.conclusion || "erro"}). O site continua na versão anterior até corrigir — abra o link pra ver o erro.` };
+  try {
+    const jobs = await axios.get(`https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs`, { headers });
+    const passos = (jobs.data.jobs || []).flatMap(j => j.steps || []);
+    const publicar = passos.filter(p => /deploy|vercel|publi/i.test(p.name || ""));
+    if (publicar.length && publicar.every(p => p.conclusion === "skipped")) {
+      return { state: "falhou", url, via, message: "A rotina do GitHub rodou mas NÃO publicou: falta cadastrar a chave da Vercel do cliente (segredo VERCEL_TOKEN em Settings → Secrets → Actions do repositório). Até lá, nada do que o JosephPay grava chega ao site." };
+    }
+  } catch {}
+  return { state: "ok", url, via, message: "Publicado na Vercel (pela rotina do GitHub)." };
 }
 
 // Onde o site está hospedado, pelos cabeçalhos da resposta. O Mini Chat por
@@ -7192,7 +7224,9 @@ function escHtml(v) {
 }
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 function minichatLeadEmailHtml({ brand, lang, lead, answers }) {
-  const t = lang === "en"
+  const t = lang === "es"
+    ? { title: "Nuevo contacto desde su sitio web", sub: "Alguien acaba de completar el diagnóstico en su sitio web.", contact: "Contacto", answers: "Respuestas", name: "Nombre", email: "E-mail", phone: "Teléfono", reply: "Responda este e-mail para hablar directamente con la persona." }
+    : lang === "en"
     ? { title: "New lead from your website", sub: "Someone just completed the pre-diagnosis on your website.", contact: "Contact", answers: "Answers", name: "Name", email: "E-mail", phone: "Phone", reply: "Reply to this e-mail to talk to them directly." }
     : { title: "Novo contato pelo site", sub: "Alguém acabou de completar o diagnóstico no seu site.", contact: "Contato", answers: "Respostas", name: "Nome", email: "E-mail", phone: "Telefone", reply: "Responda este e-mail pra falar direto com a pessoa." };
   const row = (k, v) => `<tr><td style="padding:12px 18px;border-bottom:1px solid #2a2a2a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="color:#888;font-size:13px;vertical-align:top;padding-right:12px;">${escHtml(k)}</td><td style="color:#fff;font-size:13px;font-weight:700;text-align:right;">${escHtml(v)}</td></tr></table></td></tr>`;
@@ -7200,7 +7234,7 @@ function minichatLeadEmailHtml({ brand, lang, lead, answers }) {
   const contato = [[t.name, lead.name], [t.phone, lead.phone]].filter(([, v]) => v).map(([k, v]) => row(k, v)).join("");
   const respostas = answers.map(a => row(a.question, a.answer)).join("");
   const bloco = (titulo, linhas) => linhas ? `<tr><td style="padding:18px 32px 0;"><div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-bottom:8px;">${escHtml(titulo)}</div><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:12px;border:1px solid #2a2a2a;overflow:hidden;">${linhas}</table></td></tr>` : "";
-  return `<!DOCTYPE html><html lang="${lang === "en" ? "en" : "pt-BR"}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  return `<!DOCTYPE html><html lang="${lang === "en" ? "en" : lang === "es" ? "es" : "pt-BR"}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#0D0D0D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0D0D0D;padding:32px 16px;"><tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#0D0D0D;border-radius:16px;overflow:hidden;border:1px solid #2a2a2a;">
 <tr><td style="padding:28px 32px 0;text-align:center;">
@@ -7223,9 +7257,11 @@ app.post("/api/admin/producers/:id/minichat/test-email", requireAuth, requireAdm
     const destino = String(cfg.email_destino || "").trim();
     if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "Salve um e-mail de destino válido primeiro." });
     if (!resend) return res.status(503).json({ error: "Envio de e-mail não configurado no servidor (RESEND_API_KEY)." });
-    const lang = cfg.language === "en" ? "en" : "pt";
+    const lang = cleanMinichatLang(cfg.language);
     const brand = String(cfg.brand_name || profile?.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
-    const exemplo = lang === "en"
+    const exemplo = lang === "es"
+      ? { lead: { name: "Contacto de Prueba", email: "prueba@ejemplo.com", phone: "(555) 123-4567" }, answers: [{ question: "Pregunta de ejemplo", answer: "Respuesta de ejemplo" }], subject: `[PRUEBA] Nuevo contacto desde su sitio web — Contacto de Prueba` }
+      : lang === "en"
       ? { lead: { name: "Test Lead", email: "test@example.com", phone: "(555) 123-4567" }, answers: [{ question: "Example question", answer: "Example answer" }], subject: `[TEST] New lead from your website — Test Lead` }
       : { lead: { name: "Contato de Teste", email: "teste@exemplo.com", phone: "(21) 99999-9999" }, answers: [{ question: "Pergunta de exemplo", answer: "Resposta de exemplo" }], subject: `[TESTE] Novo contato pelo site — Contato de Teste` };
     const { error } = await resend.emails.send({
@@ -7283,7 +7319,7 @@ app.post("/api/minichat/lead-email", (req, res, next) => {
     if (!EMAIL_RE.test(destino)) return res.status(400).json({ error: "E-mail de destino não configurado", fallback: true });
     if (!resend) return res.status(503).json({ error: "Envio de e-mail indisponível", fallback: true });
 
-    const lang = cfg.language === "en" ? "en" : "pt";
+    const lang = cleanMinichatLang(cfg.language);
     const brand = String(cfg.brand_name || profile.name || "Mini Chat").replace(/["<>\r\n]/g, "").slice(0, 60);
     const clean = (v, n) => String(v ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, n);
     const leadInfo = {
@@ -7294,8 +7330,8 @@ app.post("/api/minichat/lead-email", (req, res, next) => {
     const respostas = (Array.isArray(answers) ? answers : []).slice(0, 20)
       .map(a => ({ question: clean(a?.question, 300), answer: clean(a?.answer, 500) }))
       .filter(a => a.question && a.answer);
-    const quem = leadInfo.name || leadInfo.email || leadInfo.phone || (lang === "en" ? "website visitor" : "visitante do site");
-    const subject = lang === "en" ? `New lead from your website — ${quem}` : `Novo contato pelo site — ${quem}`;
+    const quem = leadInfo.name || leadInfo.email || leadInfo.phone || (lang === "en" ? "website visitor" : lang === "es" ? "visitante del sitio" : "visitante do site");
+    const subject = lang === "en" ? `New lead from your website — ${quem}` : lang === "es" ? `Nuevo contacto desde su sitio web — ${quem}` : `Novo contato pelo site — ${quem}`;
 
     const { error } = await resend.emails.send({
       from: `${brand} via JosephPay <noreply@josephpay.com>`,

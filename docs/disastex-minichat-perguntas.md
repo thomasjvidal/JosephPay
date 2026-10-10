@@ -6,7 +6,8 @@ botão "Registrarme" que abre `https://josephpay.com/minichat.html?uid=8628ca48-
 Nome, telefone e e-mail o Mini Chat já pergunta sozinho (perguntas de contato) — não entram aqui.
 O formulário antigo também pedia autorização de contato ("Autorizo a DISASTEX a contactarme...").
 
-Colar em Admin → produtor → "Perguntas do Mini Chat" → "Colar resposta".
+Antes: escolher "🇪🇸 Español" em Idioma do Mini Chat (card Mini Chat) e salvar.
+Depois colar em Admin → produtor → "Perguntas do Mini Chat" → "Colar resposta".
 
 ## Espanhol (público principal do site)
 
