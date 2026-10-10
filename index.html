@@ -1579,7 +1579,17 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
   };
   // Prova real: a última publicação na Vercel passou? (lido do GitHub)
   const [deploy,setDeploy]=useState(null);
-  const carregarDeploy=()=>apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{if(!d?.error)setDeploy(d);});
+  // "Atualizar" mostra que fez algo: antes buscava de novo em silêncio e, com a mesma
+  // resposta, parecia que o botão não funcionava.
+  const [atualizandoDeploy,setAtualizandoDeploy]=useState(false);
+  const [deployChecadoEm,setDeployChecadoEm]=useState(null);
+  const [deployErro,setDeployErro]=useState("");
+  const carregarDeploy=()=>{
+    setAtualizandoDeploy(true);setDeployErro("");
+    return apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{
+      if(d?.error)setDeployErro(d.error);else{setDeploy(d);setDeployChecadoEm(new Date());}
+    }).catch(e=>setDeployErro(e?.message||"Não consegui conferir agora.")).finally(()=>setAtualizandoDeploy(false));
+  };
   useEffect(()=>{if(open&&!deploy&&c.github_repo)carregarDeploy();},[open]);
   // "Consertar": site com servidor próprio (Lovable/TanStack Start) com a configuração
   // genérica de Vite que a JosephPay escrevia antes — prévia antes/depois, grava só no clique.
@@ -1621,10 +1631,11 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:deployCor,flexShrink:0}}/>
               <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Última mudança não publicada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
-              <button onClick={carregarDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F}}>Atualizar</button>
+              <button onClick={carregarDeploy} disabled={atualizandoDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:atualizandoDeploy?"default":"pointer",fontFamily:F,opacity:atualizandoDeploy?0.6:1}}>{atualizandoDeploy?"Atualizando…":"Atualizar"}</button>
             </div>
             <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{deploy.message}</div>
             {deploy.commitMessage&&<div style={{color:MUTED,fontSize:11,marginTop:4,opacity:0.8}}>Último commit: “{deploy.commitMessage}”{deploy.commitDate?` · ${new Date(deploy.commitDate).toLocaleString('pt-BR')}`:""}</div>}
+            {(deployChecadoEm||deployErro)&&<div style={{color:deployErro?"#F5A524":MUTED,fontSize:11,marginTop:4,opacity:0.8}}>{deployErro?`Não consegui conferir agora: ${deployErro}`:`Conferido às ${deployChecadoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}.`}</div>}
             {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>{deploy.via==="github-actions"?"Abrir no GitHub ↗":"Abrir na Vercel ↗"}</a>}
           </div>
         )}
