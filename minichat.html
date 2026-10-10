@@ -1209,29 +1209,7 @@
         openMailto();
     }
 
-    // Modo E-mail + "Redirecionamento final" preenchido no Admin: depois que a pessoa
-    // toca em "Enviar por e-mail", vai pro app de e-mail e VOLTA pra página, segue sozinha
-    // pro link (ex: página de "parabéns, entre no grupo" no site do cliente — DISASTEX,
-    // 10/10). Sem link salvo nada muda. O envio do e-mail não muda em nada.
-    let redirectAfterEmailArmed = false;
-    function goToRedirectLink() {
-        if (!redirectAfterEmailArmed || !REDIRECT_LINK) return;
-        redirectAfterEmailArmed = false;
-        let url = REDIRECT_LINK;
-        try { const u = new URL(REDIRECT_LINK); if (LANG !== 'pt' && !u.searchParams.has('lang')) u.searchParams.set('lang', LANG); url = u.toString(); } catch (e) {}
-        window.location.href = url;
-    }
-    function armRedirectAfterEmail() {
-        if (!REDIRECT_LINK || DESTINATION_TYPE !== "email" || redirectAfterEmailArmed) return;
-        redirectAfterEmailArmed = true;
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(goToRedirectLink, 600); });
-        window.addEventListener('pageshow', () => setTimeout(goToRedirectLink, 600));
-        // Computador sem app de e-mail (a página nem sai da tela): segue mesmo assim.
-        setTimeout(goToRedirectLink, 6000);
-    }
-
     function openMailto() {
-        armRedirectAfterEmail();
         const subject = T().emailSubject(String(userData.nome || '').trim() || GREETING_NAME);
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage('email'))}`;
         setTimeout(() => {
