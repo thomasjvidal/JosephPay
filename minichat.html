@@ -1131,7 +1131,21 @@
                 emailBtn.style.pointerEvents = 'none';
             }
             sendLeadEmail().then(ok => {
-                if (ok) { markEmailSent(); return; }
+                if (ok) {
+                    markEmailSent();
+                    // Página de obrigado / grupo ligada (só destino E-mail): o e-mail JÁ foi
+                    // enviado pelo servidor — leva a pessoa sozinha pro link, sem depender de
+                    // ela abrir o app de e-mail e voltar (quem fechava tudo nunca chegava no
+                    // grupo — DISASTEX, 10/10). Se o envio falhar, nada disso roda e o botão
+                    // de e-mail continua como sempre.
+                    if (DESTINATION_TYPE === "email" && THANKS_LINK) {
+                        redirectStatus.textContent = T().emailSent;
+                        redirectStatus.style.opacity = '1';
+                        thanksArmed = true;
+                        setTimeout(goToThanks, 2500);
+                    }
+                    return;
+                }
                 // Falhou no servidor: volta o botão pro jeito antigo (abre o e-mail do visitante).
                 emailBtn.innerHTML = T().emailBtn;
                 emailBtn.style.pointerEvents = 'auto';

@@ -411,4 +411,8 @@ WhatsApp (ou 6 s depois, no computador), com `?lang=en|es` se o Mini Chat não f
 nada muda, e o envio em si (e-mail/WhatsApp) é sempre o mesmo. É separado do "Redirecionamento final"
 (`redirect_link`, que troca o botão do WhatsApp). A página fica no site do cliente — ex: DISASTEX
 `/gracias` (¡Felicidades! + botão pro grupo do WhatsApp).
+Destino "E-mail" + "Sim": assim que o servidor confirma o envio automático do e-mail (`sendLeadEmail` ok),
+mostra "✓ Enviado" e leva sozinho pro link em 2,5 s — sem a pessoa precisar abrir o app de e-mail e voltar
+(quem fechava tudo nunca chegava no grupo). Se o envio automático falhar, não redireciona e o botão de
+e-mail (mailto) continua como sempre. O e-mail é SEMPRE enviado.
 
