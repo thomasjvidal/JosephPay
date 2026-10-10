@@ -1222,6 +1222,26 @@
     function sendToEmail() {
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
+        // Página de obrigado / grupo ligada: NÃO abre o app de e-mail da pessoa — o
+        // e-mail vai pelo servidor (o mesmo envio automático, uma vez só) e ela segue
+        // direto pro link/grupo (pedido do Thomas, 10/10: quem ia pro app de e-mail não
+        // voltava). Se o envio pelo servidor falhar, cai no jeito de sempre (mailto).
+        if (THANKS_LINK) {
+            emailBtn.textContent = T().sending;
+            emailBtn.style.pointerEvents = 'none';
+            sendLeadEmail().then(ok => {
+                if (ok) {
+                    emailBtn.innerHTML = T().emailSent;
+                    thanksArmed = true;
+                    setTimeout(goToThanks, 800);
+                    return;
+                }
+                emailBtn.innerHTML = T().emailBtn;
+                emailBtn.style.pointerEvents = 'auto';
+                openMailto();
+            });
+            return;
+        }
         sendLeadEmail();
         openMailto();
     }

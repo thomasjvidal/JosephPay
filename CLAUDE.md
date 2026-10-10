@@ -415,4 +415,7 @@ Destino "E-mail" + "Sim": assim que o servidor confirma o envio automático do e
 mostra "✓ Enviado" e leva sozinho pro link em 2,5 s — sem a pessoa precisar abrir o app de e-mail e voltar
 (quem fechava tudo nunca chegava no grupo). Se o envio automático falhar, não redireciona e o botão de
 e-mail (mailto) continua como sempre. O e-mail é SEMPRE enviado.
+Com "Sim", o botão "Enviar por e-mail" também NÃO abre o app de e-mail da pessoa: garante o envio pelo
+servidor (`sendLeadEmail`, uma vez só) e segue pro link. Só se o envio pelo servidor falhar é que abre o
+`mailto:` como sempre. Com "Não", o botão continua abrindo o app de e-mail (regra antiga).
 
