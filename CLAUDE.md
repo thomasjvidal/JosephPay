@@ -391,3 +391,14 @@ com a chave da Vercel do cliente (segredo `VERCEL_TOKEN`) — ex: DISASTEX (`WeN
 rotina "passou" mas pulou o passo de publicar (sem a chave), conta como **falhou** — o site no ar não mudou.
 O JosephPay continua só gravando no GitHub; nunca precisa de acesso à Vercel do cliente.
 
+## Botão direto pro Mini Chat conta como "no ar" (qualquer tipo de site)
+
+Botão com href `josephpay.com/minichat.html?uid=<id>` é o jeito universal (Lovable/TanStack Start, Next,
+Vite, HTML, qualquer hospedagem) — não depende de caminho nem de redirecionamento. `verifyMinichatLive()`
+testa o caminho e, se não abrir, roda `checkDirectMinichatButton()`: procura o link no HTML publicado e nos
+JS que ele carrega (`<script src>`/modulepreload, mesma origem, até 25). Achou → `status:"ok"`,
+`method:"botao"`. Não está no site mas está no código (`scanRepoJsxLinks`) → `status:"nao_publicado"`
+("Falta publicar" — publicação bloqueada/pendente, não precisa reinstalar). Checklist: "Vercel preparado"
+conta como feito quando o Mini Chat está confirmado no site (o vercel.json só importa pro redirecionamento).
+Visto na DISASTEX (10/10): botão certo no ar e o card dizia "Ainda não está no ar".
+

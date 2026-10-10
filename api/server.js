@@ -5694,6 +5694,36 @@ async function detectOwnMinichat(repo, headers, token) {
   return null;
 }
 
+// Botão DIRETO pro Mini Chat (href = josephpay.com/minichat.html?uid=...) é o jeito que
+// funciona em QUALQUER site — Lovable/TanStack Start, Next, Vite, HTML, qualquer
+// hospedagem — porque não depende de caminho nem de redirecionamento. Antes a verificação
+// só testava o caminho "/minichat.html" (redirecionamento do vercel.json), que site com
+// servidor próprio ignora: a DISASTEX (10/10) já tinha o botão certo no ar e o card
+// continuava dizendo "Ainda não está no ar". Prova real (regra 4): procura o link no
+// HTML publicado e nos arquivos JS que ele carrega (site SPA monta os botões via JS).
+async function checkDirectMinichatButton(base, id) {
+  const marker = `minichat.html?uid=${id}`;
+  const get = url => axios.get(url, { timeout: 10000, maxRedirects: 5, responseType: "text", transformResponse: r => r, validateStatus: () => true, maxContentLength: 8 * 1024 * 1024, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
+  let origin;
+  try { origin = new URL(base).origin; } catch { return null; }
+  const home = await get(`${base}/?_jp=${Date.now()}`).catch(() => null);
+  if (!home || home.status >= 400 || typeof home.data !== "string") return null;
+  if (home.data.includes(marker)) return { status: "ok", method: "botao", url: base, message: "✓ Os botões do site abrem o Mini Chat direto (link no próprio botão — funciona em qualquer tipo de site)." };
+  const srcs = new Set();
+  for (const m of home.data.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)) srcs.add(m[1]);
+  for (const m of home.data.matchAll(/<link\b[^>]*\brel=["'](?:modulepreload|preload)["'][^>]*\bhref=["']([^"']+\.m?js[^"']*)["']/gi)) srcs.add(m[1]);
+  for (const m of home.data.matchAll(/<link\b[^>]*\bhref=["']([^"']+\.m?js[^"']*)["'][^>]*\brel=["'](?:modulepreload|preload)["']/gi)) srcs.add(m[1]);
+  const urls = [...srcs].map(u => { try { return new URL(u, `${base}/`); } catch { return null; } })
+    .filter(u => u && u.origin === origin).map(u => u.href).slice(0, 25);
+  for (let i = 0; i < urls.length; i += 5) {
+    const lote = await Promise.all(urls.slice(i, i + 5).map(u => get(u).catch(() => null)));
+    if (lote.some(r => r && r.status < 400 && typeof r.data === "string" && r.data.includes(marker))) {
+      return { status: "ok", method: "botao", url: base, message: "✓ Os botões do site abrem o Mini Chat direto (link no próprio botão — funciona em qualquer tipo de site)." };
+    }
+  }
+  return null;
+}
+
 async function verifyMinichatLive(id) {
   const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
   if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
@@ -5728,6 +5758,22 @@ async function verifyMinichatLive(id) {
     const resultado = await verifyMinichatPath(base, p.replace(/^public\//, ""), id, diagnosticoCatchAll);
     if (resultado.status === "ok") { ultimoResultado = resultado; break; }
     ultimoResultado = resultado;
+  }
+  // Caminho/redirecionamento não abriu → o botão do site pode apontar DIRETO pro Mini
+  // Chat (o jeito universal). Se aparece no site publicado, está no ar.
+  if (ultimoResultado?.status !== "ok") {
+    const direto = await checkDirectMinichatButton(base, id).catch(e => { console.warn("[verifyMinichatLive] botão direto:", e.message); return null; });
+    if (direto) ultimoResultado = direto;
+    else if (headers && profile.github_repo) {
+      // Não está no site publicado, mas já está no código? Então é só a publicação que
+      // falta (deploy bloqueado/falhou/em andamento) — diz isso em vez de "reinstale".
+      try {
+        const links = await scanRepoJsxLinks(profile.github_repo, headers, token);
+        if (links.some(l => String(l.href || "").includes(`minichat.html?uid=${id}`))) {
+          ultimoResultado = { ...ultimoResultado, status: "nao_publicado", message: "O botão do site já aponta pro Mini Chat no código, mas o site publicado ainda não tem essa versão.", detail: "Falta só a publicação: veja a \"Última publicação\" no card Vercel (se estiver bloqueada, abra o link e clique em Redeploy). Não precisa reinstalar nada." };
+        }
+      } catch (e) { console.warn("[verifyMinichatLive] scan botão:", e.message); }
+    }
   }
   // O nosso não está no ar — mas o site pode já ter um mini chat PRÓPRIO (caso da CAA).
   // Nesse caso conta como conectado (pedido do Thomas: não precisar instalar por cima

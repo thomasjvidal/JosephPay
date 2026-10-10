@@ -1777,7 +1777,8 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   // escondido em "Detalhes". Nenhuma função foi removida, só reorganizada.
   const vs=verifyResult?.status;
   const status=verifying?{tone:"neutral",icon:"…",title:"Verificando o site…",sub:"Leva só alguns segundos."}
-    :vs==="ok"?{tone:"ok",icon:"✓",title:"No ar",sub:"O site abre o Mini Chat do JosephPay."}
+    :vs==="ok"?{tone:"ok",icon:"✓",title:"No ar",sub:verifyResult?.method==="botao"?"Os botões do site abrem o Mini Chat do JosephPay direto.":"O site abre o Mini Chat do JosephPay."}
+    :vs==="nao_publicado"?{tone:"warn",icon:"!",title:"Falta publicar",sub:"O botão já está certo no código — o site publicado ainda não atualizou."}
     :vs==="proprio"?{tone:"ok",icon:"✓",title:"Conectado",sub:"O site já tem um Mini Chat próprio."}
     :vs==="sem_site"?{tone:"neutral",icon:"i",title:"Falta o endereço do site",sub:"Cadastre o site no perfil do cliente pra eu conferir."}
     :vs?{tone:"warn",icon:"!",title:"Ainda não está no ar",sub:"O botão do site ainda não abre o Mini Chat."}
@@ -1785,7 +1786,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     :{tone:"neutral",icon:"+",title:"Não instalado",sub:"Instale pra o site abrir o Mini Chat."};
   const toneColor=status.tone==="ok"?GREEN:status.tone==="warn"?"#F5A524":MUTED;
   const podeInstalar=!!c.github_repo&&!!minichatPath.trim()&&!installing;
-  const precisaCorrigir=vs&&vs!=="ok"&&vs!=="sem_site"&&vs!=="proprio"&&!!c.github_repo;
+  const precisaCorrigir=vs&&vs!=="ok"&&vs!=="sem_site"&&vs!=="proprio"&&vs!=="nao_publicado"&&!!c.github_repo;
   const linkBtn={background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px",textDecoration:"none"};
   return(
     <div style={glassCard(done)}>
@@ -1809,6 +1810,8 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         {/* Ação principal (uma só, conforme o status) */}
         {precisaCorrigir?(
           <button onClick={corrigirBotaoAgora} disabled={corrigindoBotao} style={pillBtn(true,corrigindoBotao)}>{corrigindoBotao?"Corrigindo…":"Corrigir agora"}</button>
+        ):vs==="nao_publicado"?(
+          <button onClick={verificarNoAr} disabled={verifying} style={pillBtn(true,verifying)}>{verifying?"Verificando…":"Verificar de novo"}</button>
         ):vs==="ok"?(
           <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={pillBtn(false,false)}>Abrir Mini Chat ↗</a>
         ):proprio?(
@@ -3357,7 +3360,11 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   const steps=[
     {id:"site",label:"Site conectado",done:siteOk,cardKeys:["site"]},
     {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["sensor"]},
-    ...(metodoAtual==="github"?[{id:"vercel",label:"Vercel preparado",done:!!c.github_vercel_ready_at,cardKeys:["vercel"]}]:[]),
+    // Mini Chat confirmado no site publicado = a publicação funciona; "preparar" o
+    // vercel.json só serve pro jeito do redirecionamento, que site com servidor próprio
+    // (Lovable/TanStack Start) nem usa — lá o botão aponta direto pro Mini Chat. Sem isso
+    // a DISASTEX (10/10) ficava presa em "Vercel preparado" mesmo com tudo no ar.
+    ...(metodoAtual==="github"?[{id:"vercel",label:"Vercel preparado",done:!!c.github_vercel_ready_at||minichatInstOk===true,cardKeys:["vercel"]}]:[]),
     ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado no site",done:minichatInstOk,cardKeys:["minichat_repo"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
@@ -3383,7 +3390,7 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     setTestando(false);
     setTeste(d?.error?{error:d.error}:d);
   };
-  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||(minichatInstOk&&!!c.github_vercel_ready_at));
+  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
 
   const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
   const cardDone=key=>steps.filter(s=>s.cardKeys.includes(key)).every(s=>!!s.done);
