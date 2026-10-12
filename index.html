@@ -1579,7 +1579,17 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
   };
   // Prova real: a última publicação na Vercel passou? (lido do GitHub)
   const [deploy,setDeploy]=useState(null);
-  const carregarDeploy=()=>apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{if(!d?.error)setDeploy(d);});
+  // "Atualizar" mostra que fez algo: antes buscava de novo em silêncio e, com a mesma
+  // resposta, parecia que o botão não funcionava.
+  const [atualizandoDeploy,setAtualizandoDeploy]=useState(false);
+  const [deployChecadoEm,setDeployChecadoEm]=useState(null);
+  const [deployErro,setDeployErro]=useState("");
+  const carregarDeploy=()=>{
+    setAtualizandoDeploy(true);setDeployErro("");
+    return apiCall(`/api/admin/producers/${c.id}/deploy-status`).then(d=>{
+      if(d?.error)setDeployErro(d.error);else{setDeploy(d);setDeployChecadoEm(new Date());}
+    }).catch(e=>setDeployErro(e?.message||"Não consegui conferir agora.")).finally(()=>setAtualizandoDeploy(false));
+  };
   useEffect(()=>{if(open&&!deploy&&c.github_repo)carregarDeploy();},[open]);
   // "Consertar": site com servidor próprio (Lovable/TanStack Start) com a configuração
   // genérica de Vite que a JosephPay escrevia antes — prévia antes/depois, grava só no clique.
@@ -1620,12 +1630,13 @@ function VercelAdmin({c,onUpdated,initialOpen,done}){
           <div style={{...glassInset,marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
               <span style={{width:8,height:8,borderRadius:"50%",background:deployCor,flexShrink:0}}/>
-              <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Publicação bloqueada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
-              <button onClick={carregarDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F}}>Atualizar</button>
+              <span style={{color:TEXT,fontSize:13,fontWeight:600}}>{deploy.state==="ok"?"Publicado":deploy.state==="publicando"?"Publicando…":deploy.state==="bloqueado"?"Última mudança não publicada":deploy.state==="falhou"?"Publicação falhou":"Publicação não encontrada"}</span>
+              <button onClick={carregarDeploy} disabled={atualizandoDeploy} style={{marginLeft:"auto",background:"none",border:"none",color:GOLD,fontSize:12,cursor:atualizandoDeploy?"default":"pointer",fontFamily:F,opacity:atualizandoDeploy?0.6:1}}>{atualizandoDeploy?"Atualizando…":"Atualizar"}</button>
             </div>
             <div style={{color:MUTED,fontSize:12,lineHeight:1.5}}>{deploy.message}</div>
             {deploy.commitMessage&&<div style={{color:MUTED,fontSize:11,marginTop:4,opacity:0.8}}>Último commit: “{deploy.commitMessage}”{deploy.commitDate?` · ${new Date(deploy.commitDate).toLocaleString('pt-BR')}`:""}</div>}
-            {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>Abrir na Vercel ↗</a>}
+            {(deployChecadoEm||deployErro)&&<div style={{color:deployErro?"#F5A524":MUTED,fontSize:11,marginTop:4,opacity:0.8}}>{deployErro?`Não consegui conferir agora: ${deployErro}`:`Conferido às ${deployChecadoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}.`}</div>}
+            {deploy.url&&deploy.state!=="ok"&&<a href={deploy.url} target="_blank" rel="noopener noreferrer" style={{color:GOLD,fontSize:12,fontWeight:600,textDecoration:"none",display:"inline-block",marginTop:6}}>{deploy.via==="github-actions"?"Abrir no GitHub ↗":"Abrir na Vercel ↗"}</a>}
           </div>
         )}
         {readyAt&&!editing?(
@@ -1777,7 +1788,8 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
   // escondido em "Detalhes". Nenhuma função foi removida, só reorganizada.
   const vs=verifyResult?.status;
   const status=verifying?{tone:"neutral",icon:"…",title:"Verificando o site…",sub:"Leva só alguns segundos."}
-    :vs==="ok"?{tone:"ok",icon:"✓",title:"No ar",sub:"O site abre o Mini Chat do JosephPay."}
+    :vs==="ok"?{tone:"ok",icon:"✓",title:"No ar",sub:verifyResult?.method==="botao"?"Os botões do site abrem o Mini Chat do JosephPay direto.":"O site abre o Mini Chat do JosephPay."}
+    :vs==="nao_publicado"?{tone:"warn",icon:"!",title:"Falta publicar",sub:"O botão já está certo no código — o site publicado ainda não atualizou."}
     :vs==="proprio"?{tone:"ok",icon:"✓",title:"Conectado",sub:"O site já tem um Mini Chat próprio."}
     :vs==="sem_site"?{tone:"neutral",icon:"i",title:"Falta o endereço do site",sub:"Cadastre o site no perfil do cliente pra eu conferir."}
     :vs?{tone:"warn",icon:"!",title:"Ainda não está no ar",sub:"O botão do site ainda não abre o Mini Chat."}
@@ -1785,7 +1797,7 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
     :{tone:"neutral",icon:"+",title:"Não instalado",sub:"Instale pra o site abrir o Mini Chat."};
   const toneColor=status.tone==="ok"?GREEN:status.tone==="warn"?"#F5A524":MUTED;
   const podeInstalar=!!c.github_repo&&!!minichatPath.trim()&&!installing;
-  const precisaCorrigir=vs&&vs!=="ok"&&vs!=="sem_site"&&vs!=="proprio"&&!!c.github_repo;
+  const precisaCorrigir=vs&&vs!=="ok"&&vs!=="sem_site"&&vs!=="proprio"&&vs!=="nao_publicado"&&!!c.github_repo;
   const linkBtn={background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px",textDecoration:"none"};
   return(
     <div style={glassCard(done)}>
@@ -1809,6 +1821,8 @@ function MinichatRepoAdmin({c,onUpdated,initialOpen,done}){
         {/* Ação principal (uma só, conforme o status) */}
         {precisaCorrigir?(
           <button onClick={corrigirBotaoAgora} disabled={corrigindoBotao} style={pillBtn(true,corrigindoBotao)}>{corrigindoBotao?"Corrigindo…":"Corrigir agora"}</button>
+        ):vs==="nao_publicado"?(
+          <button onClick={verificarNoAr} disabled={verifying} style={pillBtn(true,verifying)}>{verifying?"Verificando…":"Verificar de novo"}</button>
         ):vs==="ok"?(
           <a href={`https://josephpay.com/minichat.html?uid=${c.id}`} target="_blank" rel="noopener noreferrer" style={pillBtn(false,false)}>Abrir Mini Chat ↗</a>
         ):proprio?(
@@ -2816,6 +2830,15 @@ const DEFAULT_MINICHAT_QUESTIONS_EN=[
   {text:"Got it.",subtext:"What's your biggest challenge today?",options:["People ask the price and vanish","I explain everything by text","I don't look professional","No online authority"]},
   {text:"Last question.",subtext:"If you had a website today, the top priority would be?",options:["Show my services clearly","Get more contacts","Have a professional link","Booking system"]},
 ];
+const DEFAULT_MINICHAT_QUESTIONS_ES=[
+  {text:"¡Hola! Hagamos un diagnóstico rápido de tu presencia en línea.\n\nToma menos de un minuto.",subtext:"¿Cuál es tu objetivo principal hoy?",options:["Conseguir más clientes","Transmitir más confianza","Tener un link profesional","Recibir más reservas"]},
+  {text:"Perfecto.",subtext:"¿Cuál es tu situación actual?",options:["No tengo sitio web","Solo Instagram","Sitio web desactualizado","El sitio no convierte"]},
+  {text:"Entendido.",subtext:"¿Cuál es tu mayor desafío hoy?",options:["Preguntan el precio y desaparecen","Explico todo por mensaje","No me veo profesional","Sin autoridad en línea"]},
+  {text:"Última pregunta.",subtext:"Si tuvieras un sitio web hoy, ¿cuál sería la prioridad?",options:["Mostrar bien mis servicios","Conseguir más contactos","Tener un link profesional","Sistema de reservas"]},
+];
+// Idiomas do Mini Chat (perfil do produtor): pt (padrão), en, es.
+const mcLang=v=>v==="en"||v==="es"?v:"pt";
+const MC_LANG_LABEL={pt:"idioma Português",en:"idioma English",es:"idioma Español"};
 function AtivacaoAdmin({c,initialOpen,done}){
   const [wapNum,setWapNum]=useState(c.minichat_config?.whatsapp_number||c.phone||"");
   const [brandName,setBrandName]=useState(c.minichat_config?.brand_name||c.name||"");
@@ -2823,12 +2846,15 @@ function AtivacaoAdmin({c,initialOpen,done}){
   const [avatarUrl,setAvatarUrl]=useState(c.minichat_config?.avatar_url||"");
   const [uploadingFoto,setUploadingFoto]=useState(false);
   const [redirectLink,setRedirectLink]=useState(c.minichat_config?.redirect_link||"");
+  // Página de obrigado / grupo depois do envio — desligada por padrão, liga só pra quem tem.
+  const [obrigadoAtivo,setObrigadoAtivo]=useState(!!c.minichat_config?.thanks_enabled);
+  const [obrigadoLink,setObrigadoLink]=useState(c.minichat_config?.thanks_link||"");
   const [emailDestino,setEmailDestino]=useState(c.minichat_config?.email_destino||"");
   const [destinoTipo,setDestinoTipo]=useState(()=>{const dt=c.minichat_config?.destination_type;if(dt)return dt;const hasE=!!c.minichat_config?.email_destino;const hasW=!!c.minichat_config?.whatsapp_number;return hasE&&hasW?"ambos":hasE?"email":"whatsapp";});
   const [objetivoOptions,setObjetivoOptions]=useState((c.minichat_config?.objetivo_options||[]).join("\n"));
   const [businessContext,setBusinessContext]=useState(c.minichat_config?.business_context||"");
   // Idioma só do Mini Chat (pt/en) e modelo visual (whatsapp/email) — padrão é o de sempre.
-  const [idioma,setIdioma]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [idioma,setIdioma]=useState(mcLang(c.minichat_config?.language));
   const [modelo,setModelo]=useState(c.minichat_config?.template==="email"?"email":"whatsapp");
   const [corFundo,setCorFundo]=useState(c.minichat_config?.bg_color||"#0f1a3a");
   const [corDestaque,setCorDestaque]=useState(c.minichat_config?.accent_color||"#c91d2a");
@@ -2851,7 +2877,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
   useEffect(()=>{
     if(!minichatMounted.current){minichatMounted.current=true;return;}
     setMiniSaved(false);
-  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,emailDestino,destinoTipo,objetivoOptions,businessContext,idioma,modelo,corFundo,corDestaque]);
+  },[wapNum,brandName,closingMsg,avatarUrl,redirectLink,obrigadoAtivo,obrigadoLink,emailDestino,destinoTipo,objetivoOptions,businessContext,idioma,modelo,corFundo,corDestaque]);
   const enviarFoto=async(e)=>{
     const file=e.target.files[0];if(!file)return;
     e.target.value="";
@@ -2872,6 +2898,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
     setErroSalvar("");
     if(destinoTipo!=="email"&&!wapNum.trim()){setErroSalvar("Preencha o número de WhatsApp.");return;}
     if(destinoTipo!=="whatsapp"&&!emailDestino.trim()){setErroSalvar("Preencha o e-mail de destino.");return;}
+    if(obrigadoAtivo&&!/^(https?:\/\/)?[^\s.]+\.[^\s]+$/i.test(obrigadoLink.trim())){setErroSalvar("Cole o link da página de obrigado / grupo (ex: https://site.com/obrigado) ou marque \"Não\".");return;}
     if(destinoTipo!=="whatsapp"&&!emailValido(emailDestino)){setErroSalvar(`"${emailDestino.trim()}" não é um e-mail válido — falta a parte antes do @ (ex: nome@gmail.com).`);return;}
     const d=await apiCall(`/api/admin/producers/${c.id}/minichat`,{method:'PATCH',body:JSON.stringify({
       whatsapp_number:wapNum.trim(),
@@ -2879,6 +2906,8 @@ function AtivacaoAdmin({c,initialOpen,done}){
       greeting_name:brandName.trim(),
       avatar_url:avatarUrl.trim(),
       redirect_link:redirectLink.trim(),
+      thanks_enabled:obrigadoAtivo,
+      thanks_link:obrigadoLink.trim(),
       email_destino:emailDestino.trim(),
       destination_type:destinoTipo,
       objetivo_options:objetivoOptions.split("\n").map(s=>s.trim()).filter(Boolean),
@@ -2931,7 +2960,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       if(novo&&st.email_destino&&!emailDestino.trim()){setEmailDestino(st.email_destino);feitos.push("e-mail de destino");}
       if(novo&&st.whatsapp_number&&!wapNum.trim()){setWapNum(st.whatsapp_number);feitos.push("WhatsApp");}
       if(novo&&st.destination_type&&!mc.destination_type){setDestinoTipo(st.destination_type);feitos.push(st.destination_type==="email"?"destino E-mail":"destino WhatsApp");}
-      if(novo&&st.language&&!mc.language){setIdioma(st.language);feitos.push(st.language==="en"?"idioma English":"idioma Português");}
+      if(novo&&st.language&&!mc.language){setIdioma(mcLang(st.language));feitos.push(MC_LANG_LABEL[mcLang(st.language)]);}
       if(novo&&(st.bg_color||st.accent_color)&&!mc.template){setModelo("email");if(st.bg_color)setCorFundo(st.bg_color);if(st.accent_color)setCorDestaque(st.accent_color);feitos.push("visual e cores do site");}
       if(st.brand_name&&!mc.brand_name&&(!brandName.trim()||brandName===c.name)){setBrandName(st.brand_name);feitos.push("nome");}
       if(st.business_context&&!mc.business_context&&!businessContext.trim()){setBusinessContext(st.business_context);feitos.push("sobre o negócio");}
@@ -2966,7 +2995,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
       </>)}
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Idioma do Mini Chat</div>
       <div style={{display:"flex",gap:6,marginBottom:4}}>
-        {[["pt","🇧🇷 Português"],["en","🇺🇸 English"]].map(([v,label])=>(
+        {[["pt","🇧🇷 Português"],["en","🇺🇸 English"],["es","🇪🇸 Español"]].map(([v,label])=>(
           <button key={v} onClick={()=>setIdioma(v)} style={{flex:1,background:idioma===v?GOLD:"none",border:`1px solid ${idioma===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:idioma===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
         ))}
       </div>
@@ -3015,6 +3044,15 @@ function AtivacaoAdmin({c,initialOpen,done}){
       <input value={closingMsg} onChange={e=>setClosingMsg(e.target.value)} placeholder='Frase de encerramento (padrão: "Podemos conversar?")' style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Aparece no final da mensagem que vai para o WhatsApp do produtor. Deixe em branco para usar "Podemos conversar?".</div>
 
+      <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Página de obrigado / grupo depois do envio?</div>
+      <div style={{display:"flex",gap:6,marginBottom:obrigadoAtivo?8:4}}>
+        {[[false,"Não"],[true,"Sim"]].map(([v,label])=>(
+          <button key={label} onClick={()=>setObrigadoAtivo(v)} style={{flex:1,background:obrigadoAtivo===v?GOLD:"none",border:`1px solid ${obrigadoAtivo===v?GOLD:BDR}`,borderRadius:100,padding:"9px 0",color:obrigadoAtivo===v?"#0C0C0C":MUTED,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:F}}>{label}</button>
+        ))}
+      </div>
+      {obrigadoAtivo&&<input value={obrigadoLink} onChange={e=>setObrigadoLink(e.target.value)} placeholder="Link da página (ex: https://site.com/obrigado ou link do grupo)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>}
+      <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Com "Sim", depois que a pessoa envia (e-mail ou WhatsApp) e volta pro Mini Chat, ela vai sozinha pra esse link. Com "Não" (padrão), nada muda.</div>
+
       <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>Redirecionamento final</div>
       <input value={redirectLink} onChange={e=>setRedirectLink(e.target.value)} placeholder="Link de redirecionamento final (opcional — sobrepõe WhatsApp/E-mail)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       <div style={{color:MUTED,fontSize:11,marginBottom:14,lineHeight:1.4}}>Se preenchido, o botão final abre apenas esse link — útil para Calendly, página de vendas, etc.</div>
@@ -3056,7 +3094,7 @@ function AtivacaoAdmin({c,initialOpen,done}){
 
 function PerguntasMinichatAdmin({c,initialOpen,done}){
   const [open,setOpen]=useState(false);
-  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:(c.minichat_config?.language==="en"?DEFAULT_MINICHAT_QUESTIONS_EN:DEFAULT_MINICHAT_QUESTIONS).map(q=>({...q,options:[...q.options]})));
+  const [questions,setQuestions]=useState(c.minichat_config?.questions?.length?c.minichat_config.questions:(c.minichat_config?.language==="en"?DEFAULT_MINICHAT_QUESTIONS_EN:c.minichat_config?.language==="es"?DEFAULT_MINICHAT_QUESTIONS_ES:DEFAULT_MINICHAT_QUESTIONS).map(q=>({...q,options:[...q.options]})));
   const [usandoPadrao]=useState(!c.minichat_config?.questions?.length);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(!!c.minichat_config?.questions?.length);
@@ -3074,10 +3112,11 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     const nome=c.minichat_config?.brand_name||c.company_name||c.name||"este cliente";
     const area=nicho.trim();
     const en=c.minichat_config?.language==="en";
+    const es=c.minichat_config?.language==="es";
     const qtd=Math.max(questions.length,4);
     const siteUrl=c.site_url?(c.site_url.startsWith("http")?c.site_url:`https://${c.site_url}`):null;
     const siteBloco=siteUrl?`\n\nSite do cliente: ${siteUrl}\nAcesse esse site agora e use o que encontrar lá — serviços reais, público, diferenciais, jeito de falar da marca — como base principal para criar as perguntas. Complemente com o contexto abaixo se necessário.`:`\n\nUse tudo o que você já sabe sobre esse cliente: serviços, público, diferenciais e o jeito de falar da marca.`;
-    const prompt=`Crie ${qtd} perguntas de qualificação para o mini chat de pré-diagnóstico do site de ${nome}${area?` (${area})`:""}.${siteBloco}\n\nO objetivo é descobrir o que a pessoa procura e quão pronta ela está pra fechar.\n\nRegras:\n- ${en?"Escreva TUDO em inglês (o público é americano).":"Escreva tudo em português do Brasil."}\n- Cada pergunta tem: um texto curto de transição (ex: "${en?"Perfect!":"Perfeito!"}"), a pergunta objetiva e de 3 a 4 opções curtas (máx. 5 palavras cada).\n- A 1ª pergunta deve ser sobre o serviço/produto que a pessoa procura (use os serviços reais do site).\n- Inclua uma pergunta sobre QUANDO ela quer começar (ex: "${en?"As soon as possible":"Quanto antes"}", "${en?"This month":"Este mês"}", "${en?"Just researching":"Só estou pesquisando"}").\n- Não pergunte nome, telefone, e-mail nem data de nascimento (o mini chat já pergunta no final).\n\nResponda SOMENTE com um JSON puro, sem markdown, neste formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
+    const prompt=`Crie ${qtd} perguntas de qualificação para o mini chat de pré-diagnóstico do site de ${nome}${area?` (${area})`:""}.${siteBloco}\n\nO objetivo é descobrir o que a pessoa procura e quão pronta ela está pra fechar.\n\nRegras:\n- ${en?"Escreva TUDO em inglês (o público é americano).":es?"Escreva TUDO em espanhol latino-americano, tratando por \"tú\".":"Escreva tudo em português do Brasil."}\n- Cada pergunta tem: um texto curto de transição (ex: "${en?"Perfect!":"Perfeito!"}"), a pergunta objetiva e de 3 a 4 opções curtas (máx. 5 palavras cada).\n- A 1ª pergunta deve ser sobre o serviço/produto que a pessoa procura (use os serviços reais do site).\n- Inclua uma pergunta sobre QUANDO ela quer começar (ex: "${en?"As soon as possible":"Quanto antes"}", "${en?"This month":"Este mês"}", "${en?"Just researching":"Só estou pesquisando"}").\n- Não pergunte nome, telefone, e-mail nem data de nascimento (o mini chat já pergunta no final).\n\nResponda SOMENTE com um JSON puro, sem markdown, neste formato:\n[\n  {\n    "text": "frase de transição",\n    "subtext": "a pergunta objetiva?",\n    "options": ["opção 1","opção 2","opção 3","opção 4"]\n  }\n]`;
     try{await navigator.clipboard.writeText(prompt);}catch{window.prompt("Copie o prompt:",prompt);}
     setPromptCopiado(true);setShowJsonImport(true);setTimeout(()=>setPromptCopiado(false),2500);
   };
@@ -3088,10 +3127,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   // Idioma e destino acompanham AO VIVO o que está escolhido no card "Mini Chat" (mesmo
   // antes de salvar) — antes liam só o que estava salvo quando a tela abriu, e a caixa
   // "Sempre incluídas no final" ficava em português com o perfil já em English.
-  const [idiomaMc,setIdiomaMc]=useState(c.minichat_config?.language==="en"?"en":"pt");
+  const [idiomaMc,setIdiomaMc]=useState(mcLang(c.minichat_config?.language));
   const [destinoMc,setDestinoMc]=useState(c.minichat_config?.destination_type||"whatsapp");
   useEffect(()=>{
-    const h=e=>{if(e.detail?.id!==c.id)return;if(e.detail.language)setIdiomaMc(e.detail.language);if(e.detail.destination_type)setDestinoMc(e.detail.destination_type);};
+    const h=e=>{if(e.detail?.id!==c.id)return;if(e.detail.language)setIdiomaMc(mcLang(e.detail.language));if(e.detail.destination_type)setDestinoMc(e.detail.destination_type);};
     window.addEventListener("minichat-config-change",h);
     return ()=>window.removeEventListener("minichat-config-change",h);
   },[c.id]);
@@ -3105,7 +3144,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     if(!d?.questions?.length){if(!auto)setMsg(d?.error||"Não consegui importar as perguntas.");return;}
     setQuestions(d.questions);setSaved(false);
     if(d.settings?.business_context&&!nicho.trim())setNicho(d.settings.business_context);
-    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':"";
+    const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':d.language==="es"&&idiomaMc!=="es"?' Estão em espanhol — confira "Idioma do Mini Chat" no card Mini Chat.':"";
     setImportInfo(`✓ Puxei ${d.questions.length} pergunta(s) do mini chat que já existe no site (${(d.source||[]).join(", ")}). Revise e toque em "Salvar perguntas".${avisoIdioma}`);
   };
   // Padrão: cliente com repositório e sem perguntas próprias salvas → ao abrir o card,
@@ -3231,8 +3270,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
           <div style={{color:MUTED,fontSize:11,lineHeight:1.5,marginBottom:8}}>Depois das perguntas acima (sejam essas ou as que a IA gerar), o Mini Chat SEMPRE pergunta os dados de contato antes de liberar o botão final — pra garantir que todo interessado que aparece no CRM já venha com contato real. Isso vale pra este cliente e pra todos os outros; não dá pra remover, editar ou tirar da tela por engano.{destinoMc==="email"?" Como o destino deste cliente é E-mail, também pergunta o e-mail da pessoa.":""}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {(destinoMc==="email"
-              ?(idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?","What's your date of birth? (so we can send you a little gift on your birthday 🎁)"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?","Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)"])
-              :(idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
+              ?(idiomaMc==="es"?["¿Cuál es tu nombre completo?","¿Cuál es tu mejor e-mail?","¿Y tu número de teléfono?","¿Cuál es tu fecha de nacimiento? (para enviarte un regalito en tu cumpleaños 🎁)"]:idiomaMc==="en"?["What's your full name?","What's your best e-mail?","And your phone number?","What's your date of birth? (so we can send you a little gift on your birthday 🎁)"]:["Qual seu nome completo?","Qual seu melhor e-mail?","E qual seu telefone?","Qual sua data de nascimento? (pra gente te mandar um brinde no seu aniversário 🎁)"])
+              :(idiomaMc==="es"?["¿Cuál es tu nombre completo?","¿Cuál es tu número de WhatsApp?","¿Cuál es tu fecha de nacimiento?"]:idiomaMc==="en"?["What's your full name?","What's your WhatsApp number?","What's your date of birth?"]:["Qual seu nome completo?","Qual seu telefone com WhatsApp?","Qual sua data de nascimento?"])
             ).map((q,i)=>(
               <div key={i} style={{color:TEXT,fontSize:12,fontWeight:600,background:CARD2,borderRadius:8,padding:"7px 10px"}}>{i+1}. {q}</div>
             ))}
@@ -3251,15 +3290,17 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   // Mesmo formato da mensagem real do Mini Chat (buildMessage em minichat.html):
   // nome + respostas, sem telefone/e-mail/aniversário, negrito do WhatsApp.
   const en=idiomaMc==="en";
-  const marca=c.minichat_config?.brand_name||c.name||(en?"[producer name]":"[nome do produtor]");
-  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `— *${r}* ${en?"[answer]":"[resposta]"}`;}).join("\n");
+  const es=idiomaMc==="es";
+  const marca=c.minichat_config?.brand_name||c.name||(en?"[producer name]":es?"[nombre del negocio]":"[nome do produtor]");
+  const linhas=questions.map((q,i)=>{let r=String(q.subtext||q.text||(en?`Question ${i+1}`:es?`Pregunta ${i+1}`:`Pergunta ${i+1}`)).trim();if(!/[?:]$/.test(r))r+=":";return `— *${r}* ${en?"[answer]":es?"[respuesta]":"[resposta]"}`;}).join("\n");
+  if(es)return `¡Hola, *${marca}*! 👋\n\nSoy *Juan Pérez* y acabo de hacer el prediagnóstico en su sitio web.\n\n📋 *Mi perfil*\n${linhas}\n`;
   return en?`Hi *${marca}*! 👋\n\nI'm *John Smith* and I just finished the pre-diagnosis on your website.\n\n📋 *My profile*\n${linhas}\n`:`Olá, *${marca}*! 👋\n\nSou *João Silva* e acabei de fazer o pré-diagnóstico no seu site.\n\n📋 *Meu perfil*\n${linhas}\n`;
 })()}
                 </div>
                 <input
                   value={closingMsg}
                   onChange={e=>{setClosingMsg(e.target.value);setSaved(false);}}
-                  placeholder={idiomaMc==="en"?"Can we talk?":"Podemos conversar?"}
+                  placeholder={idiomaMc==="en"?"Can we talk?":idiomaMc==="es"?"¿Podemos conversar?":"Podemos conversar?"}
                   style={{width:"100%",background:"transparent",border:"none",borderTop:`1px dashed #ccc`,outline:"none",fontFamily:"sans-serif",fontSize:12,color:"#111",padding:"6px 0 2px",lineHeight:1.5}}
                 />
                 <div style={{color:"#999",fontSize:10,textAlign:"right",marginTop:4}}>agora ✓✓</div>
@@ -3347,7 +3388,11 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
   const steps=[
     {id:"site",label:"Site conectado",done:siteOk,cardKeys:["site"]},
     {id:"sensor",label:"Sensor instalado",done:sensorOk,cardKeys:["sensor"]},
-    ...(metodoAtual==="github"?[{id:"vercel",label:"Vercel preparado",done:!!c.github_vercel_ready_at,cardKeys:["vercel"]}]:[]),
+    // Mini Chat confirmado no site publicado = a publicação funciona; "preparar" o
+    // vercel.json só serve pro jeito do redirecionamento, que site com servidor próprio
+    // (Lovable/TanStack Start) nem usa — lá o botão aponta direto pro Mini Chat. Sem isso
+    // a DISASTEX (10/10) ficava presa em "Vercel preparado" mesmo com tudo no ar.
+    ...(metodoAtual==="github"?[{id:"vercel",label:"Vercel preparado",done:!!c.github_vercel_ready_at||minichatInstOk===true,cardKeys:["vercel"]}]:[]),
     ...(metodoAtual==="github"?[{id:"minichat_instalado",label:"Mini Chat instalado no site",done:minichatInstOk,cardKeys:["minichat_repo"]}]:[]),
     {id:"minichat_config",label:"Mini Chat configurado",done:configOk,cardKeys:["minichat"]},
     ...(metodoAtual==="github"?[{id:"botoes",label:"Botões do site",done:botoesOk===null?false:botoesOk,cardKeys:["botoes"]}]:[]),
@@ -3372,8 +3417,13 @@ function AtivacaoChecklistAdmin({c,onUpdated}){
     const d=await apiCall(`/api/admin/producers/${c.id}/activation-test`);
     setTestando(false);
     setTeste(d?.error?{error:d.error}:d);
+    // O checklist lá em cima usa a verificação feita quando a tela abriu — se o "Testar
+    // tudo" acabou de confirmar o Mini Chat no site, o checklist acompanha na hora (antes
+    // ficava "Mini Chat no site ✓" aqui e "Mini Chat instalado no site" vermelho em cima).
+    const mc=(d?.checks||[]).find(x=>x.id==="minichat_site");
+    if(mc&&!mc.warn)setMinichatVerified(!!mc.ok);
   };
-  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||(minichatInstOk&&!!c.github_vercel_ready_at));
+  const clienteAtivo=siteOk&&sensorOk&&configOk&&(metodoAtual!=="github"||minichatInstOk);
 
   const openCard=key=>currentStep?currentStep.cardKeys.includes(key):false;
   const cardDone=key=>steps.filter(s=>s.cardKeys.includes(key)).every(s=>!!s.done);
@@ -3969,7 +4019,7 @@ function MinichatMetricasAdmin({c}){
       {/* Horários */}
       {(d.horarios||[]).some(h=>h.conversas>0)&&(
         <div style={glassCard()}>
-          {titulo("Horário das conversas",d.idioma==="en"?"Horário de Nova York.":"Horário de Brasília.")}
+          {titulo("Horário das conversas",d.idioma==="en"||d.idioma==="es"?"Horário de Nova York.":"Horário de Brasília.")}
           {d.horarios.map((h,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
               <span style={{color:MUTED,fontSize:12,width:52}}>{h.faixa}</span>

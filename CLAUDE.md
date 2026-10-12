@@ -373,3 +373,49 @@ resposta" (JSON). "✨ Gerar com IA" continua existindo, só foi pra "Mais opç�
 - Resposta ≠ 200 → fica em `xposts_avisos` (migration_v45) e `reenviarAvisosXposts()` tenta de novo a
   cada 5 min com espera crescente (até 6 h, 40 tentativas). Sem a tabela, o reenvio fica só na memória.
 - O PATCH do Mini Chat só MANTÉM `xposts_token` (quem grava é `/xposts`), pra salvar o Mini Chat não apagar o token.
+
+## Mini Chat em espanhol (10/10, DISASTEX)
+
+- `minichat_config.language` aceita `pt` | `en` | `es` (`cleanMinichatLang()` no servidor, `mcLang()` no
+  Admin). `I18N.es` no `minichat.html`: data dia/mês, telefone livre (igual ao inglês). Os textos de `pt`
+  continuam intocados.
+- Espanhol também: nunca passa pela regra do 9 (`ownerUsesBrPhones` só vale pra `pt`), métricas no
+  horário de Nova York, e-mail do lead em espanhol, IA gera perguntas em espanhol (`minichatLangInstruction`),
+  🔥 quente reconhece "Lo antes posible"/"Cuanto antes".
+
+## Site com Vercel em OUTRA conta (publicação pelo GitHub Actions)
+
+Quando a Vercel do cliente não está ligada direto ao GitHub, quem publica é uma rotina do GitHub Actions
+com a chave da Vercel do cliente (segredo `VERCEL_TOKEN`) — ex: DISASTEX (`WeNovarks/pixel-perfect-match`).
+`getRepoDeployStatus()` cai em `getActionsDeployStatus()` (rotina com "vercel" no nome/arquivo). Se a
+rotina "passou" mas pulou o passo de publicar (sem a chave), conta como **falhou** — o site no ar não mudou.
+O JosephPay continua só gravando no GitHub; nunca precisa de acesso à Vercel do cliente.
+
+## Botão direto pro Mini Chat conta como "no ar" (qualquer tipo de site)
+
+Botão com href `josephpay.com/minichat.html?uid=<id>` é o jeito universal (Lovable/TanStack Start, Next,
+Vite, HTML, qualquer hospedagem) — não depende de caminho nem de redirecionamento. `verifyMinichatLive()`
+testa o caminho e, se não abrir, roda `checkDirectMinichatButton()`: procura o link no HTML publicado e nos
+JS que ele carrega (`<script src>`/modulepreload, mesma origem, até 25). Achou → `status:"ok"`,
+`method:"botao"`. Não está no site mas está no código (`scanRepoJsxLinks`) → `status:"nao_publicado"`
+("Falta publicar" — publicação bloqueada/pendente, não precisa reinstalar). Checklist: "Vercel preparado"
+conta como feito quando o Mini Chat está confirmado no site (o vercel.json só importa pro redirecionamento).
+Visto na DISASTEX (10/10): botão certo no ar e o card dizia "Ainda não está no ar".
+
+## Página de obrigado / grupo depois do envio (opcional, por produtor)
+
+Card Mini Chat → "Página de obrigado / grupo depois do envio?" Não (padrão) | Sim + link
+(`minichat_config.thanks_enabled` / `thanks_link`, só http(s) — `cleanHttpLink`). Com "Sim", o
+`minichat.html` (`armThanksRedirect()`) leva a pessoa pro link quando ela volta do app de e-mail ou do
+WhatsApp (ou 6 s depois, no computador), com `?lang=en|es` se o Mini Chat não for em português. Com "Não"
+nada muda, e o envio em si (e-mail/WhatsApp) é sempre o mesmo. É separado do "Redirecionamento final"
+(`redirect_link`, que troca o botão do WhatsApp). A página fica no site do cliente — ex: DISASTEX
+`/gracias` (¡Felicidades! + botão pro grupo do WhatsApp).
+Destino "E-mail" + "Sim": assim que o servidor confirma o envio automático do e-mail (`sendLeadEmail` ok),
+mostra "✓ Enviado" e leva sozinho pro link em 2,5 s — sem a pessoa precisar abrir o app de e-mail e voltar
+(quem fechava tudo nunca chegava no grupo). Se o envio automático falhar, não redireciona e o botão de
+e-mail (mailto) continua como sempre. O e-mail é SEMPRE enviado.
+Com "Sim", o botão "Enviar por e-mail" também NÃO abre o app de e-mail da pessoa: garante o envio pelo
+servidor (`sendLeadEmail`, uma vez só) e segue pro link. Só se o envio pelo servidor falhar é que abre o
+`mailto:` como sempre. Com "Não", o botão continua abrindo o app de e-mail (regra antiga).
+

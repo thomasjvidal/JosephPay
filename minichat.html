@@ -455,6 +455,7 @@
     let GREETING_NAME = "Nexy";
     let AVATAR_URL = "";
     let REDIRECT_LINK = "";
+    let THANKS_LINK = ""; // página de obrigado/grupo — só se o Admin marcou "Sim"
     let EMAIL_DESTINO = "";
     let DESTINATION_TYPE = "whatsapp";
     let CLOSING_MESSAGE = "Podemos conversar?";
@@ -551,6 +552,51 @@
                 { id: 'nascimento', text: "Last question.",          subtext: "What's your date of birth? (so we can send you a little gift on your birthday 🎁)", label: "Date of birth", type: 'text', placeholder: 'MM/DD/YYYY' },
             ],
             defaultClosing: "Can we talk?",
+        },
+        // Espanhol (pedido do Thomas, 10/10 — DISASTEX: público latino nos EUA). Data no
+        // formato dia/mês, telefone livre (número estrangeiro, igual ao inglês).
+        es: {
+            locale: 'es', htmlLang: 'es',
+            headerSubtitle: 'Atención en línea', headerSubtitleEmail: 'Diagnóstico rápido', titleSuffix: 'Atención en línea',
+            placeholder: 'Escribe tu respuesta...',
+            analysisDone: 'Análisis completo. ✓', preparing: 'Preparando tu diagnóstico...',
+            resultTitle: 'Análisis Completo', resultSubtitle: 'Tu diagnóstico está listo. Estás a un paso de hablar con nosotros.',
+            resultSubtitleEmail: 'Tu diagnóstico está listo. Estamos enviando tus respuestas.',
+            profileTitle: 'TU PERFIL', questionN: n => `Pregunta ${n}`,
+            whatsappBtn: '📱 Enviar por WhatsApp', emailBtn: '✉️ Enviar por e-mail',
+            sending: 'Enviando...', ready: '✓ ¡Listo!', opening: 'Abriendo...', openingWhatsapp: 'Abriendo WhatsApp...',
+            retryClick: '¿No se abrió? Toca el botón de nuevo.', continueBtn: '↗ Continuar', openWhatsappBtn: '📱 Abrir WhatsApp',
+            openingEmail: '✓ Abriendo e-mail…', retryEmail: '¿No se abrió? Toca de nuevo.',
+            emailSent: '✓ ¡Enviado!', emailSentAmbos: '✓ También enviado por e-mail', emailSentStatus: name => `Recibimos tus respuestas. ${name} se pondrá en contacto contigo pronto.`,
+            emailSubject: name => `Prediagnóstico — ${name}`,
+            msgHello: n => `¡Hola, ${n}! 👋`,
+            msgIntro: n => `Soy ${n} y acabo de hacer el prediagnóstico en su sitio web.`,
+            msgIntroNoName: 'Acabo de hacer el prediagnóstico en su sitio web.',
+            msgProfile: 'Mi perfil', msgPhone: 'Teléfono',
+            invalidEmail: 'Hmm, ese e-mail no parece válido. ¿Puedes revisarlo y escribirlo de nuevo?',
+            invalidDate: 'No entendí la fecha 🙂 Puedes escribirla así: 09/08/2000',
+            invalidPhone: 'Ese número parece incompleto. ¿Puedes escribirlo con el código de área?',
+            dateOrder: 'dmy',
+            defaultQ: {
+                produtoText: "¡Hola! 👋 Hagamos un diagnóstico rápido para atenderte mejor.", produtoSub: "¿Qué estás buscando hoy?", produtoLabel: "Interés principal",
+                objetivoText: "Perfecto.", objetivoSub: "¿Cuál es tu objetivo?", objetivoLabel: "Objetivo",
+                quandoText: "Entendido.", quandoSub: "¿Cuándo piensas empezar?", quandoLabel: "Momento para empezar",
+                quando: ["Lo antes posible", "Este mes", "En los próximos meses", "Solo estoy investigando"],
+                produtoFallback: ["Ya sé lo que quiero", "Quiero conocer las opciones", "Tengo una duda", "Otro"],
+                objetivoFallback: ["Empezar lo antes posible", "Conocer mejor primero", "Comparar opciones", "Resolver dudas"],
+            },
+            contact: [
+                { id: 'nome',       text: "Genial, ya casi terminamos.", subtext: "¿Cuál es tu nombre completo?",      label: "Nombre",              type: 'text', placeholder: 'Escribe tu nombre…' },
+                { id: 'telefone',   text: "Perfecto.",                   subtext: "¿Cuál es tu número de WhatsApp?",   label: "WhatsApp",            type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Última pregunta.",            subtext: "¿Cuál es tu fecha de nacimiento?",  label: "Fecha de nacimiento", type: 'text', placeholder: 'DD/MM/AAAA' },
+            ],
+            contactEmail: [
+                { id: 'nome',     text: "Genial, ya casi terminamos.", subtext: "¿Cuál es tu nombre completo?", label: "Nombre",   type: 'text', placeholder: 'Escribe tu nombre…' },
+                { id: 'email',    text: "Perfecto.",                   subtext: "¿Cuál es tu mejor e-mail?",    label: "E-mail",   type: 'email', placeholder: 'tu@email.com' },
+                { id: 'telefone', text: "Muy bien.",                   subtext: "¿Y tu número de teléfono?",    label: "Teléfono", type: 'text', placeholder: '(555) 123-4567' },
+                { id: 'nascimento', text: "Última pregunta.",          subtext: "¿Cuál es tu fecha de nacimiento? (para enviarte un regalito en tu cumpleaños 🎁)", label: "Fecha de nacimiento", type: 'text', placeholder: 'DD/MM/AAAA' },
+            ],
+            defaultClosing: "¿Podemos conversar?",
         },
     };
     const T = () => I18N[LANG] || I18N.pt;
@@ -691,10 +737,11 @@
                 GREETING_NAME = cfg?.greeting_name || resolvedName || GREETING_NAME;
                 if (cfg?.avatar_url) AVATAR_URL = cfg.avatar_url;
                 if (cfg?.redirect_link) REDIRECT_LINK = cfg.redirect_link;
+                if (cfg?.thanks_enabled && /^https?:\/\//i.test(cfg?.thanks_link || "")) THANKS_LINK = cfg.thanks_link;
                 if (cfg?.email_destino) EMAIL_DESTINO = cfg.email_destino;
                 if (cfg?.closing_message) CLOSING_MESSAGE = cfg.closing_message;
                 if (cfg?.destination_type) DESTINATION_TYPE = cfg.destination_type;
-                if (cfg?.language === "en") LANG = "en";
+                if (cfg?.language === "en" || cfg?.language === "es") LANG = cfg.language;
                 if (cfg?.template === "email") TEMPLATE = "email";
                 applyLanguageAndTemplate(cfg);
                 {
@@ -1084,7 +1131,21 @@
                 emailBtn.style.pointerEvents = 'none';
             }
             sendLeadEmail().then(ok => {
-                if (ok) { markEmailSent(); return; }
+                if (ok) {
+                    markEmailSent();
+                    // Página de obrigado / grupo ligada (só destino E-mail): o e-mail JÁ foi
+                    // enviado pelo servidor — leva a pessoa sozinha pro link, sem depender de
+                    // ela abrir o app de e-mail e voltar (quem fechava tudo nunca chegava no
+                    // grupo — DISASTEX, 10/10). Se o envio falhar, nada disso roda e o botão
+                    // de e-mail continua como sempre.
+                    if (DESTINATION_TYPE === "email" && THANKS_LINK) {
+                        redirectStatus.textContent = T().emailSent;
+                        redirectStatus.style.opacity = '1';
+                        thanksArmed = true;
+                        setTimeout(goToThanks, 2500);
+                    }
+                    return;
+                }
                 // Falhou no servidor: volta o botão pro jeito antigo (abre o e-mail do visitante).
                 emailBtn.innerHTML = T().emailBtn;
                 emailBtn.style.pointerEvents = 'auto';
@@ -1142,6 +1203,7 @@
             redirectStatus.textContent = useRedirect ? T().opening : T().openingWhatsapp;
 
             setTimeout(() => {
+                armThanksRedirect();
                 window.open(targetUrl, '_blank');
                 setTimeout(() => {
                     redirectStatus.textContent = T().retryClick;
@@ -1160,11 +1222,54 @@
     function sendToEmail() {
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'email' });
+        // Página de obrigado / grupo ligada: NÃO abre o app de e-mail da pessoa — o
+        // e-mail vai pelo servidor (o mesmo envio automático, uma vez só) e ela segue
+        // direto pro link/grupo (pedido do Thomas, 10/10: quem ia pro app de e-mail não
+        // voltava). Se o envio pelo servidor falhar, cai no jeito de sempre (mailto).
+        if (THANKS_LINK) {
+            emailBtn.textContent = T().sending;
+            emailBtn.style.pointerEvents = 'none';
+            sendLeadEmail().then(ok => {
+                if (ok) {
+                    emailBtn.innerHTML = T().emailSent;
+                    thanksArmed = true;
+                    setTimeout(goToThanks, 800);
+                    return;
+                }
+                emailBtn.innerHTML = T().emailBtn;
+                emailBtn.style.pointerEvents = 'auto';
+                openMailto();
+            });
+            return;
+        }
         sendLeadEmail();
         openMailto();
     }
 
+    // Página de obrigado / grupo (só produtor que marcou "Sim" no Admin): depois que a
+    // pessoa toca em enviar (e-mail ou WhatsApp), sai pro app e VOLTA pro Mini Chat, segue
+    // sozinha pro link — com ?lang=en|es se o Mini Chat não for em português. Sem isso
+    // ligado, nada muda. O envio em si (e-mail/WhatsApp) é exatamente o mesmo.
+    let thanksArmed = false;
+    function goToThanks() {
+        if (!thanksArmed || !THANKS_LINK) return;
+        thanksArmed = false;
+        let url = THANKS_LINK;
+        try { const u = new URL(THANKS_LINK); if (LANG !== 'pt' && !u.searchParams.has('lang')) u.searchParams.set('lang', LANG); url = u.toString(); } catch (e) {}
+        window.location.href = url;
+    }
+    function armThanksRedirect() {
+        if (!THANKS_LINK || thanksArmed) return;
+        thanksArmed = true;
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(goToThanks, 600); });
+        window.addEventListener('pageshow', () => setTimeout(goToThanks, 600));
+        // Computador sem app de e-mail/WhatsApp (a página nem sai da tela): segue mesmo assim.
+        // Só com a página NA TELA — nunca tira a pessoa do app de e-mail antes de ela enviar.
+        setTimeout(() => { if (document.visibilityState === 'visible') goToThanks(); }, 6000);
+    }
+
     function openMailto() {
+        armThanksRedirect();
         const subject = T().emailSubject(String(userData.nome || '').trim() || GREETING_NAME);
         const mailtoUrl = `mailto:${EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildMessage('email'))}`;
         setTimeout(() => {
