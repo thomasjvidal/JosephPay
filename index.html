@@ -2482,7 +2482,7 @@ function ProdutosDoCliente({ownerId,nome}){
 }
 
 function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
-  const [open,setOpen]=useState(false);
+  const [open,setOpen]=useState(true);
   const [lista,setLista]=useState(null);
   const [filtro,setFiltro]=useState("todos");
   const [sel,setSel]=useState(null);
@@ -2665,7 +2665,7 @@ function ClientesDoProdutorAdmin({ownerId,nome,refreshKey}){
               </div>
             )}
             {filtrada.length===0&&<div style={{padding:"16px",color:MUTED,fontSize:13,textAlign:"center"}}>Nenhum contato aqui ainda.</div>}
-            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {filtrada.map(c=>{
                 const bl=bdayLabel(c.birthday);
                 return(
@@ -3569,6 +3569,8 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
   const [excluindo,setExcluindo]=useState(false);
   const [acessoSenha,setAcessoSenha]=useState(null);
   const [gerandoAcesso,setGerandoAcesso]=useState(false);
+  const [kpiPage,setKpiPage]=useState(0);
+  const kpiSwipe=useRef({x:null});
   const [deletingSale,setDeletingSale]=useState(null);
   const excluirVenda=async(s)=>{
     const nomeVenda=s.customers?.name||"essa venda";
@@ -3721,26 +3723,37 @@ function ClientePerfilAdmin({c,onBack,onUpdated,initialSubTab}){
       </div>
       {subTab==="geral"&&(
         <>
-          <div className="three-col">
-            <KPICard compact label="Volume total" value={volFmt} accent={accent} icon="◈"/>
-            <KPICard compact label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
-            <KPICard compact label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
-            <KPICard compact label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
-            <KPICard compact label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="◷"/>
-            <KPICard compact label="Dias ativos" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
-            <KPICard compact label="Mensalidades" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
-            <KPICard compact label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
-            <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="◈"/>
-            <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="◉"/>
-            <KPICard compact label="Visitas ao site" value={String(c.visitas_total||0)} sub={c.visitas_hoje>0?`+${c.visitas_hoje} hoje`:"acumulado"} accent={GOLD} icon="◎"/>
-            <KPICard compact label="Interessados hoje" value={c.leads_hoje>0?`+${c.leads_hoje}`:"0"} sub="novos contatos hoje" accent={c.leads_hoje>0?GREEN:GOLD} icon="◈"/>
+          <div>
+            <div style={{overflow:"hidden"}} onTouchStart={e=>kpiSwipe.current.x=e.touches[0].clientX} onTouchEnd={e=>{const dx=e.changedTouches[0].clientX-kpiSwipe.current.x;if(Math.abs(dx)>40)setKpiPage(p=>dx<0?Math.min(1,p+1):Math.max(0,p-1));}}>
+              <div style={{display:"flex",transform:`translateX(-${kpiPage*100}%)`,transition:"transform 0.3s ease"}}>
+                <div style={{minWidth:"100%",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,flexShrink:0}}>
+                  <KPICard compact label="Interessados hoje" value={c.leads_hoje>0?`+${c.leads_hoje}`:"0"} sub="novos hoje" accent={c.leads_hoje>0?GREEN:GOLD} icon="◈"/>
+                  <KPICard compact label="Interessados" value={String(c.leads_total||0)} sub={c.leads_hoje>0?`+${c.leads_hoje} hoje`:"acumulado"} accent={GOLD} icon="◈"/>
+                  <KPICard compact label="Clientes" value={String(c.clientes_total||0)} sub={c.clientes_hoje>0?`+${c.clientes_hoje} hoje`:"acumulado"} accent={GREEN} icon="◉"/>
+                  <KPICard compact label="Visitas ao site" value={String(c.visitas_total||0)} sub={c.visitas_hoje>0?`+${c.visitas_hoje} hoje`:"acumulado"} accent={GOLD} icon="◎"/>
+                  <KPICard compact label="Taxas geradas" value={taxaFmt} accent={GOLD} icon="◈"/>
+                  <KPICard compact label="Volume total" value={volFmt} accent={accent} icon="◈"/>
+                </div>
+                <div style={{minWidth:"100%",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,flexShrink:0}}>
+                  <KPICard compact label="Membro desde" value={c.created_at?new Date(c.created_at).toLocaleDateString('pt-BR'):"—"} accent={GOLD} icon="◎"/>
+                  <KPICard compact label="Último acesso" value={fmtLastLogin(c.last_login_at)} accent={GOLD} icon="◷"/>
+                  <KPICard compact label="Dias ativos" value={String(c.logins_mes||0)} accent={GOLD} icon="↑"/>
+                  <KPICard compact label="Produtos" value={String(c.produtos||0)} accent={GOLD} icon="◈"/>
+                  <KPICard compact label="Mensalidades" value={fmtBRL(c.mensalidade_total)} sub="acumulado" accent={GOLD} icon="↺"/>
+                  <KPICard compact label="Ativação paga" value={fmtBRL(c.ativacao_total)} sub="acumulado" accent={GOLD} icon="◉"/>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"center",gap:6,marginTop:8}}>
+              {[0,1].map(i=><div key={i} onClick={()=>setKpiPage(i)} style={{width:6,height:6,borderRadius:3,background:i===kpiPage?GOLD:"rgba(255,255,255,0.2)",cursor:"pointer",transition:"background 0.2s"}}/>)}
+            </div>
           </div>
           <AniversariosClienteAdmin ownerId={c.id}/>
           <VisitasClienteAdmin ownerId={c.id}/>
           <FunilClienteAdmin ownerId={c.id}/>
-          <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
-          <ProdutosDoCliente ownerId={c.id} nome={nome}/>
           <ClientesDoProdutorAdmin ownerId={c.id} nome={nome} refreshKey={contatosVersao}/>
+          <ProdutosDoCliente ownerId={c.id} nome={nome}/>
+          <AdvancedChart accent={accent} endpoint={`/api/admin/chart?owner=${c.id}`}/>
           <DisparosClienteAdmin ownerId={c.id}/>
           <NotaProdutorAdmin ownerId={c.id}/>
           <div style={{...glassSurface,borderRadius:20,overflow:"hidden"}}>
