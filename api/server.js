@@ -3057,7 +3057,7 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
               }
               return out;
             })
-            .filter(q => q.text && q.options.length >= 2)
+            .filter(q => (q.text || q.subtext) && q.options.length >= 2)
         : [];
       if (!cleanQuestions.length) cleanQuestions = null;
     }
@@ -3098,7 +3098,9 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       xposts_token: existing.xposts_token ?? null,
     };
     if (minichat_config.objetivo_options && !minichat_config.objetivo_options.length) minichat_config.objetivo_options = null;
-    if (!minichat_config.whatsapp_number && !minichat_config.email_destino) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
+    // Permite não ter número principal quando o roteamento das perguntas já cobre os destinos
+    const hasRoutingNumbers = Array.isArray(cleanQuestions) && cleanQuestions.some(q => q.routing && Object.keys(q.routing).length > 0);
+    if (!minichat_config.whatsapp_number && !minichat_config.email_destino && !hasRoutingNumbers) return res.status(400).json({ error: "Configure o destino dos leads: número de WhatsApp ou e-mail de destino." });
     // E-mail inválido (ex: "caarenovations.com", sem o nome antes do @) fazia o envio
     // automático falhar e cair no app de e-mail do visitante com destinatário errado.
     if (email_destino !== undefined && minichat_config.email_destino && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(minichat_config.email_destino)) {

@@ -3323,7 +3323,7 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
               </div>
             </div>
           </div>
-          <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Edite a frase acima (última linha da mensagem). Vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b> quando o lead clica no botão verde. Clique em "Salvar perguntas" pra confirmar.</div>
+          <div style={{color:MUTED,fontSize:10,marginTop:8,lineHeight:1.4}}>Edite a frase acima (última linha da mensagem). {questions.some(q=>q.routing&&Object.keys(q.routing||{}).length)?<span>Vai para o <b style={{color:TEXT}}>número da clínica escolhida</b> (roteamento por resposta)</span>:<span>Vai via <b style={{color:TEXT}}>wa.me/{c.minichat_config?.whatsapp_number||"(sem número)"}</b></span>} quando o lead clica no botão verde. Clique em "Salvar perguntas" pra confirmar.</div>
         </div>}
         {msg&&<div style={{color:RED,fontSize:12,marginBottom:10}}>{msg}</div>}
         <button onClick={salvar} disabled={saving} style={{width:"100%",background:saved?`${GREEN}18`:GOLD,border:saved?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:saved?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":saved?"✓ Salvo":"Salvar perguntas"}</button>
