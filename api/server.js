@@ -3040,11 +3040,23 @@ app.patch("/api/admin/producers/:id/minichat", requireAuth, requireAdmin, async 
       // Se vier vazio/inválido, o widget usa as 4 perguntas padrão (não quebra o cliente).
       cleanQuestions = Array.isArray(questions)
         ? questions
-            .map(q => ({
-              text: String(q?.text || "").trim(),
-              subtext: String(q?.subtext || "").trim(),
-              options: Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [],
-            }))
+            .map(q => {
+              const opts = Array.isArray(q?.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [];
+              const out = {
+                text: String(q?.text || "").trim(),
+                subtext: String(q?.subtext || "").trim(),
+                options: opts,
+              };
+              if (q?.routing && typeof q.routing === "object" && !Array.isArray(q.routing)) {
+                const cleanRouting = {};
+                for (const [opt, phone] of Object.entries(q.routing)) {
+                  const p = normalizeWhatsappNumber(String(phone || "").trim());
+                  if (p && opts.includes(String(opt).trim())) cleanRouting[String(opt).trim()] = p;
+                }
+                if (Object.keys(cleanRouting).length) out.routing = cleanRouting;
+              }
+              return out;
+            })
             .filter(q => q.text && q.options.length >= 2)
         : [];
       if (!cleanQuestions.length) cleanQuestions = null;

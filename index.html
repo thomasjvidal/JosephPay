@@ -3171,6 +3171,8 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
   const addOption=qi=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:[...q.options,""]}:q));
   const removeOption=(qi,oi)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,options:q.options.filter((_,oidx)=>oidx!==oi)}:q));
   const moveOption=(qi,oi,dir)=>setQuestions(qs=>qs.map((q,idx)=>{if(idx!==qi)return q;const opts=[...q.options];const j=oi+dir;if(j<0||j>=opts.length)return q;[opts[oi],opts[j]]=[opts[j],opts[oi]];return {...q,options:opts};}));
+  const toggleRouting=qi=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,routing:q.routing?undefined:{}}:q));
+  const updateRouting=(qi,opt,phone)=>setQuestions(qs=>qs.map((q,idx)=>idx===qi?{...q,routing:{...(q.routing||{}),[opt]:phone}}:q));
   const regenerarPergunta=async(qi)=>{
     setMsg("");
     setRegenerating(r=>({...r,[qi]:true}));
@@ -3258,6 +3260,20 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
               </div>
             ))}
             <button onClick={()=>addOption(qi)} style={{background:"none",border:`1px dashed ${BDR}`,borderRadius:8,padding:"5px 10px",color:MUTED,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F,marginTop:2}}>+ Opção</button>
+            {q.options.some(o=>o.trim())&&<div style={{marginTop:10}}>
+              <button onClick={()=>toggleRouting(qi)} style={{background:"none",border:`1px solid ${q.routing?GOLD:BDR}`,borderRadius:8,padding:"5px 10px",color:q.routing?GOLD:MUTED,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,display:"inline-flex",alignItems:"center",gap:5}}>
+                <Ic n="share" s={12}/> {q.routing?"Roteamento por resposta: ligado":"Rotear para WhatsApp diferente por resposta"}
+              </button>
+              {q.routing&&<div style={{marginTop:8}}>
+                <div style={{color:MUTED,fontSize:10,marginBottom:6,lineHeight:1.4}}>Cada resposta vai para um número diferente. Deixe em branco para usar o número principal.</div>
+                {q.options.filter(o=>o.trim()).map((opt,oi)=>(
+                  <div key={oi} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                    <div style={{flex:1,fontSize:11,color:TEXT,padding:"6px 9px",background:"#0d0d0c",borderRadius:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{opt}</div>
+                    <input value={q.routing[opt]||""} onChange={e=>updateRouting(qi,opt,e.target.value)} placeholder="WhatsApp (ex: 5511...)" style={{width:160,background:"#0d0d0c",border:`1px solid ${BDR}`,borderRadius:8,padding:"6px 9px",color:TEXT,fontSize:11,outline:"none",fontFamily:F}}/>
+                  </div>
+                ))}
+              </div>}
+            </div>}
           </div>
         ))}
         <button onClick={addQuestion} style={{width:"100%",background:"none",border:`1px dashed ${BDR}`,borderRadius:12,padding:10,color:MUTED,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F,marginBottom:16}}>+ Adicionar pergunta</button>

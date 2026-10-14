@@ -700,6 +700,7 @@
                             label: q.subtext || q.text || `Pergunta ${i+1}`,
                             type: 'options',
                             options: (q.options || []).filter(Boolean),
+                            routing: (q.routing && typeof q.routing === 'object') ? q.routing : null,
                         }))
                         .filter(q => (q.text || q.subtext) && q.options.length >= 2);
                     if (custom.length) {
@@ -1009,7 +1010,14 @@
         sendLeadToCRM();
         trackProgress({ index: questions.length - 1, questionsTotal: questions.length, completed: true, finishedVia: 'whatsapp' });
 
-        const targetUrl = REDIRECT_LINK || `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
+        let destNumber = WHATSAPP_NUMBER;
+        for (const q of questions) {
+            if (q.routing && userData[q.id] && q.routing[userData[q.id]]) {
+                destNumber = q.routing[userData[q.id]];
+                break;
+            }
+        }
+        const targetUrl = REDIRECT_LINK || `https://wa.me/${destNumber}?text=${encodeURIComponent(buildMessage())}`;
         const btnFinalHtml = REDIRECT_LINK ? '↗ Continuar' : '📱 Abrir WhatsApp';
 
         setTimeout(() => {
