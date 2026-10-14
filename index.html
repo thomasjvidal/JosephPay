@@ -3162,7 +3162,10 @@ function PerguntasMinichatAdmin({c,initialOpen,done}){
     setMsg("");if(!auto)setImportInfo("");setImportando(true);
     const d=await importarMinichatDoSite(c.id,!auto);
     setImportando(false);
-    if(!d?.questions?.length){if(!auto)setMsg(d?.error||"Não consegui importar as perguntas.");return;}
+    if(!d?.questions?.length){
+      if(d?.settings?.business_context&&!nicho.trim())setNicho(d.settings.business_context);
+      if(!auto)setMsg(d?.error||"Não consegui importar as perguntas.");return;
+    }
     setQuestions(d.questions);setSaved(false);
     if(d.settings?.business_context&&!nicho.trim())setNicho(d.settings.business_context);
     const avisoIdioma=d.language==="en"&&idiomaMc!=="en"?' Estão em inglês — confira "Idioma do Mini Chat" no card Mini Chat.':d.language==="es"&&idiomaMc!=="es"?' Estão em espanhol — confira "Idioma do Mini Chat" no card Mini Chat.':"";
