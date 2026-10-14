@@ -6114,7 +6114,7 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
     if (!token) return res.status(400).json({ error: "GitHub ainda não conectado" });
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
     const { data: profiles } = await supabase.from("profiles")
-      .select("id,name,company_name,github_repo,github_minichat_path")
+      .select("id,name,company_name,github_repo,github_minichat_path,minichat_config,github_sensor_installed_at,gtm_sensor_installed_at")
       .not("github_repo", "is", null);
 
     const resultados = [];
@@ -6159,6 +6159,12 @@ app.get("/api/admin/producers/site-audit", requireAuth, requireAdmin, async (req
         const links = await scanRepoJsxLinks(p.github_repo, headers, token);
         const pendentes = pendingChatLinks(links, minichatLink, live.status === "proprio" ? live.servedPaths : []);
         if (pendentes.length) issues.push({ tipo: "botoes_whatsapp_pendentes", detalhe: `${pendentes.length} botão(ões)/link(s) ainda não apontam pro Mini Chat (WhatsApp direto ou outro chat/atendimento).`, count: pendentes.length });
+        // Google Ads configurado mas sensor não instalado no site → a tag nunca vai disparar
+        const gadsId = p.minichat_config?.google_ads_conversion_id;
+        if (gadsId && AW_ID_RE.test(gadsId)) {
+          const sensorOk = !!(p.github_sensor_installed_at || p.gtm_sensor_installed_at);
+          if (!sensorOk) issues.push({ tipo: "google_ads_sem_sensor", detalhe: `Google Ads configurado (${gadsId}) mas o sensor não está instalado no site — a tag do Google nunca vai disparar. Instale o sensor na aba de Ativação.` });
+        }
       } catch (e) {
         issues.push({ tipo: "erro_ao_verificar", detalhe: e.response?.data?.message || e.message });
       }
@@ -7717,16 +7723,20 @@ app.get("/sensor.js", async (req, res) => {
       const path = profile?.github_minichat_path ? JSON.stringify(profile.github_minichat_path) : "null";
       convSnippet = `
 var CONV_ID=${JSON.stringify(cid)},CONV_LABEL=${JSON.stringify(clabel)},CONV_PATH=${path},convSent=false;
+// Inicializa gtag no carregamento da página — o Google precisa encontrar a tag ao
+// escanear o site; carregar só no clique fazia o diagnóstico mostrar "tag não encontrada".
+try{
+  window.dataLayer=window.dataLayer||[];
+  if(typeof window.gtag!=="function")window.gtag=function(){window.dataLayer.push(arguments);};
+  window.gtag('js',new Date());
+  window.gtag('config',CONV_ID);
+  var _jpsc=document.createElement('script');_jpsc.async=true;
+  _jpsc.src='https://www.googletagmanager.com/gtag/js?id='+CONV_ID;
+  (document.head||document.body||document.documentElement).appendChild(_jpsc);
+}catch(e){}
 function jpFireConv(){
   if(convSent)return;convSent=true;
-  try{
-    if(typeof window.gtag==="function"){window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});return;}
-    window.dataLayer=window.dataLayer||[];
-    window.gtag=function(){window.dataLayer.push(arguments);};
-    window.gtag('js',new Date());window.gtag('config',CONV_ID);
-    var sc=document.createElement('script');sc.async=true;sc.src='https://www.googletagmanager.com/gtag/js?id='+CONV_ID;document.head.appendChild(sc);
-    window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});
-  }catch(e){}
+  try{window.gtag('event','conversion',{send_to:CONV_ID+"/"+CONV_LABEL,transport_type:'beacon'});}catch(e){}
 }`;
     }
   } catch (e) { /* sensor nunca quebra por causa da conversão */ }
