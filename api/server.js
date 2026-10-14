@@ -2831,7 +2831,24 @@ async function importMinichatFromRepo(repo) {
   if (!token) return { error: "GitHub ainda não conectado" };
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
   const fontes = await findMinichatSources(repo, headers, token);
-  if (!fontes.length) { const data = { found: false, questions: [], settings: {} }; minichatImportCache.set(repo, { ts: Date.now(), data }); return data; }
+  if (!fontes.length) {
+    // Sem mini chat no repo — tenta extrair contexto de negócio do index.html raiz
+    // pra preencher "Nicho / setor" e facilitar a geração de perguntas com IA.
+    const settings = {};
+    try {
+      const rootHtml = await readGithubFile(repo, "index.html", headers, token).catch(() => "");
+      if (rootHtml) {
+        const title = (rootHtml.match(/<title[^>]*>([^<]{2,120})<\/title>/i)||[])[1];
+        const desc = (rootHtml.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{10,200})["']/i)||[])[1]
+          || (rootHtml.match(/<meta[^>]+content=["']([^"']{10,200})["'][^>]+name=["']description["']/i)||[])[1];
+        const parts = [title, desc].filter(Boolean);
+        if (parts.length) settings.business_context = parts.slice(0, 2).join(" — ").replace(/\s+/g, " ").trim().slice(0, 250);
+      }
+    } catch {}
+    const data = { found: false, questions: [], settings };
+    minichatImportCache.set(repo, { ts: Date.now(), data });
+    return data;
+  }
 
   const settings = extractMinichatSettings(fontes[0].conteudo);
   // Só o trecho em volta das perguntas vai pra IA — o arquivo inteiro (CSS, HTML) é grande demais.
@@ -2880,7 +2897,7 @@ app.post("/api/admin/producers/:id/minichat/import-questions-from-repo", require
     if (req.body?.fresh) minichatImportCache.delete(profile.github_repo);
     const d = await importMinichatFromRepo(profile.github_repo);
     if (d.error) return res.status(400).json({ error: d.error });
-    if (!d.found) return res.json({ found: false, questions: [], settings: {}, error: "Não achei nenhum mini chat/quiz com perguntas no repositório desse cliente." });
+    if (!d.found) return res.json({ found: false, questions: [], settings: d.settings||{}, error: "Não achei nenhum mini chat/quiz com perguntas no repositório desse cliente." });
     res.json({ ...d, language: d.settings.language || "pt", ...(d.questions.length ? {} : { error: "Achei o mini chat, mas a IA não conseguiu ler as perguntas agora — tenta de novo." }) });
   } catch (err) {
     console.error("[admin/producers minichat import-questions]", err.message);
