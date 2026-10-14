@@ -6089,8 +6089,9 @@ app.get("/api/admin/producers/:id/activation-test", requireAuth, requireAdmin, a
 // dos outros clientes têm o mesmo problema sem abrir um por um.
 // Framework que NÃO sabemos montar (TanStack Start do Lovable, Astro...) mas com o
 // vercel.json genérico de Vite que a JosephPay escrevia antes da detecção certa (caso
-// da CAA Renovations, 25/08) — provável deploy quebrado/desatualizado. Só AVISA:
-// corrigir exige olhar o projeto, nunca é automático (regra 6 do CLAUDE.md).
+// da CAA Renovations, 25/08). Sites TanStack Start publicam pelo formato "Build Output"
+// da Vercel, que ignora o vercel.json inteiramente — então config "errada" ali é
+// inofensiva quando o deploy está verde. Só avisa se o deploy REALMENTE falhou/parou.
 async function genericViteConfigOnUnknownFramework(repo, headers, detected) {
   if (!detected.unknownFramework) return null;
   try {
@@ -6098,7 +6099,10 @@ async function genericViteConfigOnUnknownFramework(repo, headers, detected) {
     let cfgAtual = {};
     try { cfgAtual = JSON.parse(Buffer.from(existing.data.content, "base64").toString("utf8") || "{}"); } catch { return null; }
     if (cfgAtual.framework === "vite" && cfgAtual.outputDirectory === "dist") {
-      return { tipo: "vercel_json_generico_em_framework_desconhecido", detalhe: "vercel.json está com a configuração genérica de Vite (framework \"vite\" + pasta \"dist\"), mas o site é de outro tipo (ex: TanStack Start/Lovable). O deploy na Vercel pode estar quebrado ou parado numa versão antiga — revisar o vercel.json à mão." };
+      // Deploy verde = vercel.json ignorado pelo Build Output; aviso seria falso positivo.
+      const deployStatus = await getRepoDeployStatus(repo, headers).catch(() => null);
+      if (deployStatus?.state === "ok") return null;
+      return { tipo: "vercel_json_generico_em_framework_desconhecido", detalhe: "vercel.json está com a configuração genérica de Vite (framework \"vite\" + pasta \"dist\"), mas o site é de outro tipo (ex: TanStack Start/Lovable). O deploy na Vercel parece com problema — revisar o vercel.json à mão." };
     }
   } catch (e) { if (e.response?.status !== 404) throw e; }
   return null;
