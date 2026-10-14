@@ -1833,7 +1833,7 @@ app.post("/api/admin/producers", requireAuth, requireAdmin, async (req, res) => 
       });
     }
 
-    const sensorSnippet = `<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${newId}"><\/script>`;
+    const sensorSnippet = `<script src="https://josephpay-production.up.railway.app/sensor.js?uid=${newId}" async><\/script>`;
     res.json({ id: newId, email: email.trim(), password: finalPassword, sensorSnippet });
   } catch (err) {
     console.error("[admin/producers create]", err.message);
@@ -6456,7 +6456,9 @@ app.post("/api/admin/producers/:id/github/install-sensor", requireAuth, requireA
 
     const sha = fileResp.data.sha;
     const currentContent = Buffer.from(fileResp.data.content, "base64").toString("utf8");
-    const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}"><\/script>`;
+    // async: o navegador nunca espera o servidor do JosephPay pra mostrar o site do cliente
+    // (sem isso, o sensor no <head> deixava a página em branco até responder — BotoxFlix, 14/10).
+    const sensorSnippet = `<script src="${PUBLIC_URL}/sensor.js?uid=${id}" async><\/script>`;
 
     if (currentContent.includes(`sensor.js?uid=${id}`)) {
       await supabase.from("profiles").update({ github_sensor_installed_at: new Date().toISOString() }).eq("id", id);
