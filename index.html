@@ -1499,7 +1499,7 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
   const [msg,setMsg]=useState("");
   const [st,setSt]=useState(null);
   const [checando,setChecando]=useState(false);
-  const [detalhes,setDetalhes]=useState(false);
+  const [editMode,setEditMode]=useState(!c.minichat_config?.google_ads_conversion_id);
   const salvo=useRef(!!(c.minichat_config?.google_ads_conversion_id));
   const mounted=useRef(false);
   useEffect(()=>{
@@ -1507,56 +1507,97 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
     salvo.current=false;
   },[convId,convLabel]);
   const verificar=async()=>{
-    setChecando(true);
+    setChecando(true);setSt(null);
     const d=await apiCall(`/api/admin/producers/${c.id}/google-ads-conversion/status`);
     setChecando(false);
     if(!d?.error)setSt(d);
   };
-  useEffect(()=>{if(open&&!st)verificar();},[open]);
+  useEffect(()=>{if(open&&!st&&!checando)verificar();},[open]);
   const salvarEVerificar=async()=>{
     setSaving(true);setMsg("");
     const d=await apiCall(`/api/admin/producers/${c.id}/google-ads-conversion`,{method:'PATCH',body:JSON.stringify({conversion_id:convId.trim(),conversion_label:convLabel.trim()})});
     setSaving(false);
     if(d?.error){setMsg(d.error);return;}
     salvo.current=true;
-    setMsg(convId.trim()?"✓ Salvo.":"✓ Removido.");
     onUpdated&&onUpdated();
+    setEditMode(false);
     verificar();
   };
-  const ok=!!(st?.allOk);
+  const allOk=!!(st?.allOk);
+  const checks=st?.checks||[];
+  const configured=!!(c.minichat_config?.google_ads_conversion_id&&c.minichat_config?.google_ads_conversion_label);
+  const CHKBG=(ok,warn)=>ok?`${GREEN}12`:warn?`${CARD2}`:RED+"10";
+  const CHKBD=(ok,warn)=>ok?`${GREEN}25`:warn?BDR:`${RED}25`;
+  const CHKCO=(ok,warn)=>ok?GREEN:warn?MUTED:"#F5A524";
   return(
     <div style={glassCard(done)}>
       <CardHeader title="Conversão do Google Ads" open={open} onToggle={()=>setOpen(o=>!o)} done={done}/>
-      {open&&(<div style={{marginTop:8}}>
-        <div style={{color:MUTED,fontSize:11,marginBottom:12,lineHeight:1.4}}>Quando alguém clica no botão do Mini Chat no site desse cliente, avisa o Google Ads — assim a campanha conta a conversão de verdade, sem precisar lançar na mão.</div>
-        <input value={convId} onChange={e=>setConvId(e.target.value)} placeholder="ID da conversão (AW-123456789)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8,boxSizing:"border-box"}}/>
-        <input value={convLabel} onChange={e=>setConvLabel(e.target.value)} placeholder="Rótulo" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:12,boxSizing:"border-box"}}/>
-        <button onClick={salvarEVerificar} disabled={saving} style={{width:"100%",background:salvo.current?`${GREEN}18`:GOLD,border:salvo.current?`1px solid ${GREEN}40`:"none",borderRadius:100,padding:11,color:salvo.current?GREEN:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":salvo.current?"✓ Salvo":"Salvar"}</button>
-        {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:10,textAlign:"center"}}>{msg}</div>}
-        <div style={{display:"flex",justifyContent:"center",gap:18,marginTop:12}}>
-          <button onClick={verificar} disabled={checando} style={{background:"none",border:"none",color:GOLD,fontSize:14,fontWeight:500,cursor:checando?"default":"pointer",fontFamily:F,padding:"6px 2px"}}>{checando?"Verificando…":"Verificar"}</button>
-          <button onClick={()=>setDetalhes(d=>!d)} style={{background:"none",border:"none",color:MUTED,fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:F,padding:"6px 2px"}}>Detalhes {detalhes?"⌃":"⌄"}</button>
-        </div>
-        {st&&(
-          <div style={{...glassInset,marginTop:12,color:ok?GREEN:TEXT,fontSize:12,fontWeight:600,textAlign:"center"}}>{ok?"✓ Tudo funcionando de verdade":`${st.okCount} de ${st.total} funcionando`}</div>
-        )}
-        {detalhes&&st?.checks&&(
-          <div style={{...glassInset,marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
-            {st.checks.map(ch=>(
-              <div key={ch.id} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <span style={{width:18,flexShrink:0,textAlign:"center",color:ch.ok?GREEN:ch.warn?MUTED:"#F5A524",fontWeight:700}}>{ch.ok?"✓":ch.warn?"…":"!"}</span>
-                <div style={{minWidth:0}}>
-                  <div style={{color:TEXT,fontSize:12,fontWeight:600}}>{ch.label}</div>
-                  <div style={{color:MUTED,fontSize:12,lineHeight:1.45}}>{ch.detail}</div>
+      {open&&(
+        <div style={{marginTop:12}}>
+
+          {/* Status checks */}
+          {checando&&!st&&(
+            <div style={{...glassInset,padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{color:MUTED,fontSize:13}}>Verificando tag…</span>
+            </div>
+          )}
+          {st&&checks.length>0&&(
+            <div style={{...glassInset,padding:"4px 6px",marginBottom:12,display:"flex",flexDirection:"column",gap:2}}>
+              {checks.map((ch,i)=>(
+                <div key={ch.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"10px 10px",borderRadius:9,background:CHKBG(ch.ok,ch.warn),border:`1px solid ${CHKBD(ch.ok,ch.warn)}`,...(i>0?{marginTop:4}:{})}}>
+                  <span style={{fontSize:14,color:CHKCO(ch.ok,ch.warn),fontWeight:700,lineHeight:"18px",flexShrink:0,width:18,textAlign:"center"}}>{ch.ok?"✓":ch.warn?"…":"!"}</span>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{color:TEXT,fontSize:13,fontWeight:600,lineHeight:"18px"}}>{ch.label}</div>
+                    {(!ch.ok||ch.warn)&&<div style={{color:MUTED,fontSize:11,lineHeight:1.45,marginTop:2}}>{ch.detail}</div>}
+                  </div>
                 </div>
+              ))}
+              {allOk&&(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 0 4px",color:GREEN,fontSize:12,fontWeight:600}}>
+                  <span>Tag funcionando de verdade</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Campos configurados (modo visualização) */}
+          {configured&&!editMode&&(
+            <div style={{...glassInset,padding:"12px 14px",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <span style={{color:MUTED,fontSize:11,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase"}}>ID de Conversão</span>
+                <button onClick={()=>{setEditMode(true);setMsg("");}} style={{background:"none",border:"none",color:GOLD,fontSize:12,cursor:"pointer",fontFamily:F,padding:0}}>Editar</button>
               </div>
-            ))}
+              <div style={{color:TEXT,fontSize:13,fontFamily:"monospace",fontWeight:600,marginBottom:8}}>{c.minichat_config.google_ads_conversion_id}</div>
+              <div style={{color:MUTED,fontSize:11,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>Rótulo</div>
+              <div style={{color:TEXT,fontSize:13,fontFamily:"monospace",fontWeight:600}}>{c.minichat_config.google_ads_conversion_label}</div>
+            </div>
+          )}
+
+          {/* Formulário de edição */}
+          {(!configured||editMode)&&(
+            <div>
+              {!configured&&<div style={{color:MUTED,fontSize:12,marginBottom:10,lineHeight:1.5}}>Quando alguém clica no botão do Mini Chat, o sensor avisa o Google Ads — a campanha conta a conversão de verdade.</div>}
+              <input value={convId} onChange={e=>setConvId(e.target.value)} placeholder="ID da conversão (AW-123456789)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:8,boxSizing:"border-box"}}/>
+              <input value={convLabel} onChange={e=>setConvLabel(e.target.value)} placeholder="Rótulo" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:10,boxSizing:"border-box"}}/>
+              <div style={{display:"flex",gap:8}}>
+                {editMode&&configured&&<button onClick={()=>{setEditMode(false);setConvId(c.minichat_config.google_ads_conversion_id||"");setConvLabel(c.minichat_config.google_ads_conversion_label||"");setMsg("");}} style={{flex:1,background:"none",border:`1px solid ${BDR}`,borderRadius:100,padding:"10px 0",color:MUTED,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:F}}>Cancelar</button>}
+                <button onClick={salvarEVerificar} disabled={saving} style={{flex:2,background:GOLD,border:"none",borderRadius:100,padding:"11px 0",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:saving?"default":"pointer",fontFamily:F}}>{saving?"Salvando…":"Salvar"}</button>
+              </div>
+              {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:10,textAlign:"center"}}>{msg}</div>}
+            </div>
+          )}
+
+          {/* Verificar */}
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+            <button onClick={verificar} disabled={checando} style={{background:"none",border:"none",color:checando?MUTED:GOLD,fontSize:13,fontWeight:500,cursor:checando?"default":"pointer",fontFamily:F,padding:"4px 0"}}>{checando?"Verificando…":"Verificar agora"}</button>
           </div>
-        )}
-        <div style={{...glassInset,marginTop:12,color:MUTED,fontSize:11,lineHeight:1.6}}>
-          <b style={{color:TEXT,fontWeight:600}}>No Google Ads</b>, ao criar essa conversão, escolha a categoria <b style={{color:TEXT,fontWeight:600}}>"Lead"</b> e a contagem <b style={{color:TEXT,fontWeight:600}}>"Uma"</b> — assim vários cliques da mesma pessoa contam como um só. Isso mede o clique no botão, não o envio do formulário. A atribuição à campanha só aparece no painel do Google Ads, em até 24-48h.
+
+          {/* Dica */}
+          <div style={{...glassInset,marginTop:8,color:MUTED,fontSize:11,lineHeight:1.6,padding:"10px 12px"}}>
+            No Google Ads, ao criar essa conversão, escolha <b style={{color:TEXT}}>categoria "Lead"</b> e contagem <b style={{color:TEXT}}>"Uma"</b>. O resultado aparece no painel do Google Ads em até 24–48h.
+          </div>
         </div>
-      </div>)}
+      )}
     </div>
   );
 }
