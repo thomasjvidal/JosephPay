@@ -1499,6 +1499,7 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
   const [msg,setMsg]=useState("");
   const [st,setSt]=useState(null);
   const [checando,setChecando]=useState(false);
+  const [instalando,setInstalando]=useState(false);
   const [editMode,setEditMode]=useState(!c.minichat_config?.google_ads_conversion_id);
   const salvo=useRef(!!(c.minichat_config?.google_ads_conversion_id));
   const mounted=useRef(false);
@@ -1523,9 +1524,18 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
     setEditMode(false);
     verificar();
   };
+  const instalarTag=async()=>{
+    setInstalando(true);setMsg("");
+    const d=await apiCall(`/api/admin/producers/${c.id}/google-ads-conversion/install-tag`,{method:'POST'});
+    setInstalando(false);
+    if(d?.error){setMsg(d.error);return;}
+    setMsg(d.already?"✓ Tag já estava instalada no site.":(`✓ Tag instalada em ${d.file}. Aguarde o site publicar (1–2 min).`));
+    verificar();
+  };
   const allOk=!!(st?.allOk);
   const checks=st?.checks||[];
   const configured=!!(c.minichat_config?.google_ads_conversion_id&&c.minichat_config?.google_ads_conversion_label);
+  const gtagCheck=checks.find(ch=>ch.id==="gtag");
   const CHKBG=(ok,warn)=>ok?`${GREEN}12`:warn?`${CARD2}`:RED+"10";
   const CHKBD=(ok,warn)=>ok?`${GREEN}25`:warn?BDR:`${RED}25`;
   const CHKCO=(ok,warn)=>ok?GREEN:warn?MUTED:"#F5A524";
@@ -1538,7 +1548,7 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
           {/* Status checks */}
           {checando&&!st&&(
             <div style={{...glassInset,padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{color:MUTED,fontSize:13}}>Verificando tag…</span>
+              <span style={{color:MUTED,fontSize:13}}>Verificando…</span>
             </div>
           )}
           {st&&checks.length>0&&(
@@ -1552,9 +1562,15 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
                   </div>
                 </div>
               ))}
+              {/* Botão de instalar a tag aparece só quando o 5º check falhou e tem repositório */}
+              {gtagCheck&&!gtagCheck.ok&&gtagCheck.canInstall&&(
+                <button onClick={instalarTag} disabled={instalando} style={{marginTop:6,background:GOLD,border:"none",borderRadius:100,padding:"11px 0",color:"#0C0C0C",fontWeight:700,fontSize:13,cursor:instalando?"default":"pointer",fontFamily:F,width:"100%"}}>
+                  {instalando?"Instalando tag no site…":"Instalar tag no site"}
+                </button>
+              )}
               {allOk&&(
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 0 4px",color:GREEN,fontSize:12,fontWeight:600}}>
-                  <span>Tag funcionando de verdade</span>
+                  <span>Google Ads configurado e funcionando</span>
                 </div>
               )}
             </div>
@@ -1586,6 +1602,8 @@ function GoogleAdsConversionAdmin({c,onUpdated,initialOpen,done}){
               {msg&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:10,textAlign:"center"}}>{msg}</div>}
             </div>
           )}
+
+          {msg&&!saving&&!instalando&&<div style={{color:msg.startsWith("✓")?GREEN:RED,fontSize:12,marginTop:8,textAlign:"center"}}>{msg}</div>}
 
           {/* Verificar */}
           <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
