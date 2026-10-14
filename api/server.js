@@ -3171,7 +3171,7 @@ app.patch("/api/admin/producers/:id/google-ads-conversion", requireAuth, require
 app.get("/api/admin/producers/:id/google-ads-conversion/status", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_sensor_installed_at,gtm_sensor_installed_at").eq("id", id).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("minichat_config,github_sensor_installed_at,gtm_sensor_installed_at,site_url,github_repo").eq("id", id).maybeSingle();
     if (!profile) return res.status(404).json({ error: "Cliente não encontrado" });
     const cid = profile.minichat_config?.google_ads_conversion_id || null;
     const clabel = profile.minichat_config?.google_ads_conversion_label || null;
@@ -3198,11 +3198,125 @@ app.get("/api/admin/producers/:id/google-ads-conversion/status", requireAuth, re
       } catch (e) { googleDetail = `Não consegui confirmar com o Google: ${e.message}`; }
     } else { googleDetail = "Preencha os campos pra eu conferir com o Google."; }
     checks.push({ id: "google", label: "Google reconhece o ID", ok: googleOk, warn: googleOk === null, detail: googleDetail });
+    // 5º check: tag estática no HTML do site (o que o crawler do Google enxerga)
+    let gtagOk = null, gtagDetail = "—";
+    const hasRepo = !!profile.github_repo;
+    if (camposOk) {
+      const siteUrl = profile.site_url?.replace(/\/$/, "");
+      if (siteUrl) {
+        try {
+          const html = await axios.get(siteUrl, { timeout: 10000, responseType: "text", transformResponse: x => x, headers: { "User-Agent": "JosephPay-checker/1.0" } });
+          gtagOk = String(html.data || "").includes(`gtag/js?id=${cid}`);
+          gtagDetail = gtagOk ? "A tag estática já está no HTML — o Google consegue detectá-la." : (hasRepo ? "Tag não encontrada no HTML. Clique em 'Instalar tag no site' abaixo." : "Tag não encontrada no HTML estático do site.");
+        } catch (e) { gtagDetail = hasRepo ? "Não consegui acessar o site agora. Tente instalar mesmo assim." : `Não consegui acessar o site: ${e.message}`; }
+      } else {
+        gtagDetail = hasRepo ? "URL do site não configurada — instale a tag assim mesmo." : "Configure a URL do site do cliente primeiro.";
+      }
+    } else { gtagDetail = "Preencha os campos pra verificar."; }
+    checks.push({ id: "gtag", label: "Tag estática no HTML do site", ok: gtagOk, warn: gtagOk === null, detail: gtagDetail, canInstall: hasRepo && camposOk && !gtagOk });
     const okCount = checks.filter(c => c.ok).length;
-    res.json({ checks, okCount, total: checks.length, allOk: checks.every(c => c.ok) });
+    res.json({ checks, okCount, total: checks.length, allOk: checks.every(c => c.ok), hasRepo });
   } catch (err) {
     console.error("[google-ads-conversion status]", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Instala o snippet estático do Google Ads (gtag.js) no repositório do cliente.
+// Sem esse snippet, o crawler do Google escaneia o HTML e avisa "seu site não tem
+// uma tag do Google" — porque o sensor.js injeta o script dinamicamente, invisível
+// pra crawlers. Este endpoint adiciona o snippet diretamente antes de </head> (ou
+// no JSX equivalente), da mesma forma que github/install-sensor faz com o sensor.
+app.post("/api/admin/producers/:id/google-ads-conversion/install-tag", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: profile } = await supabase.from("profiles").select("github_repo,github_file_path,minichat_config").eq("id", id).maybeSingle();
+    const cid = profile?.minichat_config?.google_ads_conversion_id;
+    if (!cid || !AW_ID_RE.test(cid)) return res.status(400).json({ error: "Configure o ID do Google Ads antes de instalar a tag." });
+    let repo = profile?.github_repo;
+    if (!repo) return res.status(400).json({ error: "Vincule um repositório GitHub a este cliente primeiro." });
+    const token = await getGithubToken();
+    if (!token) return res.status(400).json({ error: "GitHub ainda não conectado." });
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+
+    let filePath = profile?.minichat_config?.google_ads_gtag_path || profile?.github_file_path;
+    let repoTree = null;
+    const getRepoTree = async () => {
+      if (repoTree) return repoTree;
+      const treeResp = await axios.get(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, { headers });
+      repoTree = (treeResp.data.tree || []).filter(i => i.type === "blob").map(i => i.path);
+      return repoTree;
+    };
+
+    const isBadPath = !filePath || filePath === ".html" || filePath.startsWith(".") || /minichat/i.test(filePath);
+    if (isBadPath) {
+      const allPaths = await getRepoTree();
+      const detected = await detectSiteEntryFile(allPaths);
+      if (!detected) return res.status(400).json({ error: "Não encontrei arquivo de entrada nesse repositório." });
+      filePath = detected.file;
+    }
+
+    let fileResp = null;
+    const pathsToTry = [filePath];
+    if (filePath === "index.html") pathsToTry.push("public/index.html");
+    else if (filePath === "public/index.html") pathsToTry.push("index.html");
+    for (const tryPath of pathsToTry) {
+      try {
+        fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(tryPath)}`, { headers });
+        filePath = tryPath;
+        break;
+      } catch (e) { if (e.response?.status !== 404) throw e; }
+    }
+    if (!fileResp) {
+      const allPaths = await getRepoTree();
+      const TSX_CANDIDATES = [
+        "src/routes/__root.tsx","src/routes/__root.jsx",
+        "app/layout.tsx","app/layout.jsx",
+        "pages/_document.tsx","pages/_document.jsx",
+        "src/App.tsx","src/App.jsx",
+        "src/main.tsx","src/main.jsx",
+      ];
+      const tsxEntry = TSX_CANDIDATES.find(p => allPaths.includes(p));
+      if (tsxEntry) {
+        fileResp = await axios.get(`https://api.github.com/repos/${repo}/contents/${encodeURI(tsxEntry)}`, { headers });
+        filePath = tsxEntry;
+      }
+    }
+    if (!fileResp) return res.status(400).json({ error: "Não encontrei arquivo de entrada no repositório." });
+
+    const sha = fileResp.data.sha;
+    const currentContent = Buffer.from(fileResp.data.content, "base64").toString("utf8");
+
+    if (currentContent.includes(`gtag/js?id=${cid}`)) {
+      const mc = { ...(profile.minichat_config || {}), google_ads_gtag_path: filePath };
+      await supabase.from("profiles").update({ minichat_config: mc }).eq("id", id);
+      return res.json({ ok: true, already: true, file: filePath });
+    }
+
+    const gtagSnippet = `<script async src="https://www.googletagmanager.com/gtag/js?id=${cid}"><\/script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${cid}');<\/script>`;
+    let newContent;
+    if (currentContent.match(/<\/head>/i)) {
+      newContent = currentContent.replace(/<\/head>/i, `  ${gtagSnippet}\n</head>`);
+    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</Head>")) {
+      newContent = currentContent.replace("</Head>", `  ${gtagSnippet}\n</Head>`);
+    } else if (/\.[jt]sx?$/.test(filePath) && currentContent.includes("</head>")) {
+      newContent = currentContent.replace("</head>", `  ${gtagSnippet}\n</head>`);
+    } else {
+      return res.status(400).json({ error: `Arquivo ${filePath} não tem </head>. Adicione o snippet manualmente antes de </head>.` });
+    }
+
+    await axios.put(`https://api.github.com/repos/${repo}/contents/${encodeURI(filePath)}`, {
+      message: `JosephPay: instala tag Google Ads (${cid})`,
+      content: Buffer.from(newContent, "utf8").toString("base64"),
+      sha,
+    }, { headers });
+
+    const mc = { ...(profile.minichat_config || {}), google_ads_gtag_path: filePath };
+    await supabase.from("profiles").update({ minichat_config: mc }).eq("id", id);
+    res.json({ ok: true, file: filePath });
+  } catch (err) {
+    console.error("[google-ads-conversion/install-tag]", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || "Falha ao instalar a tag no GitHub" });
   }
 });
 
