@@ -2983,7 +2983,23 @@ function AtivacaoAdmin({c,initialOpen,done}){
       {destinoTipo!=="email"&&(<>
       <input value={wapNum} onChange={e=>setWapNum(e.target.value)} placeholder="Número de WhatsApp (5524999999999)" style={{width:"100%",background:CARD2,border:`1px solid ${BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
       {c.phone&&wapNum.replace(/\D/g,"")!==c.phone.replace(/\D/g,"")&&<button onClick={()=>setWapNum(c.phone)} style={{background:"none",border:"none",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F,padding:0,marginBottom:8,display:"block"}}>↑ Usar número do cadastro ({c.phone})</button>}
-      {!c.phone&&<div style={{color:MUTED,fontSize:11,marginBottom:8}}>Para onde os leads serão redirecionados no WhatsApp.</div>}
+      {(()=>{
+        const routingMap=new Map();
+        (c.minichat_config?.questions||[]).forEach(q=>{if(q.routing)Object.entries(q.routing).forEach(([opt,num])=>{if(num&&!routingMap.has(opt))routingMap.set(opt,num);});});
+        if(routingMap.size){return(<>
+          <div style={{color:MUTED,fontSize:11,marginBottom:6}}>Opcional — fallback se nenhuma resposta tiver número configurado.</div>
+          <div style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${BDR}`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+            <div style={{color:MUTED,fontSize:10,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>Números por roteamento</div>
+            {[...routingMap.entries()].map(([opt,num],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:i<routingMap.size-1?4:0}}>
+                <span style={{color:MUTED,fontSize:11}}>{opt}</span>
+                <span style={{color:TEXT,fontSize:11,fontFamily:"monospace",letterSpacing:"0.03em"}}>{num}</span>
+              </div>
+            ))}
+          </div>
+        </>);}
+        return <div style={{color:MUTED,fontSize:11,marginBottom:8}}>Para onde os leads serão redirecionados no WhatsApp.</div>;
+      })()}
       </>)}
       {destinoTipo!=="whatsapp"&&(<>
       <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={emailDestino} onChange={e=>setEmailDestino(e.target.value)} placeholder="E-mail de destino dos leads (ex: nome@gmail.com)" style={{width:"100%",background:CARD2,border:`1px solid ${emailDestino.trim()&&!emailValido(emailDestino)?"#F87171":BDR}`,borderRadius:12,padding:"11px 14px",color:TEXT,fontSize:13,outline:"none",fontFamily:F,marginBottom:4}}/>
