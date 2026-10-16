@@ -4968,7 +4968,7 @@ function Sidebar({tab,setTab,nav,userName,initial}){
   );
 }
 
-function BottomNav({tab,setTab,nav}){
+function BottomNav({tab,setTab,nav,onMais}){
   const ICONS={
     dashboard:(
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -5023,6 +5023,19 @@ function BottomNav({tab,setTab,nav}){
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
       </svg>
     ),
+    mais:(
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="5" cy="5" r="1.6" fill="currentColor"/>
+        <circle cx="12" cy="5" r="1.6" fill="currentColor"/>
+        <circle cx="19" cy="5" r="1.6" fill="currentColor"/>
+        <circle cx="5" cy="12" r="1.6" fill="currentColor"/>
+        <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+        <circle cx="19" cy="12" r="1.6" fill="currentColor"/>
+        <circle cx="5" cy="19" r="1.6" fill="currentColor"/>
+        <circle cx="12" cy="19" r="1.6" fill="currentColor"/>
+        <circle cx="19" cy="19" r="1.6" fill="currentColor"/>
+      </svg>
+    ),
   };
   return(
     <div className="jp-bnav" style={{
@@ -5036,9 +5049,9 @@ function BottomNav({tab,setTab,nav}){
       boxShadow:"0 -1px 0 rgba(212,175,55,0.07), 0 -12px 40px rgba(0,0,0,0.6)",
     }}>
       {nav.map(n=>{
-        const a=tab===n.id;
+        const a=tab===n.id&&n.id!=="mais";
         return(
-          <button key={n.id} onClick={()=>setTab(n.id)} style={{
+          <button key={n.id} onClick={()=>n.id==="mais"?(onMais&&onMais()):setTab(n.id)} style={{
             display:"flex",
             flexDirection:"column",
             alignItems:"center",
@@ -6218,6 +6231,130 @@ function ParceirosAdmin(){
   );
 }
 
+function IndicacaoAdmin(){
+  const [data,setData]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [stats,setStats]=useState({indicadores:0,indicacoes:0,conversoes:0,comissao:0});
+  useEffect(()=>{
+    (async()=>{
+      const d=await apiCall("/api/admin/indicacoes/stats");
+      if(d&&!d.error){
+        setStats(d.stats||{indicadores:0,indicacoes:0,conversoes:0,comissao:0});
+        setData(d.lista||[]);
+      }
+      setLoading(false);
+    })();
+  },[]);
+  const fmtCur=v=>`R$ ${((v||0)/100).toFixed(2).replace(".",",")}`;
+  const NIVEIS=[
+    {id:"bronze",label:"Bronze",cor:"#CD7F32",desc:"1–3 conversões",comissao:"5%"},
+    {id:"prata",label:"Prata",cor:"#C0C0C0",desc:"4–10 conversões",comissao:"8%"},
+    {id:"ouro",label:"Ouro",cor:GOLD,desc:"11+ conversões",comissao:"12%"},
+  ];
+  const nivelDe=conv=>conv>=11?NIVEIS[2]:conv>=4?NIVEIS[1]:conv>=1?NIVEIS[0]:null;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {[
+          {label:"Indicadores",val:stats.indicadores,icon:"users",cor:GOLD},
+          {label:"Indicações",val:stats.indicacoes,icon:"star",cor:GREEN},
+          {label:"Conversões",val:stats.conversoes,icon:"check",cor:"#7dd3fc"},
+          {label:"Comissão",val:fmtCur(stats.comissao),icon:"card",cor:"#f9a8d4"},
+        ].map(({label,val,icon,cor})=>(
+          <div key={label} style={{...glassCard(),padding:"14px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+              <div style={{width:24,height:24,borderRadius:7,background:`${cor}22`,display:"flex",alignItems:"center",justifyContent:"center",color:cor,flexShrink:0}}><Ic n={icon} s={12}/></div>
+              <span style={{fontSize:10,color:MUTED,fontWeight:600,textTransform:"uppercase",letterSpacing:.06,fontFamily:F,lineHeight:1.2}}>{label}</span>
+            </div>
+            <div style={{fontSize:20,fontWeight:700,color:TEXT,fontFamily:F}}>{val}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{...glassCard(),padding:"18px"}}>
+        <div style={{fontSize:13,fontWeight:700,color:TEXT,marginBottom:12,fontFamily:F}}>Níveis do Programa</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {NIVEIS.map(n=>(
+            <div key={n.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:14,background:"rgba(255,255,255,0.04)",border:`1px solid ${n.cor}30`}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:n.cor,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <span style={{fontSize:13,fontWeight:700,color:TEXT,fontFamily:F}}>{n.label}</span>
+                <span style={{fontSize:11,color:MUTED,fontFamily:F,marginLeft:6}}>{n.desc}</span>
+              </div>
+              <div style={{fontSize:12,color:n.cor,fontWeight:700,fontFamily:F,flexShrink:0}}>{n.comissao}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{...glassCard(),padding:"18px"}}>
+        <div style={{fontSize:13,fontWeight:700,color:TEXT,marginBottom:12,fontFamily:F}}>Produtores Indicadores</div>
+        {loading?
+          <div style={{padding:24,textAlign:"center",color:MUTED,fontSize:13,fontFamily:F}}>Carregando...</div>:
+          data.length===0?
+          <div style={{padding:28,textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🤝</div>
+            <div style={{fontSize:14,color:TEXT,fontWeight:600,fontFamily:F}}>Nenhuma indicação ainda</div>
+            <div style={{fontSize:12,color:MUTED,fontFamily:F,marginTop:4,lineHeight:1.5}}>Quando um produtor indicar alguém pro JosephPay, aparece aqui.</div>
+          </div>:
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {data.map(p=>{
+              const nv=nivelDe(p.conversoes||0);
+              return(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:14,background:"rgba(255,255,255,0.04)",border:`1px solid ${BDR}`}}>
+                  <div style={{width:34,height:34,borderRadius:10,background:nv?`${nv.cor}22`:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:nv?.cor||MUTED,flexShrink:0,fontFamily:F}}>{p.name?.[0]?.toUpperCase()||"?"}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:TEXT,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"—"}</div>
+                    <div style={{fontSize:11,color:MUTED,fontFamily:F}}>{p.indicacoes||0} indicações · {p.conversoes||0} conversões</div>
+                  </div>
+                  {nv&&<div style={{fontSize:10,color:nv.cor,fontWeight:700,padding:"3px 8px",borderRadius:20,background:`${nv.cor}18`,border:`1px solid ${nv.cor}30`,flexShrink:0,fontFamily:F}}>{nv.label}</div>}
+                </div>
+              );
+            })}
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+function MaisModal({sub,setSub,onClose}){
+  const TABS=[
+    {id:"relatorios",label:"Relatórios",icon:"note"},
+    {id:"parceiros",label:"Parceiros",icon:"users"},
+    {id:"indicacao",label:"Indicação",icon:"star"},
+  ];
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"}} onClick={onClose}/>
+      <div style={{position:"relative",...glassSheet,borderRadius:"24px 24px 0 0",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"12px 0 0"}}>
+          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)"}}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px 0"}}>
+          <div style={{fontSize:16,fontWeight:700,color:TEXT,fontFamily:F}}>Mais</div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:MUTED}}>
+            <Ic n="x" s={14}/>
+          </button>
+        </div>
+        <div style={{display:"flex",gap:8,padding:"12px 20px 4px",overflowX:"auto",flexShrink:0}}>
+          {TABS.map(t=>{
+            const a=sub===t.id;
+            return(
+              <button key={t.id} onClick={()=>setSub(t.id)} style={{display:"flex",alignItems:"center",gap:6,background:a?"rgba(212,175,55,0.15)":"rgba(255,255,255,0.05)",border:a?`1px solid rgba(212,175,55,0.35)`:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:a?GOLD:MUTED,fontSize:12,fontWeight:a?700:500,fontFamily:F,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.18s",outline:"none"}}>
+                <Ic n={t.icon} s={13}/>{t.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{overflowY:"auto",flex:1,padding:"16px 20px",paddingBottom:"calc(16px + env(safe-area-inset-bottom, 20px))"}}>
+          {sub==="relatorios"&&<RelatoriosAdmin/>}
+          {sub==="parceiros"&&<ParceirosAdmin/>}
+          {sub==="indicacao"&&<IndicacaoAdmin/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GoogleAdsAdmin(){
   const [clientes,setClientes]=useState(null);
   const [clienteId,setClienteId]=useState(null);
@@ -6278,6 +6415,8 @@ function AdminPanel({onLogout,userEmail}){
   };
   useEffect(()=>{reloadProfile();},[]);
   const [finSubTab,setFinSubTab]=useState(null);
+  const [showMais,setShowMais]=useState(false);
+  const [maisSub,setMaisSub]=useState("relatorios");
   const onNav=(t,sub=null)=>{setFinSubTab(sub);setTab(t);};
   const NAV=[
     {id:"dashboard",icon:<Ic n="home" s={17}/>,label:"Dashboard"},
@@ -6290,9 +6429,10 @@ function AdminPanel({onLogout,userEmail}){
     {id:"integracoes",icon:<Ic n="plug" s={17}/>,label:"Integrações"},
     {id:"config",icon:<Ic n="settings" s={17}/>,label:"Config"},
   ];
-  // Rodapé (celular): "Relatórios" entrou no lugar do Chat IA — o Chat IA continua no menu
+  // Rodapé (celular): Relatórios e Parceiros ficam no modal "Mais" — o Chat IA continua no menu
   // lateral (computador) e no menu do perfil (foto no topo), nunca some.
-  const NAV_RODAPE=NAV.filter(n=>n.id!=="config"&&n.id!=="integracoes"&&n.id!=="chat");
+  const NAV_RODAPE=NAV.filter(n=>["dashboard","clientes","financeiro","googleads"].includes(n.id))
+    .concat([{id:"mais",icon:<Ic n="grid" s={17}/>,label:"Mais"}]);
   const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",relatorios:"Relatórios",parceiros:"Parceiros",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
   const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,relatorios:<RelatoriosAdmin/>,parceiros:<ParceirosAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
@@ -6302,8 +6442,9 @@ function AdminPanel({onLogout,userEmail}){
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial={profile.name?.[0]?.toUpperCase()||"J"} onOpenPerfil={()=>setShowPerfil(true)} avatarUrl={profile.avatar_url}/>
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      {tab !== "chat" && <BottomNav tab={tab} setTab={onNav} nav={NAV_RODAPE}/>}
+      {tab !== "chat" && <BottomNav tab={tab} setTab={onNav} nav={NAV_RODAPE} onMais={()=>setShowMais(true)}/>}
       {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} isAdmin={true} onNavigate={(t)=>{setShowPerfil(false);setTab(t);}}/>}
+      {showMais&&<MaisModal sub={maisSub} setSub={setMaisSub} onClose={()=>setShowMais(false)}/>}
     </>
   );
 }
