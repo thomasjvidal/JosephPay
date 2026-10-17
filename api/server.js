@@ -8596,6 +8596,241 @@ app.get("/api/admin/training/:userId", requireAuth, requireAdmin, async (req, re
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PROSPECÇÃO — Kanban do VJoseph dentro do Admin (modal "Mais": Prospecção,
+// Mensagens e Métricas). Leads aqui são a prospecção do próprio Thomas (quem ele
+// quer trazer pro JosephPay) — NÃO são os contatos dos produtores (customers).
+// Tabelas da migration_v47; sem elas cada rota responde { error: "migration_missing" }
+// e a tela mostra qual SQL rodar. O envio das mensagens é manual (abre WhatsApp/
+// Instagram com o texto pronto) — nada aqui dispara mensagem sozinho.
+// ══════════════════════════════════════════════════════════════════════════════
+const PROSP_STAGES = ["coletados","perfil_engajado","dm1_enviada","nao_respondeu","follow_up_1","chat_gerado","site_pronto","dm2_enviada","ainda_nao_respondeu","follow_up_2","proposta_enviada","nao_respondeu_proposta","follow_up_3","nao_respondeu_follow_up_3","remarketing_1","nao_respondeu_rmkt1","promocao_final","reuniao","aguardando_resposta_final","fechado","arquivado"];
+const PROSP_MSG_CATS = ["dm1","fu1","dm2","fu2","proposta_wpp","fu3","rmkt1","rmkt2","promocao_final","reuniao","encerramento"];
+const PROSP_TEXT_FIELDS = ["name","instagram","whatsapp","email","city","specialty","bio","avatar_url","site_link","notes","follow_up_tag","origem"];
+const PROSP_DATE_FIELDS = ["dm1_sent_at","dm2_sent_at","site_generated_at","proposta_sent_at","closed_at","archived_at"];
+
+function prospMissing(error) {
+  const m = `${error?.code || ""} ${error?.message || ""}`;
+  return /42P01|PGRST205|does not exist|Could not find the table/i.test(m);
+}
+function prospFail(res, error, where) {
+  if (prospMissing(error)) return res.status(200).json({ error: "migration_missing", sql: "supabase/migration_v47.sql" });
+  console.error(`[prospeccao] ${where}:`, error?.message || error);
+  return res.status(500).json({ error: error?.message || "Erro" });
+}
+function prospDate(v) {
+  if (v === null || v === "") return null;
+  const t = typeof v === "number" ? v : Date.parse(v);
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+}
+// Só deixa passar campos conhecidos, com tamanho limitado (nada de gravar lixo).
+function prospPickLead(body = {}) {
+  const out = {};
+  for (const k of PROSP_TEXT_FIELDS) if (k in body) out[k] = body[k] == null ? null : String(body[k]).slice(0, k === "bio" || k === "notes" ? 5000 : 500);
+  if ("name" in out && out.name === null) out.name = "";
+  for (const k of PROSP_DATE_FIELDS) if (k in body) { const d = prospDate(body[k]); if (d !== undefined) out[k] = d; }
+  if ("stage" in body && PROSP_STAGES.includes(body.stage)) out.stage = body.stage;
+  if ("stage_entries" in body && Array.isArray(body.stage_entries)) {
+    out.stage_entries = body.stage_entries
+      .filter(e => e && PROSP_STAGES.includes(e.s) && prospDate(e.at))
+      .slice(-300).map(e => ({ s: e.s, at: prospDate(e.at) }));
+  }
+  if ("history" in body && Array.isArray(body.history)) {
+    out.history = body.history.slice(-500).map(h => ({
+      at: prospDate(h?.at) || new Date().toISOString(),
+      acao: String(h?.acao || "").slice(0, 120),
+      ...(h?.de ? { de: String(h.de).slice(0, 60) } : {}),
+      ...(h?.para ? { para: String(h.para).slice(0, 60) } : {}),
+      ...(h?.texto ? { texto: String(h.texto).slice(0, 5000) } : {}),
+      ...(h?.msg_id ? { msg_id: String(h.msg_id).slice(0, 60) } : {}),
+      ...(h?.canal ? { canal: String(h.canal).slice(0, 20) } : {}),
+      ...(h?.visto ? { visto: true } : {}),
+      ...(h?.respondeu ? { respondeu: true } : {}),
+    }));
+  }
+  if ("linked_profile_id" in body) out.linked_profile_id = body.linked_profile_id || null;
+  return out;
+}
+const prospDigits = v => String(v || "").replace(/\D/g, "");
+const prospHandle = v => String(v || "").trim().toLowerCase().replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/^@/, "").replace(/[/?#].*$/, "");
+
+// Tudo de uma vez: leads, mensagens, config e os produtores (pra "Vincular").
+app.get("/api/admin/prospeccao", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [leadsR, msgsR, cfgR, perfisR] = await Promise.all([
+      supabase.from("prospeccao_leads").select("*").is("deleted_at", null).order("created_at", { ascending: false }).limit(5000),
+      supabase.from("prospeccao_mensagens").select("*").is("deleted_at", null).order("created_at", { ascending: true }),
+      supabase.from("prospeccao_config").select("value").eq("id", "geral").maybeSingle(),
+      supabase.from("profiles").select("id,name,company_name,phone,email,role,created_at").neq("role", "admin").order("created_at", { ascending: false }).limit(2000),
+    ]);
+    if (leadsR.error) return prospFail(res, leadsR.error, "leads");
+    if (msgsR.error) return prospFail(res, msgsR.error, "mensagens");
+    const perfis = perfisR.data || [];
+    // Sugestão de vínculo: o lead já virou conta no JosephPay? (mesmo telefone — últimos
+    // 8 dígitos — ou mesmo e-mail). Só sugere; quem vincula é o Thomas, no clique.
+    const porTel = new Map(), porEmail = new Map();
+    for (const p of perfis) {
+      const t = prospDigits(p.phone); if (t.length >= 8) porTel.set(t.slice(-8), p);
+      if (p.email) porEmail.set(String(p.email).toLowerCase().trim(), p);
+    }
+    const leads = (leadsR.data || []).map(l => {
+      if (l.linked_profile_id) return l;
+      const t = prospDigits(l.whatsapp);
+      const m = (t.length >= 8 && porTel.get(t.slice(-8))) || (l.email && porEmail.get(String(l.email).toLowerCase().trim())) || null;
+      return m ? { ...l, sugestao_vinculo: { id: m.id, name: m.company_name || m.name || m.email } } : l;
+    });
+    res.json({
+      leads,
+      mensagens: msgsR.data || [],
+      config: cfgR.data?.value || {},
+      perfis: perfis.map(p => ({ id: p.id, name: p.company_name || p.name || p.email || "—", role: p.role })),
+    });
+  } catch (e) { prospFail(res, e, "get"); }
+});
+
+// Cria 1 lead ou vários ({ leads: [...] }, importação). Duplicado (mesmo Instagram ou
+// mesmo WhatsApp de um lead que já existe) é pulado e contado.
+app.post("/api/admin/prospeccao/leads", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const lista = Array.isArray(req.body?.leads) ? req.body.leads.slice(0, 2000) : [req.body || {}];
+    const { data: atuais, error: eA } = await supabase.from("prospeccao_leads").select("instagram,whatsapp,vjoseph_id").is("deleted_at", null).limit(10000);
+    if (eA) return prospFail(res, eA, "dup");
+    const igs = new Set((atuais || []).map(l => prospHandle(l.instagram)).filter(Boolean));
+    const tels = new Set((atuais || []).map(l => prospDigits(l.whatsapp).slice(-8)).filter(t => t.length === 8));
+    const vjs = new Set((atuais || []).map(l => l.vjoseph_id).filter(Boolean));
+    const novos = []; let duplicados = 0;
+    const agora = new Date().toISOString();
+    for (const b of lista) {
+      const row = prospPickLead(b);
+      if (!String(row.name || "").trim() && !row.instagram && !row.whatsapp) continue;
+      const ig = prospHandle(row.instagram), tel = prospDigits(row.whatsapp).slice(-8);
+      const vj = b.vjoseph_id ? String(b.vjoseph_id).slice(0, 80) : null;
+      if ((ig && igs.has(ig)) || (tel.length === 8 && tels.has(tel)) || (vj && vjs.has(vj))) { duplicados++; continue; }
+      if (ig) igs.add(ig); if (tel.length === 8) tels.add(tel); if (vj) vjs.add(vj);
+      row.stage = row.stage || "coletados";
+      const criado = prospDate(b.created_at) || agora;
+      if (!row.stage_entries?.length) row.stage_entries = [{ s: row.stage, at: criado }];
+      if (!row.history) row.history = [{ at: criado, acao: vj ? "Importado do VJoseph" : "Lead criado" }];
+      novos.push({ ...row, vjoseph_id: vj, created_at: criado, updated_at: agora });
+    }
+    let criados = [];
+    for (let i = 0; i < novos.length; i += 200) {
+      const { data, error } = await supabase.from("prospeccao_leads").insert(novos.slice(i, i + 200)).select("*");
+      if (error) return prospFail(res, error, "insert");
+      criados = criados.concat(data || []);
+    }
+    res.json({ ok: true, criados, duplicados });
+  } catch (e) { prospFail(res, e, "post"); }
+});
+
+app.patch("/api/admin/prospeccao/leads/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const row = prospPickLead(req.body || {});
+    if (!Object.keys(row).length) return res.status(400).json({ error: "Nada pra salvar" });
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from("prospeccao_leads").update(row).eq("id", req.params.id).select("*").maybeSingle();
+    if (error) return prospFail(res, error, "patch");
+    res.json({ ok: true, lead: data });
+  } catch (e) { prospFail(res, e, "patch"); }
+});
+
+// Nunca apaga de verdade (regra do Admin: não perder dado) — só esconde.
+app.delete("/api/admin/prospeccao/leads/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { error } = await supabase.from("prospeccao_leads").update({ deleted_at: new Date().toISOString() }).eq("id", req.params.id);
+  if (error) return prospFail(res, error, "delete");
+  res.json({ ok: true });
+});
+
+function prospPickMsg(b = {}) {
+  const out = {};
+  if ("categoria" in b && PROSP_MSG_CATS.includes(b.categoria)) out.categoria = b.categoria;
+  if ("nome" in b) out.nome = String(b.nome || "").slice(0, 120);
+  if ("texto" in b) out.texto = String(b.texto || "").slice(0, 8000);
+  return out;
+}
+app.post("/api/admin/prospeccao/mensagens", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const lista = Array.isArray(req.body?.mensagens) ? req.body.mensagens.slice(0, 500) : [req.body || {}];
+    const rows = lista.map(b => ({ categoria: "dm1", ...prospPickMsg(b), vjoseph_id: b.vjoseph_id ? String(b.vjoseph_id).slice(0, 80) : null }))
+      .filter(r => r.texto && r.texto.trim());
+    if (!rows.length) return res.status(400).json({ error: "Escreva a mensagem" });
+    // Importação: pula as que já vieram antes (mesmo id do VJoseph)
+    const vj = rows.map(r => r.vjoseph_id).filter(Boolean);
+    let existentes = new Set();
+    if (vj.length) {
+      const { data, error } = await supabase.from("prospeccao_mensagens").select("vjoseph_id").in("vjoseph_id", vj);
+      if (error) return prospFail(res, error, "msg-dup");
+      existentes = new Set((data || []).map(x => x.vjoseph_id));
+    }
+    const novas = rows.filter(r => !r.vjoseph_id || !existentes.has(r.vjoseph_id));
+    if (!novas.length) return res.json({ ok: true, criadas: [], duplicadas: rows.length });
+    const { data, error } = await supabase.from("prospeccao_mensagens").insert(novas).select("*");
+    if (error) return prospFail(res, error, "msg-insert");
+    res.json({ ok: true, criadas: data || [], duplicadas: rows.length - novas.length });
+  } catch (e) { prospFail(res, e, "msg-post"); }
+});
+app.patch("/api/admin/prospeccao/mensagens/:id", requireAuth, requireAdmin, async (req, res) => {
+  const row = prospPickMsg(req.body || {});
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from("prospeccao_mensagens").update(row).eq("id", req.params.id).select("*").maybeSingle();
+  if (error) return prospFail(res, error, "msg-patch");
+  res.json({ ok: true, mensagem: data });
+});
+app.delete("/api/admin/prospeccao/mensagens/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { error } = await supabase.from("prospeccao_mensagens").update({ deleted_at: new Date().toISOString() }).eq("id", req.params.id);
+  if (error) return prospFail(res, error, "msg-delete");
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/prospeccao/config", requireAuth, requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const num = (v, min, max, def) => { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def; };
+  const value = {
+    preco: num(b.preco, 0, 1000000, 297),
+    meta_mes: Math.round(num(b.meta_mes, 1, 10000, 20)),
+    meta_leads_dia: Math.round(num(b.meta_leads_dia, 1, 10000, 30)),
+    meu_nome: String(b.meu_nome || "").slice(0, 80),
+    horas_dia: num(b.horas_dia, 1, 24, 5),
+  };
+  const { error } = await supabase.from("prospeccao_config").upsert({ id: "geral", value, updated_at: new Date().toISOString() });
+  if (error) return prospFail(res, error, "config");
+  res.json({ ok: true, config: value });
+});
+
+// "Colar perfil": lê a bio/perfil colado (Instagram, Google, cartão) e devolve os campos
+// do lead. Junta o "Smart Paste" e o "Analisador de Bio" do VJoseph num só, com a IA do
+// próprio JosephPay (nunca precisa colar em outro chat — regra 5).
+app.post("/api/admin/prospeccao/extrair", requireAuth, requireAdmin, async (req, res) => {
+  const texto = String(req.body?.texto || "").slice(0, 8000).trim();
+  if (!texto) return res.status(400).json({ error: "Cole o perfil primeiro" });
+  const prompt = `Você extrai dados de um perfil profissional colado (bio do Instagram, Google Meu Negócio, site ou cartão).
+Responda SÓ um JSON válido, sem texto antes ou depois, neste formato:
+{"name":"","instagram":"","whatsapp":"","email":"","city":"","specialty":"","bio":"","site_link":""}
+Regras: name = nome da pessoa ou do negócio (sem emojis). instagram = só o @usuario sem o @. whatsapp = só dígitos com DDD.
+city = "Cidade - UF" se der. specialty = especialidade/profissão em poucas palavras. bio = resumo de 1-2 frases do que a pessoa faz.
+Campo que não aparecer no texto fica "". Nunca invente.`;
+  let reply = null;
+  for (const key of GROQ_KEYS) { try { reply = await callGroq(key, prompt, [{ role: "user", content: texto }]); break; } catch {} }
+  if (reply === null && process.env.ANTHROPIC_API_KEY) { try { reply = await callAnthropic(prompt, [{ role: "user", content: texto }]); } catch {} }
+  // Sem IA: tenta o básico na mão (@, telefone, e-mail) pra nunca deixar o Thomas na mão.
+  const basico = () => ({
+    instagram: (texto.match(/@([A-Za-z0-9._]{2,30})/) || [])[1] || "",
+    whatsapp: ((texto.match(/(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-\s]?\d{4}/) || [])[0] || "").replace(/\D/g, ""),
+    email: (texto.match(/[\w.+-]+@[\w-]+\.[\w.]+/) || [])[0] || "",
+  });
+  if (reply === null) return res.json({ ok: true, dados: basico(), sem_ia: true });
+  try {
+    const json = JSON.parse((reply.match(/\{[\s\S]*\}/) || ["{}"])[0]);
+    const dados = {};
+    for (const k of ["name","instagram","whatsapp","email","city","specialty","bio","site_link"]) dados[k] = String(json[k] || "").trim().slice(0, k === "bio" ? 1000 : 300);
+    dados.instagram = prospHandle(dados.instagram);
+    dados.whatsapp = prospDigits(dados.whatsapp);
+    const b = basico();
+    for (const k of Object.keys(b)) if (!dados[k] && b[k]) dados[k] = b[k];
+    res.json({ ok: true, dados });
+  } catch { res.json({ ok: true, dados: basico(), sem_ia: true }); }
+});
+
 app.listen(PORT, () => {
   console.log(`\n🚀 JosephPay API rodando na porta ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health\n`);

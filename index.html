@@ -374,6 +374,8 @@ const IC={
   card:[{r:[2,6,20,14,2]},"M2 10h20","M6 15h4"],
   target:[{c:[12,12,9]},{c:[12,12,4.5]}],
   star:["M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"],
+  grid:[{r:[3,3,7,7,2]},{r:[14,3,7,7,2]},{r:[3,14,7,7,2]},{r:[14,14,7,7,2]}],
+  columns:[{r:[3,3,5,18,1.5]},{r:[10,3,5,12,1.5]},{r:[17,3,4,15,1.5]}],
 };
 function Ic({n,s=16,w=1.7,style}){
   const p=IC[n];if(!p)return null;
@@ -5063,9 +5065,9 @@ function BottomNav({tab,setTab,nav,onMais}){
       boxShadow:"0 -1px 0 rgba(212,175,55,0.07), 0 -12px 40px rgba(0,0,0,0.6)",
     }}>
       {nav.map(n=>{
-        const a=tab===n.id&&n.id!=="mais";
+        const a=tab===n.id;
         return(
-          <button key={n.id} onClick={()=>n.id==="mais"?(onMais&&onMais()):setTab(n.id)} style={{
+          <button key={n.id} onClick={()=>n.id==="mais"?(onMais&&onMais()):setTab(n.id)} aria-label={n.label} style={{
             display:"flex",
             flexDirection:"column",
             alignItems:"center",
@@ -6123,7 +6125,7 @@ function ParceirosAdmin(){
     if(d.password)setResetResult({email:d.email||sel.email,password:d.password});
     else alert(d.error||"Erro ao resetar senha");
   }
-  const thS={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",padding:"10px 14px",borderBottom:`1px solid ${BDR}`,textAlign:"left",background:CARD};
+  const thS={fontSize:11,color:MUTED,fontWeight:700,letterSpacing:.08,textTransform:"uppercase",padding:"10px 14px",borderBottom:`1px solid ${BDR}`,textAlign:"left",background:"rgba(255,255,255,0.03)"};
   const tdS={padding:"10px 14px",fontSize:13,color:TEXT,borderBottom:`1px solid ${BDR}`,verticalAlign:"middle"};
   function CkDots({t}){
     if(!t)return <span style={{color:MUTED,fontSize:11}}>—</span>;
@@ -6133,11 +6135,11 @@ function ParceirosAdmin(){
   }
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,padding:"18px 20px"}}>
+      <div style={{...glassSurface,borderRadius:22,padding:"18px 20px"}}>
         <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:4}}>Treinamento de Parceiros</div>
         <div style={{color:MUTED,fontSize:13}}>{data.length} embaixador{data.length!==1?"es":""} cadastrado{data.length!==1?"s":""}</div>
       </div>
-      <div style={{background:CARD,border:`1px solid ${BDR}`,borderRadius:16,overflow:"hidden"}}>
+      <div style={{...glassSurface,borderRadius:22,overflow:"hidden"}}>
         {loading?<div style={{padding:32,textAlign:"center",color:MUTED}}>Carregando...</div>:
          erro?<div style={{padding:24,textAlign:"center",color:RED,fontSize:13}}>{erro}</div>:
          data.length===0?<div style={{padding:32,textAlign:"center",color:MUTED}}>Nenhum embaixador cadastrado.</div>:(
@@ -6333,39 +6335,996 @@ function IndicacaoAdmin(){
   );
 }
 
-function MaisModal({sub,setSub,onClose}){
-  const TABS=[
-    {id:"relatorios",label:"Relatórios",icon:"note"},
-    {id:"parceiros",label:"Parceiros",icon:"users"},
-    {id:"indicacao",label:"Indicação",icon:"star"},
-  ];
+// ══════════════════════════════════════════════════════════════════════════════
+// PROSPECÇÃO (Kanban do VJoseph) + MENSAGENS + MÉTRICAS — páginas do "Mais" do Admin.
+// Mesmas 21 etapas, mesmos botões de próxima ação e os mesmos KPIs do VJoseph, agora
+// salvos no Supabase (migration_v47) em vez do navegador/arquivos .json. O envio é
+// manual: abre o WhatsApp/Instagram com o texto pronto e o Thomas aperta enviar.
+// ══════════════════════════════════════════════════════════════════════════════
+const PROSP_STAGES=[
+  {id:"coletados",label:"Coletados",color:"#7c3aed"},
+  {id:"perfil_engajado",label:"Perfil Engajado",color:"#64748b"},
+  {id:"dm1_enviada",label:"DM1 Enviada",color:"#3b82f6"},
+  {id:"nao_respondeu",label:"Não Respondeu DM1",color:"#06b6d4"},
+  {id:"follow_up_1",label:"Follow Up 1",color:"#fb923c"},
+  {id:"chat_gerado",label:"Gerar Site",color:"#ec4899"},
+  {id:"site_pronto",label:"Site Pronto",color:"#e879f9"},
+  {id:"dm2_enviada",label:"DM2 Enviada",color:"#db2777"},
+  {id:"ainda_nao_respondeu",label:"Não Respondeu DM2",color:"#0891b2"},
+  {id:"follow_up_2",label:"Follow Up 2",color:"#f97316"},
+  {id:"proposta_enviada",label:"Proposta Enviada",color:"#f59e0b"},
+  {id:"nao_respondeu_proposta",label:"Não Respondeu - Proposta",color:"#b91c1c"},
+  {id:"follow_up_3",label:"Follow Up 3",color:"#c2410c"},
+  {id:"nao_respondeu_follow_up_3",label:"Não Respondeu Follow Up 3",color:"#dc2626"},
+  {id:"remarketing_1",label:"Remarketing 1",color:"#a855f7"},
+  {id:"nao_respondeu_rmkt1",label:"Não Respondeu RMKT 1",color:"#7c3aed"},
+  {id:"promocao_final",label:"Promoção Final",color:"#fbbf24"},
+  {id:"reuniao",label:"Reunião (Opcional)",color:"#38bdf8"},
+  {id:"aguardando_resposta_final",label:"Aguardando Resposta Final",color:"#6366f1"},
+  {id:"fechado",label:"Fechado",color:"#22c55e"},
+  {id:"arquivado",label:"Arquivado / Sem Interesse",color:"#94a3b8"},
+];
+const PROSP_ORDER=PROSP_STAGES.map(s=>s.id);
+const prospStageMeta=id=>PROSP_STAGES.find(s=>s.id===id)||{id,label:id||"—",color:"#94a3b8"};
+const PROSP_MSG_CATS=[
+  {id:"dm1",label:"DM1"},{id:"fu1",label:"FU1"},{id:"dm2",label:"DM2"},{id:"fu2",label:"FU2"},
+  {id:"proposta_wpp",label:"Proposta"},{id:"fu3",label:"FU3"},{id:"rmkt1",label:"Remarketing 1"},
+  {id:"rmkt2",label:"Remarketing 2"},{id:"promocao_final",label:"Promoção final"},{id:"reuniao",label:"Reunião"},
+  {id:"encerramento",label:"Encerramento"},
+];
+const prospCatLabel=id=>(PROSP_MSG_CATS.find(c=>c.id===id)||{label:id}).label;
+// Próxima ação de cada etapa (o "passo a passo" do VJoseph). cat = abre a folha de
+// envio com as mensagens dessa categoria; resp = conta resposta na última mensagem.
+const PROSP_ACOES={
+  coletados:[{label:"Engajar perfil",para:"perfil_engajado",icon:"chart"}],
+  perfil_engajado:[{label:"Enviar DM1",para:"dm1_enviada",cat:"dm1",icon:"message"}],
+  dm1_enviada:[{label:"Respondeu",para:"chat_gerado",resp:true,icon:"checkCircle"},{label:"Não respondeu",para:"nao_respondeu"}],
+  nao_respondeu:[{label:"Follow-up",para:"follow_up_1",cat:"fu1",icon:"message"},{label:"Respondeu",para:"chat_gerado",resp:true}],
+  follow_up_1:[{label:"Respondeu",para:"chat_gerado",resp:true,icon:"checkCircle"},{label:"Arquivar",para:"arquivado"}],
+  chat_gerado:[{label:"Site pronto",para:"site_pronto",icon:"globe"}],
+  site_pronto:[{label:"Enviar DM2",para:"dm2_enviada",cat:"dm2",icon:"message"}],
+  dm2_enviada:[{label:"Respondeu: proposta",para:"proposta_enviada",cat:"proposta_wpp",resp:true,icon:"dollar"},{label:"Não respondeu",para:"ainda_nao_respondeu"}],
+  ainda_nao_respondeu:[{label:"Follow-up",para:"follow_up_2",cat:"fu2",icon:"message"}],
+  follow_up_2:[{label:"Enviar proposta",para:"proposta_enviada",cat:"proposta_wpp",resp:true,icon:"dollar"},{label:"Arquivar",para:"arquivado"}],
+  proposta_enviada:[{label:"Fechou",para:"fechado",resp:true,icon:"checkCircle"},{label:"Não respondeu",para:"nao_respondeu_proposta"}],
+  nao_respondeu_proposta:[{label:"Follow-up",para:"follow_up_3",cat:"fu3",icon:"message"}],
+  follow_up_3:[{label:"Fechou",para:"fechado",resp:true,icon:"checkCircle"},{label:"Não respondeu",para:"nao_respondeu_follow_up_3"}],
+  nao_respondeu_follow_up_3:[{label:"Remarketing",para:"remarketing_1",cat:"rmkt1",icon:"repeat"}],
+  remarketing_1:[{label:"Fechou",para:"fechado",resp:true,icon:"checkCircle"},{label:"Não respondeu",para:"nao_respondeu_rmkt1"}],
+  nao_respondeu_rmkt1:[{label:"Promoção final",para:"promocao_final",cat:"promocao_final",icon:"gift"}],
+  promocao_final:[{label:"Fechou",para:"fechado",resp:true,icon:"checkCircle"},{label:"Marcar reunião",para:"reuniao",cat:"reuniao",resp:true},{label:"Arquivar",para:"arquivado"}],
+  reuniao:[{label:"Aguardar resposta",para:"aguardando_resposta_final",cat:"encerramento",icon:"message"}],
+  aguardando_resposta_final:[{label:"Fechou",para:"fechado",resp:true,icon:"checkCircle"},{label:"Arquivar",para:"arquivado"}],
+  fechado:[{label:"Vincular produtor",vincular:true,icon:"link"}],
+  arquivado:[{label:"Reativar",para:"coletados",icon:"refresh"}],
+};
+// Etapas em que a gente está ESPERANDO o lead — depois de 48h vira follow-up atrasado.
+const PROSP_ESPERA=new Set(["dm1_enviada","nao_respondeu","follow_up_1","dm2_enviada","ainda_nao_respondeu","follow_up_2","proposta_enviada","nao_respondeu_proposta","follow_up_3","nao_respondeu_follow_up_3","remarketing_1","nao_respondeu_rmkt1","promocao_final","aguardando_resposta_final"]);
+const PROSP_48H=48*3600*1000;
+
+const prospTs=v=>{if(!v)return 0;if(typeof v==="number")return v;const t=Date.parse(v);return Number.isFinite(t)?t:0;};
+const prospEnteredAt=l=>{const e=(l.stage_entries||[]).filter(x=>x.s===l.stage);return e.length?prospTs(e[e.length-1].at):prospTs(l.updated_at||l.created_at);};
+const prospDur=ms=>{const m=Math.max(0,Math.floor(ms/60000));if(m<60)return`${m}min`;const h=Math.floor(m/60);if(h<24)return`${h}h`;const d=Math.floor(h/24);return`${d}d${h%24?` ${h%24}h`:""}`;};
+const prospAgeText=(l,now)=>prospDur(now-prospEnteredAt(l));
+const prospAtrasado=(l,now)=>PROSP_ESPERA.has(l.stage)&&now-prospEnteredAt(l)>=PROSP_48H;
+// "D1, D2…" = dias desde a última mensagem enviada (o follow-up do VJoseph).
+const prospDiaSemResposta=(l,now)=>{const h=(l.history||[]).filter(x=>x.acao==="Mensagem enviada");if(!h.length)return null;return Math.floor((now-prospTs(h[h.length-1].at))/86400000);};
+const prospFmtBRL=v=>`R$ ${Number(v||0).toLocaleString("pt-BR",{maximumFractionDigits:0})}`;
+const prospHandle=v=>String(v||"").trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,"").replace(/^@/,"").replace(/[/?#].*$/,"");
+const prospPrimeiroNome=n=>{const s=String(n||"").split(/[|\-–—,(]/)[0].replace(/^\s*(dra?\.?|doutora?|nutri\.?)\s+/i,"").trim();return s.split(/\s+/)[0]||"";};
+const prospFill=(texto,l,cfg)=>String(texto||"")
+  .replace(/\{nome\}/gi,prospPrimeiroNome(l?.name)).replace(/\{\{nome\}\}/gi,prospPrimeiroNome(l?.name))
+  .replace(/\{nome_completo\}/gi,l?.name||"").replace(/\{cidade\}|\{\{cidade\}\}/gi,l?.city||"")
+  .replace(/\{especialidade\}|\{\{especialidade\}\}/gi,l?.specialty||"").replace(/\{instagram\}/gi,prospHandle(l?.instagram)?`@${prospHandle(l?.instagram)}`:"")
+  .replace(/\{link_site\}|\{\{link_site\}\}/gi,l?.site_link||"").replace(/\{meu_nome\}/gi,cfg?.meu_nome||"");
+const prospWaLink=(tel,texto)=>{let d=String(tel||"").replace(/\D/g,"");if(!d)return null;if(d.length<=11)d="55"+d;return`https://wa.me/${d}${texto?`?text=${encodeURIComponent(texto)}`:""}`;};
+const prospCfg=c=>({preco:Number(c?.preco??297),meta_mes:Number(c?.meta_mes??20),meta_leads_dia:Number(c?.meta_leads_dia??30),meu_nome:c?.meu_nome||"",horas_dia:Number(c?.horas_dia??5)});
+
+// ── Dados compartilhados entre Prospecção, Mensagens e Métricas ──────────────────
+const prospStore={data:null,loading:false,error:null,subs:new Set()};
+const prospEmit=()=>prospStore.subs.forEach(f=>f());
+async function prospLoad(){
+  prospStore.loading=true;prospEmit();
+  const d=await apiCall("/api/admin/prospeccao");
+  prospStore.loading=false;
+  if(d?.error){prospStore.error=d.error;}else{prospStore.error=null;prospStore.data={leads:d.leads||[],mensagens:d.mensagens||[],config:d.config||{},perfis:d.perfis||[]};}
+  prospEmit();
+}
+function useProsp(){
+  const [,force]=useState(0);
+  useEffect(()=>{const f=()=>force(x=>x+1);prospStore.subs.add(f);if(!prospStore.data&&!prospStore.loading)prospLoad();return()=>{prospStore.subs.delete(f);};},[]);
+  return prospStore;
+}
+const prospPatchLocal=(id,campos)=>{if(!prospStore.data)return;prospStore.data={...prospStore.data,leads:prospStore.data.leads.map(l=>l.id===id?{...l,...campos}:l)};prospEmit();};
+async function prospSalvarLead(id,campos){
+  prospPatchLocal(id,campos);
+  const d=await apiCall(`/api/admin/prospeccao/leads/${id}`,{method:"PATCH",body:JSON.stringify(campos)});
+  if(d?.error){alert(d.error==="migration_missing"?"Falta rodar o SQL migration_v47 no Supabase.":`Não salvou: ${d.error}`);prospLoad();return false;}
+  if(d?.lead)prospPatchLocal(id,d.lead);
+  return true;
+}
+// Move o lead (igual moveLeadToStageDash2 do VJoseph): registra entrada na etapa,
+// histórico, a mensagem enviada e as datas de cada marco.
+function prospMover(lead,para,{texto="",msg_id=null,canal=null,resp=false}={}){
+  const agora=new Date().toISOString();
+  const history=[...(lead.history||[])];
+  if(resp){for(let i=history.length-1;i>=0;i--){if(history[i].acao==="Mensagem enviada"){if(!history[i].respondeu)history[i]={...history[i],respondeu:true,visto:true};break;}}}
+  const campos={};
+  if(para&&para!==lead.stage){
+    history.push({at:agora,acao:"Moveu",de:lead.stage,para});
+    campos.stage=para;
+    campos.stage_entries=[...(lead.stage_entries||[]),{s:para,at:agora}];
+    if(para==="dm1_enviada"&&!lead.dm1_sent_at)campos.dm1_sent_at=agora;
+    if((para==="chat_gerado"||para==="site_pronto")&&!lead.site_generated_at)campos.site_generated_at=agora;
+    if(para==="dm2_enviada"&&!lead.dm2_sent_at)campos.dm2_sent_at=agora;
+    if(para==="proposta_enviada"&&!lead.proposta_sent_at)campos.proposta_sent_at=agora;
+    if(para==="fechado")campos.closed_at=lead.closed_at||agora;
+    if(lead.stage==="fechado"&&para!=="fechado")campos.closed_at=null;
+    if(para==="arquivado")campos.archived_at=agora;
+    if(lead.stage==="arquivado"&&para!=="arquivado")campos.archived_at=null;
+  }
+  if(texto.trim())history.push({at:agora,acao:"Mensagem enviada",texto:texto.trim(),...(msg_id?{msg_id}:{}),...(canal?{canal}:{})});
+  campos.history=history;
+  return prospSalvarLead(lead.id,campos);
+}
+
+// ── Peças visuais (vidro, estilo iOS) ──────────────────────────────────────────
+function ProspSheet({title,onClose,children,footer}){
   return(
-    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)"}} onClick={onClose}/>
-      <div style={{position:"relative",...glassSheet,borderRadius:"24px 24px 0 0",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{display:"flex",justifyContent:"center",padding:"12px 0 0"}}>
-          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.15)"}}/>
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)"}}/>
+      <div style={{position:"relative",...glassSheet,borderRadius:"28px 28px 0 0",maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"sup .32s cubic-bezier(.2,.9,.3,1)",width:"100%",maxWidth:640,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"center",paddingTop:10}}><div style={{width:38,height:5,borderRadius:3,background:"rgba(255,255,255,0.18)"}}/></div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 20px 6px",gap:10}}>
+          <div style={{color:TEXT,fontSize:17,fontWeight:700,letterSpacing:"-0.02em",fontFamily:F,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
+          <button onClick={onClose} aria-label="Fechar" style={iconBtn()}><Ic n="x" s={14}/></button>
         </div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px 0"}}>
-          <div style={{fontSize:16,fontWeight:700,color:TEXT,fontFamily:F}}>Mais</div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:20,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:MUTED}}>
-            <Ic n="x" s={14}/>
-          </button>
+        <div style={{overflowY:"auto",padding:"8px 20px 16px",flex:1,WebkitOverflowScrolling:"touch"}}>{children}</div>
+        {footer&&<div style={{padding:"10px 20px calc(14px + env(safe-area-inset-bottom,12px))",borderTop:"1px solid rgba(255,255,255,0.06)"}}>{footer}</div>}
+        {!footer&&<div style={{height:"env(safe-area-inset-bottom,12px)"}}/>}
+      </div>
+    </div>
+  );
+}
+const prospInput={width:"100%",background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.10)",borderRadius:14,padding:"12px 14px",color:TEXT,fontSize:15,outline:"none",fontFamily:F,boxSizing:"border-box"};
+const prospLabel={color:MUTED,fontSize:11,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",margin:"12px 0 6px",fontFamily:F};
+const prospChip=(on,cor)=>({display:"inline-flex",alignItems:"center",gap:6,whiteSpace:"nowrap",padding:"8px 14px",borderRadius:100,fontSize:13,fontWeight:on?700:500,fontFamily:F,cursor:"pointer",border:`1px solid ${on?(cor||GOLD)+"66":"rgba(255,255,255,0.10)"}`,background:on?`${cor||GOLD}22`:"rgba(255,255,255,0.05)",color:on?(cor||GOLD):TEXT,backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"});
+const prospSmallBtn=(primary)=>({display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,height:34,padding:"0 14px",borderRadius:100,fontSize:13,fontWeight:600,fontFamily:F,cursor:"pointer",border:primary?"none":"1px solid rgba(255,255,255,0.12)",background:primary?`linear-gradient(180deg,${GOLD2},${GOLD})`:"rgba(255,255,255,0.06)",color:primary?"#0C0C0C":TEXT,whiteSpace:"nowrap"});
+function ProspSegment({value,onChange,items}){
+  return(
+    <div style={{display:"flex",padding:3,borderRadius:100,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)",backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)"}}>
+      {items.map(it=>(
+        <button key={it.id} onClick={()=>onChange(it.id)} style={{flex:1,height:32,borderRadius:100,border:"none",cursor:"pointer",fontFamily:F,fontSize:13,fontWeight:value===it.id?700:500,background:value===it.id?"rgba(255,255,255,0.14)":"transparent",color:value===it.id?TEXT:MUTED,boxShadow:value===it.id?"0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)":"none",transition:"all .2s"}}>
+          {it.label}{it.count!=null&&<span style={{marginLeft:5,color:it.alert&&it.count?"#F87171":MUTED,fontWeight:700}}>{it.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+function ProspAvatar({l,size=36}){
+  const ini=(l?.name||"?").trim().charAt(0).toUpperCase();
+  const c=prospStageMeta(l?.stage).color;
+  return l?.avatar_url
+    ?<img src={l.avatar_url} referrerPolicy="no-referrer" alt="" style={{width:size,height:size,borderRadius:size/2,objectFit:"cover",flexShrink:0,border:"1px solid rgba(255,255,255,0.12)"}}/>
+    :<div style={{width:size,height:size,borderRadius:size/2,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(160deg,${c}55,${c}22)`,border:`1px solid ${c}55`,color:TEXT,fontWeight:700,fontSize:size*0.4,fontFamily:F}}>{ini}</div>;
+}
+function ProspPrecisaSQL(){
+  return(
+    <div style={{...glassCard(),textAlign:"center",padding:"28px 22px"}}>
+      <div style={{width:52,height:52,borderRadius:16,margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"center",background:`${GOLD}1F`,border:`1px solid ${GOLD}40`,color:GOLD}}><Ic n="plug" s={22}/></div>
+      <div style={{color:TEXT,fontSize:17,fontWeight:700,fontFamily:F}}>Falta 1 passo</div>
+      <div style={{color:MUTED,fontSize:13,lineHeight:1.55,marginTop:6,fontFamily:F}}>Rode o arquivo <b style={{color:TEXT}}>supabase/migration_v47.sql</b> no SQL Editor do Supabase. Ele só cria as tabelas novas da Prospecção — não mexe em nada que já existe.</div>
+      <button onClick={prospLoad} style={{...pillBtn(true),marginTop:16}}>Já rodei, tentar de novo</button>
+    </div>
+  );
+}
+
+// ── Folha de envio: escolhe a mensagem da etapa, preenche as variáveis e abre o app ──
+function ProspEnviarSheet({lead,acao,onClose}){
+  const st=useProsp();
+  const cfg=prospCfg(st.data?.config);
+  const stats=prospMsgStats(st.data);
+  const msgs=(st.data?.mensagens||[]).filter(m=>m.categoria===acao.cat).sort((a,b)=>(stats[b.id]?.taxa||0)-(stats[a.id]?.taxa||0));
+  const [sel,setSel]=useState(msgs[0]?.id||null);
+  const [texto,setTexto]=useState(msgs[0]?prospFill(msgs[0].texto,lead,cfg):"");
+  const [canal,setCanal]=useState(lead.whatsapp?"whatsapp":"instagram");
+  const [salvando,setSalvando]=useState(false);
+  const escolher=m=>{setSel(m.id);setTexto(prospFill(m.texto,lead,cfg));};
+  const copiar=async()=>{try{await navigator.clipboard.writeText(texto);}catch(e){}};
+  const abrir=async()=>{
+    if(canal==="whatsapp"){const u=prospWaLink(lead.whatsapp,texto);if(u)window.open(u,"_blank");}
+    else{await copiar();const h=prospHandle(lead.instagram);window.open(h?`https://ig.me/m/${h}`:"https://instagram.com","_blank");}
+  };
+  const marcar=async()=>{setSalvando(true);const ok=await prospMover(lead,acao.para,{texto,msg_id:sel,canal,resp:acao.resp});setSalvando(false);if(ok)onClose(true);};
+  return(
+    <ProspSheet title={`${acao.label} · ${prospPrimeiroNome(lead.name)||"lead"}`} onClose={()=>onClose(false)} footer={
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <button onClick={abrir} disabled={!texto.trim()||(canal==="whatsapp"&&!lead.whatsapp)} style={pillBtn(false,!texto.trim()||(canal==="whatsapp"&&!lead.whatsapp))}>
+          <span style={{display:"inline-flex",alignItems:"center",gap:8,justifyContent:"center"}}><Ic n={canal==="whatsapp"?"phone":"camera"} s={16}/>{canal==="whatsapp"?"Abrir no WhatsApp":"Copiar e abrir o Instagram"}</span>
+        </button>
+        <button onClick={marcar} disabled={salvando} style={pillBtn(true,salvando)}>{salvando?"Salvando…":`Enviei · mover pra ${prospStageMeta(acao.para).label}`}</button>
+      </div>}>
+      <div style={{display:"flex",gap:8,marginBottom:4}}>
+        <button onClick={()=>setCanal("whatsapp")} style={prospChip(canal==="whatsapp","#25D366")}><Ic n="phone" s={13}/>WhatsApp</button>
+        <button onClick={()=>setCanal("instagram")} style={prospChip(canal==="instagram","#E1306C")}><Ic n="camera" s={13}/>Instagram</button>
+      </div>
+      {canal==="whatsapp"&&!lead.whatsapp&&<div style={{color:"#F5A524",fontSize:12,marginTop:6,fontFamily:F}}>Esse lead não tem WhatsApp salvo — use o Instagram ou adicione o número na ficha.</div>}
+      <div style={prospLabel}>Mensagens de {prospCatLabel(acao.cat)}</div>
+      {msgs.length===0
+        ?<div style={{...glassInset,color:MUTED,fontSize:13,lineHeight:1.5,fontFamily:F}}>Nenhuma mensagem de {prospCatLabel(acao.cat)} ainda. Escreva abaixo — ou cadastre as suas em <b style={{color:TEXT}}>Mais → Mensagens</b> pra aparecerem aqui sempre.</div>
+        :<div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
+          {msgs.map((m,i)=>{const s=stats[m.id];return(
+            <button key={m.id} onClick={()=>escolher(m)} style={{...prospChip(sel===m.id),flexShrink:0}}>
+              {i===0&&s?.envios>0&&<Ic n="star" s={12}/>}{m.nome||"Sem nome"}<span style={{color:MUTED,fontWeight:500}}>{s?.envios?`${Math.round(s.taxa*100)}%`:"novo"}</span>
+            </button>);})}
+        </div>}
+      <div style={prospLabel}>Texto (pode editar)</div>
+      <textarea value={texto} onChange={e=>setTexto(e.target.value)} rows={9} style={{...prospInput,resize:"vertical",lineHeight:1.5,fontSize:14}} placeholder="Escreva a mensagem…"/>
+      <button onClick={copiar} disabled={!texto.trim()} style={{...prospSmallBtn(false),marginTop:8}}><Ic n="copy" s={13}/>Copiar</button>
+    </ProspSheet>
+  );
+}
+
+// Folha "Qual mensagem você enviou?" — mesma do VJoseph ao arrastar o cartão.
+function ProspMoverSheet({lead,para,onClose}){
+  const [texto,setTexto]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const ir=async(comTexto)=>{setSalvando(true);const ok=await prospMover(lead,para,{texto:comTexto?texto:""});setSalvando(false);if(ok)onClose(true);};
+  return(
+    <ProspSheet title={`${prospPrimeiroNome(lead.name)||"Lead"} → ${prospStageMeta(para).label}`} onClose={()=>onClose(false)} footer={
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>ir(false)} disabled={salvando} style={{...pillBtn(false,salvando),flex:1}}>Pular</button>
+        <button onClick={()=>ir(true)} disabled={salvando} style={{...pillBtn(true,salvando),flex:1}}>{salvando?"Movendo…":"Mover"}</button>
+      </div>}>
+      <div style={{color:MUTED,fontSize:13,fontFamily:F}}>De "{prospStageMeta(lead.stage).label}" para "{prospStageMeta(para).label}".</div>
+      <div style={prospLabel}>Qual mensagem você enviou? (opcional)</div>
+      <textarea value={texto} onChange={e=>setTexto(e.target.value)} rows={6} style={{...prospInput,resize:"vertical",lineHeight:1.5,fontSize:14}} placeholder="Cole aqui o que você mandou — fica no histórico do lead."/>
+    </ProspSheet>
+  );
+}
+
+// ── Ficha do lead ─────────────────────────────────────────────────────────────
+function ProspFicha({leadId,onClose,onAcao}){
+  const st=useProsp();
+  const lead=(st.data?.leads||[]).find(l=>l.id===leadId);
+  const [aba,setAba]=useState("resumo");
+  const [form,setForm]=useState(null);
+  const [salvando,setSalvando]=useState(false);
+  const [moverAberto,setMoverAberto]=useState(false);
+  const [vinc,setVinc]=useState("");
+  const now=Date.now();
+  useEffect(()=>{if(lead&&!form)setForm({name:lead.name||"",instagram:lead.instagram||"",whatsapp:lead.whatsapp||"",email:lead.email||"",city:lead.city||"",specialty:lead.specialty||"",site_link:lead.site_link||"",avatar_url:lead.avatar_url||"",bio:lead.bio||"",notes:lead.notes||""});},[lead?.id]);
+  if(!lead)return null;
+  const meta=prospStageMeta(lead.stage);
+  const acoes=PROSP_ACOES[lead.stage]||[];
+  const perfis=st.data?.perfis||[];
+  const vinculado=perfis.find(p=>p.id===lead.linked_profile_id);
+  const salvar=async()=>{setSalvando(true);await prospSalvarLead(lead.id,form);setSalvando(false);};
+  // Linha do tempo: quanto tempo ficou em cada etapa (timeline do VJoseph)
+  const entradas=[...(lead.stage_entries||[])].sort((a,b)=>prospTs(a.at)-prospTs(b.at));
+  const tl=entradas.map((e,i)=>({s:e.s,ini:prospTs(e.at),fim:i<entradas.length-1?prospTs(entradas[i+1].at):now,atual:i===entradas.length-1}));
+  const hist=[...(lead.history||[])].map((h,i)=>({...h,_i:i})).reverse();
+  const marcarHist=(i,campo)=>{const history=(lead.history||[]).map((h,j)=>j===i?{...h,[campo]:!h[campo],...(campo==="respondeu"&&!h.respondeu?{visto:true}:{})}:h);prospSalvarLead(lead.id,{history});};
+  const h=prospHandle(lead.instagram);
+  return(
+    <ProspSheet title="Lead" onClose={onClose}>
+      <div style={{display:"flex",alignItems:"center",gap:14}}>
+        <ProspAvatar l={lead} size={56}/>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{color:TEXT,fontSize:19,fontWeight:700,letterSpacing:"-0.02em",fontFamily:F,lineHeight:1.2}}>{lead.name||"Lead sem nome"}</div>
+          <div style={{color:MUTED,fontSize:13,fontFamily:F,marginTop:2}}>{[h&&`@${h}`,lead.city].filter(Boolean).join(" · ")||"—"}</div>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 10px",borderRadius:100,background:`${meta.color}22`,border:`1px solid ${meta.color}55`,color:TEXT,fontSize:12,fontWeight:600,fontFamily:F}}>
+            <span style={{width:7,height:7,borderRadius:4,background:meta.color}}/>{meta.label}<span style={{color:MUTED,fontWeight:500}}>· {prospAgeText(lead,now)}</span>
+          </div>
         </div>
-        <div style={{display:"flex",gap:8,padding:"12px 20px 4px",overflowX:"auto",flexShrink:0}}>
-          {TABS.map(t=>{
-            const a=sub===t.id;
+      </div>
+      {prospAtrasado(lead,now)&&<div style={{...glassInset,marginTop:14,borderColor:"rgba(248,113,113,0.35)",color:"#FCA5A5",fontSize:13,fontFamily:F,display:"flex",gap:8,alignItems:"center"}}><Ic n="alert" s={15}/>Mais de 48h sem resposta — hora do follow-up.</div>}
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+        {acoes.map((a,i)=>a.vincular?null:(
+          <button key={i} onClick={()=>onAcao(lead,a)} style={{...prospSmallBtn(i===0),height:40,padding:"0 16px",fontSize:14}}>{a.icon&&<Ic n={a.icon} s={14}/>}{a.label}</button>
+        ))}
+        <button onClick={()=>setMoverAberto(v=>!v)} style={{...prospSmallBtn(false),height:40,padding:"0 16px",fontSize:14}}><Ic n="repeat" s={14}/>Mover</button>
+      </div>
+      {moverAberto&&(
+        <div style={{...glassInset,marginTop:10,padding:8,display:"flex",flexDirection:"column",gap:2,maxHeight:280,overflowY:"auto"}}>
+          {PROSP_STAGES.map(s=>(
+            <button key={s.id} disabled={s.id===lead.stage} onClick={()=>{setMoverAberto(false);onAcao(lead,{para:s.id,mover:true});}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:12,border:"none",background:s.id===lead.stage?"rgba(255,255,255,0.08)":"transparent",color:s.id===lead.stage?MUTED:TEXT,fontSize:14,fontFamily:F,cursor:"pointer",textAlign:"left"}}>
+              <span style={{width:9,height:9,borderRadius:5,background:s.color,flexShrink:0}}/>{s.label}{s.id===lead.stage&&<span style={{marginLeft:"auto",fontSize:12}}>atual</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,marginTop:12}}>
+        {lead.whatsapp&&<a href={prospWaLink(lead.whatsapp)} target="_blank" rel="noopener noreferrer" style={{...prospSmallBtn(false),textDecoration:"none",flex:1}}><Ic n="phone" s={13}/>WhatsApp</a>}
+        {h&&<a href={`https://instagram.com/${h}`} target="_blank" rel="noopener noreferrer" style={{...prospSmallBtn(false),textDecoration:"none",flex:1}}><Ic n="camera" s={13}/>Instagram</a>}
+        {lead.site_link&&<a href={lead.site_link} target="_blank" rel="noopener noreferrer" style={{...prospSmallBtn(false),textDecoration:"none",flex:1}}><Ic n="globe" s={13}/>Site</a>}
+      </div>
+
+      {/* Vincular ao produtor (lead que virou cliente do JosephPay) */}
+      <div style={{...glassInset,marginTop:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,color:TEXT,fontSize:14,fontWeight:600,fontFamily:F}}><Ic n="link" s={15}/>Produtor no JosephPay</div>
+        {vinculado
+          ?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:8}}>
+            <span style={{color:GREEN,fontSize:13,fontWeight:600,fontFamily:F}}>✓ {vinculado.name}</span>
+            <button onClick={()=>prospSalvarLead(lead.id,{linked_profile_id:null})} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",fontFamily:F}}>Desvincular</button>
+          </div>
+          :<>
+            {lead.sugestao_vinculo&&<button onClick={()=>prospSalvarLead(lead.id,{linked_profile_id:lead.sugestao_vinculo.id})} style={{...prospSmallBtn(true),marginTop:8,width:"100%"}}>Esse lead já tem conta: vincular a {lead.sugestao_vinculo.name}</button>}
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <select value={vinc} onChange={e=>setVinc(e.target.value)} style={{...prospInput,padding:"10px 12px",fontSize:14,flex:1}}>
+                <option value="">Escolher produtor…</option>
+                {perfis.map(p=><option key={p.id} value={p.id}>{p.name}{p.role==="afiliado"?" (embaixador)":""}</option>)}
+              </select>
+              <button disabled={!vinc} onClick={()=>{prospSalvarLead(lead.id,{linked_profile_id:vinc});if(lead.stage!=="fechado")prospMover(lead,"fechado");setVinc("");}} style={prospSmallBtn(!!vinc)}>Vincular</button>
+            </div>
+            <div style={{color:MUTED,fontSize:11,marginTop:6,lineHeight:1.4,fontFamily:F}}>Vincular move o lead pra "Fechado" e liga ele à conta do produtor.</div>
+          </>}
+      </div>
+
+      <div style={{marginTop:16}}><ProspSegment value={aba} onChange={setAba} items={[{id:"resumo",label:"Histórico"},{id:"tempo",label:"Tempo"},{id:"dados",label:"Dados"}]}/></div>
+
+      {aba==="resumo"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
+          {hist.length===0&&<div style={{color:MUTED,fontSize:13,textAlign:"center",padding:16,fontFamily:F}}>Nada ainda.</div>}
+          {hist.map(x=>(
+            <div key={x._i} style={{...glassInset,padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,color:MUTED,fontSize:11,fontFamily:F}}>
+                <span>{x.acao==="Moveu"?`${prospStageMeta(x.de).label} → ${prospStageMeta(x.para).label}`:x.acao}{x.canal?` · ${x.canal==="whatsapp"?"WhatsApp":"Instagram"}`:""}</span>
+                <span>{new Date(prospTs(x.at)).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+              </div>
+              {x.texto&&<div style={{color:TEXT,fontSize:13,lineHeight:1.45,marginTop:6,whiteSpace:"pre-wrap",fontFamily:F,maxHeight:140,overflow:"auto"}}>{x.texto}</div>}
+              {x.acao==="Mensagem enviada"&&(
+                <div style={{display:"flex",gap:6,marginTop:8}}>
+                  <button onClick={()=>marcarHist(x._i,"visto")} style={prospChip(!!x.visto,"#0ea5e9")}><Ic n="eye" s={12}/>Visualizou</button>
+                  <button onClick={()=>marcarHist(x._i,"respondeu")} style={prospChip(!!x.respondeu,GREEN)}><Ic n="message" s={12}/>Respondeu</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {aba==="tempo"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
+          <div style={{color:MUTED,fontSize:12,fontFamily:F}}>Total no funil: <b style={{color:TEXT}}>{prospDur(now-prospTs(lead.created_at))}</b></div>
+          {tl.map((t,i)=>{const m=prospStageMeta(t.s);return(
+            <div key={i} style={{...glassInset,padding:"10px 12px",borderLeft:`3px solid ${m.color}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+              <div style={{minWidth:0}}>
+                <div style={{color:TEXT,fontSize:13,fontWeight:600,fontFamily:F}}>{m.label}{t.atual&&<span style={{color:GOLD,fontSize:11,marginLeft:6}}>agora</span>}</div>
+                <div style={{color:MUTED,fontSize:11,fontFamily:F}}>{new Date(t.ini).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+              </div>
+              <div style={{color:TEXT,fontSize:13,fontWeight:600,fontFamily:F}}>{prospDur(t.fim-t.ini)}</div>
+            </div>);})}
+        </div>
+      )}
+      {aba==="dados"&&form&&(
+        <div style={{marginTop:4}}>
+          {[["name","Nome"],["instagram","Instagram (@)"],["whatsapp","WhatsApp"],["email","E-mail"],["city","Cidade"],["specialty","Especialidade"],["site_link","Link do site / demonstração"],["avatar_url","Foto (link da imagem)"]].map(([k,lb])=>(
+            <div key={k}><div style={prospLabel}>{lb}</div><input value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} style={prospInput}/></div>
+          ))}
+          <div style={prospLabel}>Bio</div><textarea value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} rows={3} style={{...prospInput,resize:"vertical"}}/>
+          <div style={prospLabel}>Notas</div><textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} style={{...prospInput,resize:"vertical"}}/>
+          <button onClick={salvar} disabled={salvando} style={{...pillBtn(true,salvando),marginTop:14}}>{salvando?"Salvando…":"Salvar"}</button>
+          <button onClick={async()=>{if(!window.confirm("Tirar esse lead da Prospecção?"))return;await apiCall(`/api/admin/prospeccao/leads/${lead.id}`,{method:"DELETE"});prospStore.data={...prospStore.data,leads:prospStore.data.leads.filter(l=>l.id!==lead.id)};prospEmit();onClose();}} style={{...pillBtn(false),marginTop:8,color:"#F87171"}}>Excluir lead</button>
+        </div>
+      )}
+    </ProspSheet>
+  );
+}
+
+// ── Novo lead: colar o perfil e a IA preenche (Smart Paste + Analisador de Bio) ──
+function ProspNovoLead({onClose}){
+  const [colar,setColar]=useState("");
+  const [lendo,setLendo]=useState(false);
+  const [aviso,setAviso]=useState("");
+  const [f,setF]=useState({name:"",instagram:"",whatsapp:"",email:"",city:"",specialty:"",site_link:"",bio:""});
+  const [salvando,setSalvando]=useState(false);
+  const ler=async()=>{
+    if(!colar.trim())return;setLendo(true);setAviso("");
+    const d=await apiCall("/api/admin/prospeccao/extrair",{method:"POST",body:JSON.stringify({texto:colar})});
+    setLendo(false);
+    if(d?.error){setAviso(d.error);return;}
+    setF(x=>{const n={...x};Object.entries(d.dados||{}).forEach(([k,v])=>{if(v&&k in n)n[k]=v;});if(!n.bio&&colar.length<1200)n.bio=colar.trim();return n;});
+    setAviso(d.sem_ia?"A IA não respondeu agora — preenchi só o básico (@, telefone, e-mail). Confira os campos.":"✓ Pronto — confira os campos e salve.");
+  };
+  const salvar=async()=>{
+    if(!f.name.trim()&&!f.instagram.trim()){setAviso("Coloque pelo menos o nome ou o Instagram.");return;}
+    setSalvando(true);
+    const d=await apiCall("/api/admin/prospeccao/leads",{method:"POST",body:JSON.stringify({...f,origem:"manual"})});
+    setSalvando(false);
+    if(d?.error){setAviso(d.error==="migration_missing"?"Falta rodar o SQL migration_v47 no Supabase.":d.error);return;}
+    if(d.duplicados&&!d.criados?.length){setAviso("Esse lead já está na Prospecção (mesmo Instagram ou WhatsApp).");return;}
+    prospStore.data={...prospStore.data,leads:[...(d.criados||[]),...(prospStore.data?.leads||[])]};prospEmit();
+    onClose();
+  };
+  return(
+    <ProspSheet title="Novo lead" onClose={onClose} footer={<button onClick={salvar} disabled={salvando} style={pillBtn(true,salvando)}>{salvando?"Salvando…":"Adicionar em Coletados"}</button>}>
+      <div style={{...glassInset}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,color:TEXT,fontSize:14,fontWeight:600,fontFamily:F}}><Ic n="sparkles" s={15}/>Colar perfil</div>
+        <div style={{color:MUTED,fontSize:12,margin:"4px 0 8px",lineHeight:1.4,fontFamily:F}}>Cole a bio do Instagram, o Google Meu Negócio ou o texto do site — a IA preenche os campos.</div>
+        <textarea value={colar} onChange={e=>setColar(e.target.value)} rows={4} style={{...prospInput,resize:"vertical",fontSize:14}} placeholder="Ex: Dra. Ana Souza | Nutricionista 🍎 Emagrecimento · Juiz de Fora - MG · (32) 99999-0000"/>
+        <button onClick={ler} disabled={lendo||!colar.trim()} style={{...pillBtn(false,lendo||!colar.trim()),height:44,marginTop:8,fontSize:14}}>{lendo?"Lendo…":"Preencher com IA"}</button>
+        {aviso&&<div style={{color:aviso.startsWith("✓")?GREEN:"#F5A524",fontSize:12,marginTop:8,lineHeight:1.4,fontFamily:F}}>{aviso}</div>}
+      </div>
+      {[["name","Nome"],["instagram","Instagram (@)"],["whatsapp","WhatsApp"],["city","Cidade"],["specialty","Especialidade"],["email","E-mail"],["site_link","Link do site"]].map(([k,lb])=>(
+        <div key={k}><div style={prospLabel}>{lb}</div><input value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} style={prospInput}/></div>
+      ))}
+      <div style={prospLabel}>Bio</div><textarea value={f.bio} onChange={e=>setF(x=>({...x,bio:e.target.value}))} rows={3} style={{...prospInput,resize:"vertical"}}/>
+    </ProspSheet>
+  );
+}
+
+// ── Trazer do VJoseph: backup .json (leads com etapas + mensagens) ou .csv ───────
+function prospParseCSV(text){
+  const src=String(text||"").replace(/^﻿/,"");const first=(src.split(/\r?\n/)[0]||"");
+  const delim=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?";":",";
+  const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<src.length;i++){const ch=src[i];
+    if(q){if(ch==='"'){if(src[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;continue;}
+    if(ch==='"')q=true;else if(ch===delim){row.push(cur);cur="";}else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&src[i+1]==="\n")i++;row.push(cur);rows.push(row);row=[];cur="";}else cur+=ch;}
+  if(cur||row.length){row.push(cur);rows.push(row);}
+  return rows.filter(r=>r.some(c=>String(c).trim()));
+}
+const PROSP_STATUS_CSV={"coletado":"coletados","contatado":"dm1_enviada","site pronto":"site_pronto","cobrado":"proposta_enviada","fechado":"fechado","arquivado":"arquivado","sem interesse":"arquivado"};
+function prospDoVJoseph(json){
+  const leads=(json.leads||[]).map(l=>{
+    const stage=PROSP_ORDER.includes(l.pipelineStageV2)?l.pipelineStageV2:l.pipelineStageV2==="respondeu"?"chat_gerado":"coletados";
+    const iso=v=>{const t=prospTs(v);return t?new Date(t).toISOString():null;};
+    const entries=(Array.isArray(l.v2StageEntries)?l.v2StageEntries:[]).map(e=>({s:String(e?.stageId||"").toLowerCase(),at:iso(e?.at)})).filter(e=>PROSP_ORDER.includes(e.s)&&e.at);
+    const hist=(Array.isArray(l.history)?l.history:[]).map(h=>({at:iso(h?.date)||new Date().toISOString(),acao:String(h?.action||"").slice(0,110)||"Ação",...(h?.message?{texto:h.message}:{})}));
+    (Array.isArray(l.sentMessages)?l.sentMessages:[]).forEach(m=>hist.push({at:iso(m?.date||m?.sentAt)||new Date().toISOString(),acao:"Mensagem enviada",texto:m?.text||"",...(m?.viewed?{visto:true}:{}),...(m?.replied?{respondeu:true}:{})}));
+    hist.sort((a,b)=>prospTs(a.at)-prospTs(b.at));
+    return {vjoseph_id:String(l.id||""),name:l.name||"",instagram:l.instagram||"",whatsapp:l.whatsapp||"",city:l.city||"",specialty:l.specialty||"",bio:l.bio||"",avatar_url:/^https?:/.test(l.avatar||"")?l.avatar:"",site_link:l.siteLink||"",notes:l.notes||"",follow_up_tag:l.followUpTag||null,stage,stage_entries:entries.length?entries:undefined,history:hist.length?hist:undefined,
+      created_at:iso(l.createdAt),dm1_sent_at:iso(l.dm1SentAt),dm2_sent_at:iso(l.dm2SentAt),site_generated_at:iso(l.siteGeneratedAt),proposta_sent_at:iso(l.propostaSentAt),closed_at:iso(l.closedAt),archived_at:iso(l.archivedAt),origem:"vjoseph"};
+  });
+  const mensagens=[];
+  Object.entries(json.messageLab||{}).forEach(([cat,arr])=>{(Array.isArray(arr)?arr:[]).forEach(m=>{if(m?.text)mensagens.push({vjoseph_id:String(m.id||""),categoria:PROSP_MSG_CATS.some(c=>c.id===cat)?cat:"dm1",nome:m.name||m.leadName||"Do VJoseph",texto:m.text});});});
+  return {leads,mensagens};
+}
+function ProspImportar({onClose}){
+  const [prev,setPrev]=useState(null);
+  const [erro,setErro]=useState("");
+  const [indo,setIndo]=useState(false);
+  const [res,setRes]=useState(null);
+  const ler=file=>{
+    if(!file)return;setErro("");setPrev(null);setRes(null);
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const txt=String(e.target.result||"");
+        if(/\.json$/i.test(file.name)||txt.trim().startsWith("{")){
+          const j=JSON.parse(txt);
+          // Aceita o backup inteiro OU só o arquivo de mensagens (ex: 29-mensagens_lab.json)
+          const base=j.leads||j.messageLab?j:{messageLab:j};
+          setPrev(prospDoVJoseph(base));
+        }else{
+          const rows=prospParseCSV(txt);const head=(rows[0]||[]).map(h=>h.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""));
+          const ix=k=>head.findIndex(h=>h===k||h.includes(k));
+          const leads=rows.slice(1).map(r=>{const g=k=>{const i=ix(k);return i>=0?(r[i]||"").trim():"";};const status=g("status").toLowerCase();
+            return {name:g("nome"),instagram:g("instagram"),specialty:g("especialidade"),city:g("cidade"),whatsapp:(g("whatsapp").split("|")[0]||"").trim(),site_link:g("site"),notes:g("notas"),stage:PROSP_STATUS_CSV[status]||"coletados",origem:"vjoseph-csv"};}).filter(l=>l.name||l.instagram);
+          setPrev({leads,mensagens:[]});
+        }
+      }catch(err){setErro("Não consegui ler esse arquivo. Use o backup .json ou o .csv exportado do VJoseph.");}
+    };
+    r.readAsText(file);
+  };
+  const importar=async()=>{
+    setIndo(true);let criados=0,dupL=0,criadas=0,dupM=0;
+    if(prev.leads.length){const d=await apiCall("/api/admin/prospeccao/leads",{method:"POST",body:JSON.stringify({leads:prev.leads})});if(d?.error){setIndo(false);setErro(d.error==="migration_missing"?"Falta rodar o SQL migration_v47 no Supabase.":d.error);return;}criados=d.criados?.length||0;dupL=d.duplicados||0;}
+    if(prev.mensagens.length){const d=await apiCall("/api/admin/prospeccao/mensagens",{method:"POST",body:JSON.stringify({mensagens:prev.mensagens})});if(!d?.error){criadas=d.criadas?.length||0;dupM=d.duplicadas||0;}}
+    setIndo(false);setRes({criados,dupL,criadas,dupM});prospLoad();
+  };
+  return(
+    <ProspSheet title="Trazer do VJoseph" onClose={onClose} footer={res?<button onClick={onClose} style={pillBtn(true)}>Pronto</button>:prev&&<button onClick={importar} disabled={indo||(!prev.leads.length&&!prev.mensagens.length)} style={pillBtn(true,indo)}>{indo?"Importando…":`Importar ${prev.leads.length} leads e ${prev.mensagens.length} mensagens`}</button>}>
+      <div style={{color:MUTED,fontSize:13,lineHeight:1.55,fontFamily:F}}>No VJoseph, vá em <b style={{color:TEXT}}>Configurações → Backup</b> e baixe o arquivo <b style={{color:TEXT}}>.json</b> (traz os leads com as etapas, o histórico e as mensagens). O <b style={{color:TEXT}}>.csv</b> de leads também serve. Pode importar de novo sem medo: o que já veio é pulado.</div>
+      <label style={{...pillBtn(false),display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:14,cursor:"pointer"}}>
+        <Ic n="download" s={16}/>Escolher arquivo
+        <input type="file" accept=".json,.csv,application/json,text/csv" onChange={e=>ler(e.target.files?.[0])} style={{display:"none"}}/>
+      </label>
+      {erro&&<div style={{color:"#F87171",fontSize:13,marginTop:10,fontFamily:F}}>{erro}</div>}
+      {prev&&!res&&(
+        <div style={{...glassInset,marginTop:14}}>
+          <div style={{color:TEXT,fontSize:15,fontWeight:600,fontFamily:F}}>{prev.leads.length} leads · {prev.mensagens.length} mensagens</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {PROSP_STAGES.map(s=>{const n=prev.leads.filter(l=>l.stage===s.id).length;return n?<span key={s.id} style={{...prospChip(false),padding:"4px 10px",fontSize:12}}><span style={{width:7,height:7,borderRadius:4,background:s.color}}/>{s.label} {n}</span>:null;})}
+          </div>
+        </div>
+      )}
+      {res&&<div style={{...glassInset,marginTop:14,color:TEXT,fontSize:14,lineHeight:1.6,fontFamily:F}}>✓ {res.criados} leads novos{res.dupL?` (${res.dupL} já estavam aqui)`:""}<br/>✓ {res.criadas} mensagens novas{res.dupM?` (${res.dupM} já estavam aqui)`:""}</div>}
+    </ProspSheet>
+  );
+}
+
+// ── Cartão do Kanban ─────────────────────────────────────────────────────────
+function ProspCard({l,now,onOpen,onAcao,onDragStart}){
+  const atrasado=prospAtrasado(l,now);
+  const d=prospDiaSemResposta(l,now);
+  const h=prospHandle(l.instagram);
+  const acao=(PROSP_ACOES[l.stage]||[])[0];
+  return(
+    <div draggable onDragStart={e=>{e.dataTransfer.setData("text/plain",l.id);e.dataTransfer.effectAllowed="move";onDragStart&&onDragStart(l.id);}} onClick={()=>onOpen(l.id)}
+      style={{...glassSurface,borderRadius:18,padding:"12px",cursor:"pointer",border:`1px solid ${atrasado?"rgba(248,113,113,0.45)":"rgba(255,255,255,0.09)"}`,display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <ProspAvatar l={l} size={34}/>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{color:TEXT,fontSize:14,fontWeight:600,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name||"Lead sem nome"}</div>
+          <div style={{color:MUTED,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[h&&`@${h}`,l.city].filter(Boolean).join(" · ")||"—"}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+        <span style={{fontSize:11,color:atrasado?"#FCA5A5":MUTED,fontFamily:F,display:"inline-flex",alignItems:"center",gap:4}}><Ic n={atrasado?"alert":"refresh"} s={11}/>{prospAgeText(l,now)}{atrasado?" · atrasado":""}</span>
+        {d!=null&&PROSP_ESPERA.has(l.stage)&&<span style={{fontSize:10,fontWeight:700,color:GOLD,background:`${GOLD}1A`,border:`1px solid ${GOLD}40`,borderRadius:100,padding:"1px 7px",fontFamily:F}}>D{d}</span>}
+        {l.linked_profile_id&&<span style={{fontSize:10,fontWeight:700,color:GREEN,fontFamily:F}}>✓ produtor</span>}
+        {!l.linked_profile_id&&l.sugestao_vinculo&&<span style={{fontSize:10,fontWeight:700,color:"#7dd3fc",fontFamily:F}}>já tem conta</span>}
+      </div>
+      {acao&&!acao.vincular&&(
+        <button onClick={e=>{e.stopPropagation();onAcao(l,acao);}} style={{...prospSmallBtn(true),height:32,width:"100%",fontSize:12}}>{acao.icon&&<Ic n={acao.icon} s={12}/>}{atrasado&&acao.cat?`${acao.label} (48h)`:acao.label}</button>
+      )}
+    </div>
+  );
+}
+
+function ProspeccaoAdmin(){
+  const st=useProsp();
+  const [vista,setVista]=useState("quadro");
+  const [busca,setBusca]=useState("");
+  const [ficha,setFicha]=useState(null);
+  const [enviar,setEnviar]=useState(null);
+  const [mover,setMover]=useState(null);
+  const [novo,setNovo]=useState(false);
+  const [importar,setImportar]=useState(false);
+  const [sobre,setSobre]=useState(null);
+  const [now,setNow]=useState(Date.now());
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),60000);return()=>clearInterval(t);},[]);
+  if(st.error==="migration_missing")return <ProspPrecisaSQL/>;
+  if(!st.data)return <div style={{...glassCard(),textAlign:"center",color:MUTED,padding:28,fontFamily:F}}>{st.error?`Não consegui carregar: ${st.error}`:"Carregando…"}</div>;
+  const cfg=prospCfg(st.data.config);
+  const q=busca.trim().toLowerCase();
+  const leads=st.data.leads.filter(l=>!q||[l.name,l.instagram,l.city,l.specialty,l.whatsapp].some(v=>String(v||"").toLowerCase().includes(q)));
+  const k=prospKpis(st.data,now);
+  const hoje=leads.filter(l=>prospAtrasado(l,now)).sort((a,b)=>prospEnteredAt(a)-prospEnteredAt(b));
+  const novos=leads.filter(l=>l.stage==="coletados"||l.stage==="perfil_engajado");
+  // Ação: abre envio (tem mensagem), vincula, ou move direto (pergunta a mensagem).
+  const onAcao=(l,a)=>{
+    if(a.vincular){setFicha(l.id);return;}
+    if(a.cat){setEnviar({lead:l,acao:a});return;}
+    if(a.mover){setMover({lead:l,para:a.para});return;}
+    prospMover(l,a.para,{resp:a.resp});
+  };
+  const onDrop=(e,stage)=>{e.preventDefault();setSobre(null);const id=e.dataTransfer.getData("text/plain");const l=st.data.leads.find(x=>x.id===id);if(l&&l.stage!==stage)setMover({lead:l,para:stage});};
+  const kp=[{lb:"Leads",v:k.total-k.arquivados},{lb:"Mensagens",v:k.mensagens},{lb:"Sites",v:k.sites},{lb:"Potencial",v:prospFmtBRL(k.potencial)},{lb:"Confirmado",v:prospFmtBRL(k.receita),c:GREEN}];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",gap:10,overflowX:"auto",scrollbarWidth:"none",margin:"0 -22px",padding:"2px 22px"}}>
+        {kp.map(x=>(
+          <div key={x.lb} style={{...glassSurface,borderRadius:18,padding:"12px 14px",minWidth:108,flexShrink:0}}>
+            <div style={{color:"rgba(255,255,255,0.42)",fontSize:10,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>{x.lb}</div>
+            <div style={{color:x.c||TEXT,fontSize:18,fontWeight:700,letterSpacing:"-0.02em",marginTop:4,fontFamily:F}}>{x.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{flex:1,position:"relative"}}>
+          <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:MUTED}}><Ic n="search" s={15}/></span>
+          <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar lead" style={{...prospInput,paddingLeft:38,height:42,padding:"0 14px 0 38px",borderRadius:100,background:"rgba(255,255,255,0.06)"}}/>
+        </div>
+        <button onClick={()=>setImportar(true)} title="Trazer do VJoseph" aria-label="Trazer do VJoseph" style={{...iconBtn(),width:42,height:42}}><Ic n="download" s={16}/></button>
+        <button onClick={()=>setNovo(true)} style={{...prospSmallBtn(true),height:42,padding:"0 16px"}}>+ Lead</button>
+      </div>
+      <ProspSegment value={vista} onChange={setVista} items={[{id:"quadro",label:"Quadro"},{id:"hoje",label:"Hoje",count:hoje.length,alert:true},{id:"lista",label:"Lista",count:leads.length}]}/>
+
+      {st.data.leads.length===0&&(
+        <div style={{...glassCard(),textAlign:"center",padding:"26px 20px"}}>
+          <div style={{color:TEXT,fontSize:16,fontWeight:700,fontFamily:F}}>Nenhum lead ainda</div>
+          <div style={{color:MUTED,fontSize:13,marginTop:6,lineHeight:1.5,fontFamily:F}}>Adicione o primeiro colando o perfil, ou traga tudo que já está no VJoseph.</div>
+          <div style={{display:"flex",gap:8,marginTop:14}}>
+            <button onClick={()=>setImportar(true)} style={{...pillBtn(false),flex:1,height:46,fontSize:14}}>Trazer do VJoseph</button>
+            <button onClick={()=>setNovo(true)} style={{...pillBtn(true),flex:1,height:46,fontSize:14}}>+ Lead</button>
+          </div>
+        </div>
+      )}
+
+      {vista==="quadro"&&st.data.leads.length>0&&(
+        <div style={{display:"flex",gap:12,overflowX:"auto",scrollSnapType:"x mandatory",margin:"0 -22px",padding:"2px 22px 12px",WebkitOverflowScrolling:"touch"}}>
+          {PROSP_STAGES.map(s=>{
+            const col=leads.filter(l=>l.stage===s.id);
             return(
-              <button key={t.id} onClick={()=>setSub(t.id)} style={{display:"flex",alignItems:"center",gap:6,background:a?"rgba(212,175,55,0.15)":"rgba(255,255,255,0.05)",border:a?`1px solid rgba(212,175,55,0.35)`:`1px solid ${BDR}`,borderRadius:100,padding:"7px 14px",color:a?GOLD:MUTED,fontSize:12,fontWeight:a?700:500,fontFamily:F,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.18s",outline:"none"}}>
-                <Ic n={t.icon} s={13}/>{t.label}
-              </button>
+              <div key={s.id} onDragOver={e=>{e.preventDefault();setSobre(s.id);}} onDragLeave={()=>setSobre(x=>x===s.id?null:x)} onDrop={e=>onDrop(e,s.id)}
+                style={{...glassSurface,borderRadius:24,width:"min(78vw,290px)",flexShrink:0,scrollSnapAlign:"start",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 330px)",minHeight:220,border:`1px solid ${sobre===s.id?s.color+"99":"rgba(255,255,255,0.09)"}`,boxShadow:sobre===s.id?`0 0 0 3px ${s.color}33`:glassSurface.boxShadow}}>
+                <div style={{padding:"12px 14px 10px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                  <span style={{width:9,height:9,borderRadius:5,background:s.color,boxShadow:`0 0 10px ${s.color}`}}/>
+                  <span style={{color:TEXT,fontSize:13,fontWeight:700,fontFamily:F,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
+                  <span style={{color:MUTED,fontSize:12,fontWeight:700,fontFamily:F,background:"rgba(255,255,255,0.07)",borderRadius:100,padding:"2px 8px"}}>{col.length}</span>
+                </div>
+                <div style={{padding:10,display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:1}}>
+                  {col.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12,textAlign:"center",padding:"18px 0",fontFamily:F}}>Nenhum lead</div>
+                    :col.map(l=><ProspCard key={l.id} l={l} now={now} onOpen={setFicha} onAcao={onAcao}/>)}
+                </div>
+              </div>
             );
           })}
         </div>
-        <div style={{overflowY:"auto",flex:1,padding:"16px 20px",paddingBottom:"calc(16px + env(safe-area-inset-bottom, 20px))"}}>
-          {sub==="relatorios"&&<RelatoriosAdmin/>}
-          {sub==="parceiros"&&<ParceirosAdmin/>}
-          {sub==="indicacao"&&<IndicacaoAdmin/>}
+      )}
+
+      {vista==="hoje"&&st.data.leads.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F,display:"flex",alignItems:"center",gap:8}}><Ic n="alert" s={15} style={{color:"#F87171"}}/>Follow-up atrasado <span style={{color:MUTED,fontWeight:500,fontSize:13}}>+48h sem resposta</span></div>
+          {hoje.length===0&&<div style={{...glassInset,color:MUTED,fontSize:13,textAlign:"center",fontFamily:F}}>Tudo em dia. ✓</div>}
+          {hoje.map(l=><ProspCard key={l.id} l={l} now={now} onOpen={setFicha} onAcao={onAcao}/>)}
+          <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F,marginTop:8}}>Pra começar <span style={{color:MUTED,fontWeight:500,fontSize:13}}>{novos.length} em Coletados / Engajado</span></div>
+          {novos.slice(0,30).map(l=><ProspCard key={l.id} l={l} now={now} onOpen={setFicha} onAcao={onAcao}/>)}
+          <div style={{color:MUTED,fontSize:12,fontFamily:F}}>Meta de hoje: {cfg.meta_leads_dia} leads novos · {prospKpis(st.data,now).leadsHoje} até agora.</div>
+        </div>
+      )}
+
+      {vista==="lista"&&st.data.leads.length>0&&(
+        <div style={{...glassCard(),padding:6}}>
+          {leads.map((l,i)=>{const m=prospStageMeta(l.stage);return(
+            <button key={l.id} onClick={()=>setFicha(l.id)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 12px",background:"none",border:"none",borderTop:i?"1px solid rgba(255,255,255,0.05)":"none",cursor:"pointer",textAlign:"left"}}>
+              <ProspAvatar l={l} size={34}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:TEXT,fontSize:14,fontWeight:600,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name||"Lead sem nome"}</div>
+                <div style={{color:MUTED,fontSize:12,fontFamily:F,display:"flex",alignItems:"center",gap:6}}><span style={{width:7,height:7,borderRadius:4,background:m.color}}/>{m.label} · {prospAgeText(l,now)}</div>
+              </div>
+              {prospAtrasado(l,now)&&<Ic n="alert" s={14} style={{color:"#F87171"}}/>}
+            </button>);})}
+        </div>
+      )}
+
+      {ficha&&<ProspFicha leadId={ficha} onClose={()=>setFicha(null)} onAcao={(l,a)=>onAcao(l,a)}/>}
+      {enviar&&<ProspEnviarSheet lead={enviar.lead} acao={enviar.acao} onClose={()=>setEnviar(null)}/>}
+      {mover&&<ProspMoverSheet lead={mover.lead} para={mover.para} onClose={()=>setMover(null)}/>}
+      {novo&&<ProspNovoLead onClose={()=>setNovo(false)}/>}
+      {importar&&<ProspImportar onClose={()=>setImportar(false)}/>}
+    </div>
+  );
+}
+
+// ── Estatística de cada mensagem: envios, visualizou, respondeu (do histórico) ──
+function prospMsgStats(data){
+  const out={};
+  (data?.leads||[]).forEach(l=>(l.history||[]).forEach(h=>{
+    if(h.acao!=="Mensagem enviada"||!h.msg_id)return;
+    const s=out[h.msg_id]||(out[h.msg_id]={envios:0,vistos:0,respostas:0,leads:[]});
+    s.envios++;if(h.visto)s.vistos++;if(h.respondeu)s.respostas++;
+    s.leads.push({lead:l,h});
+  }));
+  Object.values(out).forEach(s=>{s.taxa=s.envios?s.respostas/s.envios:0;});
+  return out;
+}
+
+function ProspMsgEditor({msg,catInicial,onClose}){
+  const [cat,setCat]=useState(msg?.categoria||catInicial||"dm1");
+  const [nome,setNome]=useState(msg?.nome||"");
+  const [texto,setTexto]=useState(msg?.texto||"");
+  const [salvando,setSalvando]=useState(false);
+  const ref=useRef(null);
+  const inserir=v=>{const el=ref.current;if(!el){setTexto(t=>t+v);return;}const a=el.selectionStart,b=el.selectionEnd;setTexto(t=>t.slice(0,a)+v+t.slice(b));setTimeout(()=>{el.focus();el.selectionStart=el.selectionEnd=a+v.length;},0);};
+  const salvar=async()=>{
+    if(!texto.trim())return;setSalvando(true);
+    const body=JSON.stringify({categoria:cat,nome:nome.trim()||`${prospCatLabel(cat)} ${new Date().toLocaleDateString("pt-BR")}`,texto});
+    const d=msg?await apiCall(`/api/admin/prospeccao/mensagens/${msg.id}`,{method:"PATCH",body}):await apiCall("/api/admin/prospeccao/mensagens",{method:"POST",body});
+    setSalvando(false);
+    if(d?.error){alert(d.error==="migration_missing"?"Falta rodar o SQL migration_v47 no Supabase.":d.error);return;}
+    prospLoad();onClose();
+  };
+  return(
+    <ProspSheet title={msg?"Editar mensagem":"Nova mensagem"} onClose={onClose} footer={<button onClick={salvar} disabled={salvando||!texto.trim()} style={pillBtn(true,salvando||!texto.trim())}>{salvando?"Salvando…":"Salvar"}</button>}>
+      <div style={prospLabel}>Etapa</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PROSP_MSG_CATS.map(c=><button key={c.id} onClick={()=>setCat(c.id)} style={prospChip(cat===c.id)}>{c.label}</button>)}</div>
+      <div style={prospLabel}>Nome (pra você reconhecer)</div>
+      <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: DM1 curiosidade" style={prospInput}/>
+      <div style={prospLabel}>Mensagem</div>
+      <textarea ref={ref} value={texto} onChange={e=>setTexto(e.target.value)} rows={10} style={{...prospInput,resize:"vertical",lineHeight:1.5,fontSize:14}} placeholder="Oi {nome}, tudo bem?…"/>
+      <div style={{color:MUTED,fontSize:11,margin:"10px 0 6px",fontFamily:F}}>Toque pra inserir — troca sozinho por lead:</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["{nome}","{nome_completo}","{cidade}","{especialidade}","{instagram}","{link_site}","{meu_nome}"].map(v=><button key={v} onClick={()=>inserir(v)} style={{...prospChip(false),padding:"5px 10px",fontSize:12}}>{v.replace(/[{}]/g,"")}</button>)}</div>
+    </ProspSheet>
+  );
+}
+
+function MensagensAdmin(){
+  const st=useProsp();
+  const [cat,setCat]=useState("todas");
+  const [editar,setEditar]=useState(null);
+  const [aberta,setAberta]=useState(null);
+  const [verQuem,setVerQuem]=useState(null);
+  const [importar,setImportar]=useState(false);
+  if(st.error==="migration_missing")return <ProspPrecisaSQL/>;
+  if(!st.data)return <div style={{...glassCard(),textAlign:"center",color:MUTED,padding:28,fontFamily:F}}>{st.error?`Não consegui carregar: ${st.error}`:"Carregando…"}</div>;
+  const stats=prospMsgStats(st.data);
+  const todas=st.data.mensagens;
+  const msgs=(cat==="todas"?todas:todas.filter(m=>m.categoria===cat)).slice().sort((a,b)=>(stats[b.id]?.taxa||0)-(stats[a.id]?.taxa||0)||(stats[b.id]?.envios||0)-(stats[a.id]?.envios||0));
+  const env=msgs.reduce((a,m)=>a+(stats[m.id]?.envios||0),0);
+  const resp=msgs.reduce((a,m)=>a+(stats[m.id]?.respostas||0),0);
+  const melhor=msgs.filter(m=>(stats[m.id]?.respostas||0)>=1).sort((a,b)=>stats[b.id].taxa-stats[a.id].taxa)[0];
+  const cfg=prospCfg(st.data.config);
+  const marcar=(lead,h,campo)=>{const i=(lead.history||[]).indexOf(h);if(i<0)return;const history=lead.history.map((x,j)=>j===i?{...x,[campo]:!x[campo],...(campo==="respondeu"&&!x.respondeu?{visto:true}:{})}:x);prospSalvarLead(lead.id,{history});};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+        {[{lb:"Envios",v:env},{lb:"Resposta",v:env?`${Math.round(resp/env*100)}%`:"—",c:GOLD},{lb:"Mensagens",v:msgs.length}].map(x=>(
+          <div key={x.lb} style={{...glassSurface,borderRadius:18,padding:"12px"}}>
+            <div style={{color:"rgba(255,255,255,0.42)",fontSize:10,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>{x.lb}</div>
+            <div style={{color:x.c||TEXT,fontSize:19,fontWeight:700,marginTop:4,fontFamily:F}}>{x.v}</div>
+          </div>
+        ))}
+      </div>
+      {melhor&&<div style={{...glassCard(true),padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:36,height:36,borderRadius:12,background:`${GREEN}22`,display:"flex",alignItems:"center",justifyContent:"center",color:GREEN,flexShrink:0}}><Ic n="star" s={16}/></div>
+        <div style={{minWidth:0}}><div style={{color:MUTED,fontSize:11,fontFamily:F}}>Melhor performance</div><div style={{color:TEXT,fontSize:14,fontWeight:700,fontFamily:F}}>{melhor.nome} · {Math.round(stats[melhor.id].taxa*100)}% de resposta</div></div>
+      </div>}
+      <div style={{display:"flex",gap:8,overflowX:"auto",scrollbarWidth:"none",margin:"0 -22px",padding:"0 22px"}}>
+        {[{id:"todas",label:"Todas"},...PROSP_MSG_CATS].map(c=>{const n=c.id==="todas"?todas.length:todas.filter(m=>m.categoria===c.id).length;return <button key={c.id} onClick={()=>setCat(c.id)} style={{...prospChip(cat===c.id),flexShrink:0}}>{c.label}<span style={{color:MUTED,fontWeight:600}}>{n}</span></button>;})}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setEditar({novo:true})} style={{...pillBtn(true),flex:1,height:46,fontSize:14}}>+ Nova mensagem</button>
+        <button onClick={()=>setImportar(true)} aria-label="Trazer do VJoseph" title="Trazer do VJoseph" style={{...iconBtn(),width:46,height:46}}><Ic n="download" s={16}/></button>
+      </div>
+      {msgs.length===0&&<div style={{...glassInset,color:MUTED,fontSize:13,textAlign:"center",padding:20,fontFamily:F}}>Nenhuma mensagem {cat==="todas"?"":`de ${prospCatLabel(cat)} `}ainda.</div>}
+      {msgs.map(m=>{
+        const s=stats[m.id]||{envios:0,vistos:0,respostas:0,taxa:0,leads:[]};
+        const exemplo=prospFill(m.texto,{name:"Dra. Ana Souza",city:"Juiz de Fora",specialty:"Nutrição",instagram:"anasouza",site_link:"https://ana.vercel.app"},cfg);
+        const longa=m.texto.length>180;
+        return(
+          <div key={m.id} style={{...glassCard(),padding:"16px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:11,fontWeight:700,color:GOLD,background:`${GOLD}1A`,border:`1px solid ${GOLD}40`,borderRadius:100,padding:"3px 9px",fontFamily:F}}>{prospCatLabel(m.categoria)}</span>
+              <span style={{color:TEXT,fontSize:14,fontWeight:600,fontFamily:F,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nome}</span>
+              <button onClick={async()=>{if(!window.confirm("Excluir essa mensagem?"))return;await apiCall(`/api/admin/prospeccao/mensagens/${m.id}`,{method:"DELETE"});prospLoad();}} aria-label="Excluir" style={iconBtn()}><Ic n="trash" s={13}/></button>
+            </div>
+            <div style={{...glassInset,marginTop:10,padding:"12px",color:MUTED,fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",fontFamily:F,maxHeight:aberta===m.id||!longa?"none":96,overflow:"hidden"}}>{exemplo}</div>
+            {longa&&<button onClick={()=>setAberta(a=>a===m.id?null:m.id)} style={{background:"none",border:"none",color:GOLD,fontSize:12,fontWeight:600,cursor:"pointer",padding:"6px 0 0",fontFamily:F}}>{aberta===m.id?"Ver menos":"Ver mais"}</button>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:12,paddingTop:10,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+              {[{lb:"Envios",v:s.envios,c:TEXT},{lb:"Visu.",v:s.vistos,c:"#38bdf8"},{lb:"Não visu.",v:Math.max(0,s.envios-s.vistos),c:"#fb7185"},{lb:"Resp.",v:s.envios?`${Math.round(s.taxa*100)}%`:"0%",c:GOLD}].map(x=>(
+                <div key={x.lb} style={{textAlign:"center"}}><div style={{color:MUTED,fontSize:10,fontFamily:F}}>{x.lb}</div><div style={{color:x.c,fontSize:15,fontWeight:700,fontFamily:F}}>{x.v}</div></div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>{try{navigator.clipboard.writeText(m.texto);}catch(e){}}} style={{...prospSmallBtn(false),flex:1}}><Ic n="copy" s={13}/>Copiar</button>
+              <button onClick={()=>setEditar(m)} style={{...prospSmallBtn(false),flex:1}}><Ic n="pencil" s={13}/>Editar</button>
+              {s.envios>0&&<button onClick={()=>setVerQuem(v=>v===m.id?null:m.id)} style={{...prospSmallBtn(verQuem===m.id),flex:1}}><Ic n="users" s={13}/>Quem</button>}
+            </div>
+            {verQuem===m.id&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:10}}>
+                {s.leads.slice().reverse().map(({lead,h},i)=>(
+                  <div key={i} style={{...glassInset,padding:"8px 10px",display:"flex",alignItems:"center",gap:8}}>
+                    <ProspAvatar l={lead} size={28}/>
+                    <div style={{flex:1,minWidth:0,color:TEXT,fontSize:13,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name}</div>
+                    <button onClick={()=>marcar(lead,h,"visto")} aria-label="Visualizou" style={{...prospChip(!!h.visto,"#0ea5e9"),padding:"5px 9px"}}><Ic n="eye" s={12}/></button>
+                    <button onClick={()=>marcar(lead,h,"respondeu")} aria-label="Respondeu" style={{...prospChip(!!h.respondeu,GREEN),padding:"5px 9px"}}><Ic n="message" s={12}/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{color:MUTED,fontSize:11,lineHeight:1.5,textAlign:"center",fontFamily:F}}>Os números vêm dos envios feitos pelo Kanban (botão "Enviei"). Marque "Visualizou"/"Respondeu" em "Quem" ou na ficha do lead.</div>
+      {editar&&<ProspMsgEditor msg={editar.novo?null:editar} catInicial={cat==="todas"?"dm1":cat} onClose={()=>setEditar(null)}/>}
+      {importar&&<ProspImportar onClose={()=>setImportar(false)}/>}
+    </div>
+  );
+}
+
+// ── KPIs (mesmas contas do renderKPIs/renderDashboard do VJoseph) ────────────────
+function prospKpis(data,now){
+  const leads=data?.leads||[];const cfg=prospCfg(data?.config);const price=cfg.preco;const goal=Math.max(1,cfg.meta_mes);
+  const idx=s=>PROSP_ORDER.indexOf(s);
+  const chegou=(l,min)=>{const m=idx(min);if(idx(l.stage)>=m&&l.stage!=="arquivado")return true;return(l.stage_entries||[]).some(e=>idx(e.s)>=m&&e.s!=="arquivado");};
+  const d0=new Date(now);d0.setHours(0,0,0,0);const hojeIni=d0.getTime();
+  const semIni=hojeIni-((new Date(now).getDay()+6)%7)*86400000;
+  const mesIni=new Date(new Date(now).getFullYear(),new Date(now).getMonth(),1).getTime();
+  const mesFim=new Date(new Date(now).getFullYear(),new Date(now).getMonth()+1,1).getTime();
+  const diasMes=Math.round((mesFim-mesIni)/86400000);const diaMes=Math.max(1,new Date(now).getDate());
+  const total=leads.length;
+  const ativosL=leads.filter(l=>!["arquivado","fechado"].includes(l.stage));
+  const leadsHoje=leads.filter(l=>prospTs(l.created_at)>=hojeIni).length;
+  const dm1=leads.filter(l=>l.dm1_sent_at||chegou(l,"dm1_enviada")).length;
+  const dm1Hoje=leads.filter(l=>prospTs(l.dm1_sent_at)>=hojeIni).length;
+  const responderam=leads.filter(l=>chegou(l,"chat_gerado")).length;
+  const followUp=leads.filter(l=>chegou(l,"nao_respondeu")).length;
+  const sites=leads.filter(l=>l.stage!=="arquivado"&&chegou(l,"dm2_enviada")).length;
+  const sitesHoje=leads.filter(l=>prospTs(l.site_generated_at)>=hojeIni).length;
+  const propostas=leads.filter(l=>["proposta_enviada","nao_respondeu_proposta","follow_up_3","fechado"].includes(l.stage)||!!l.proposta_sent_at).length;
+  const propostasSem=leads.filter(l=>prospTs(l.proposta_sent_at)>=semIni).length;
+  const fechados=leads.filter(l=>l.stage==="fechado").length;
+  const fechadosSem=leads.filter(l=>l.stage==="fechado"&&prospTs(l.closed_at)>=semIni).length;
+  const fechadosMes=leads.filter(l=>l.stage==="fechado"&&prospTs(l.closed_at)>=mesIni&&prospTs(l.closed_at)<mesFim).length;
+  const arquivados=leads.filter(l=>l.stage==="arquivado").length;
+  const followOnly=leads.filter(l=>["follow_up_1","follow_up_2","follow_up_3"].includes(l.stage)).length;
+  const pendentes=leads.filter(l=>PROSP_ESPERA.has(l.stage)).length;
+  const atrasados=leads.filter(l=>prospAtrasado(l,now)).length;
+  const mensagens=leads.reduce((a,l)=>a+(l.history||[]).filter(h=>h.acao==="Mensagem enviada").length,0)||leads.filter(l=>l.dm1_sent_at).length+leads.filter(l=>l.dm2_sent_at).length;
+  const potencialSt=new Set(["chat_gerado","site_pronto","dm2_enviada","proposta_enviada","follow_up_2"]);
+  const potencial=leads.filter(l=>potencialSt.has(l.stage)).length*price;
+  const dias=leads.filter(l=>l.stage==="fechado"&&l.closed_at&&l.created_at).map(l=>(prospTs(l.closed_at)-prospTs(l.created_at))/86400000).filter(d=>d>=0);
+  const diasMedio=dias.length?dias.reduce((a,b)=>a+b,0)/dias.length:0;
+  return{total,ativos:ativosL.length,leadsHoje,dm1,dm1Hoje,responderam,followUp,sites,sitesHoje,propostas,propostasSem,fechados,fechadosSem,fechadosMes,arquivados,followOnly,pendentes,atrasados,mensagens,potencial,
+    receita:fechados*price,receitaMes:fechadosMes*price,pipeline:ativosL.length*price,followValor:followOnly*price,diasMedio,goal,price,diaMes,diasMes,
+    ritmo:fechadosMes/diaMes,minutosPorLead:(cfg.horas_dia*60)/Math.max(1,cfg.meta_leads_dia)};
+}
+const prospPct=(a,b)=>b>0?a/b:0;
+const prospPctTxt=v=>`${Math.round((v||0)*100)}%`;
+const prospBadge=(v,ok,warn)=>v>=ok?{t:"OK",c:GREEN}:v>=warn?{t:"Atenção",c:"#F5A524"}:{t:"Crítico",c:"#F87171"};
+
+function MetricasConfig({onClose}){
+  const st=useProsp();const c=prospCfg(st.data?.config);
+  const [f,setF]=useState({preco:c.preco,meta_mes:c.meta_mes,meta_leads_dia:c.meta_leads_dia,meu_nome:c.meu_nome,horas_dia:c.horas_dia});
+  const [salvando,setSalvando]=useState(false);
+  const salvar=async()=>{setSalvando(true);const d=await apiCall("/api/admin/prospeccao/config",{method:"PUT",body:JSON.stringify(f)});setSalvando(false);if(d?.error){alert(d.error==="migration_missing"?"Falta rodar o SQL migration_v47 no Supabase.":d.error);return;}prospStore.data={...prospStore.data,config:d.config};prospEmit();onClose();};
+  return(
+    <ProspSheet title="Metas e preço" onClose={onClose} footer={<button onClick={salvar} disabled={salvando} style={pillBtn(true,salvando)}>{salvando?"Salvando…":"Salvar"}</button>}>
+      {[["preco","Preço de cada venda (R$)","number"],["meta_mes","Meta de vendas no mês","number"],["meta_leads_dia","Meta de leads novos por dia","number"],["horas_dia","Horas de prospecção por dia","number"],["meu_nome","Seu nome (vira {meu_nome} nas mensagens)","text"]].map(([k,lb,t])=>(
+        <div key={k}><div style={prospLabel}>{lb}</div><input type={t} inputMode={t==="number"?"decimal":undefined} value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} style={prospInput}/></div>
+      ))}
+    </ProspSheet>
+  );
+}
+
+function MetricasAdmin(){
+  const st=useProsp();
+  const [now,setNow]=useState(Date.now());
+  const [cfgAberta,setCfgAberta]=useState(false);
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t);},[]);
+  if(st.error==="migration_missing")return <ProspPrecisaSQL/>;
+  if(!st.data)return <div style={{...glassCard(),textAlign:"center",color:MUTED,padding:28,fontFamily:F}}>{st.error?`Não consegui carregar: ${st.error}`:"Carregando…"}</div>;
+  const k=prospKpis(st.data,now);
+  // Turno do dia (widget "Time blocks" do VJoseph)
+  const hr=new Date(now).getHours();
+  const BL=[{n:"Madrugada",c:"#64748b",a:0,b:6},{n:"Manhã",c:"#3b82f6",a:6,b:12},{n:"Meio-dia",c:"#f59e0b",a:12,b:14},{n:"Tarde",c:"#8b5cf6",a:14,b:18},{n:"Noite",c:"#6366f1",a:18,b:24}];
+  const bl=BL.find(b=>hr>=b.a&&hr<b.b)||BL[0];
+  const fimBl=new Date(now);fimBl.setHours(bl.b,0,0,0);const resta=Math.max(0,fimBl.getTime()-now);
+  const restaMin=Math.ceil(resta/60000);const restaTxt=`${String(Math.floor(restaMin/60)).padStart(2,"0")}:${String(restaMin%60).padStart(2,"0")}`;
+  // Meta do mês (mínimo 50% / meta / desafio 150%)
+  const gMin=Math.round(k.goal*0.5),gDes=Math.round(k.goal*1.5);
+  const prog=Math.min(1,k.fechadosMes/k.goal);
+  const ritmo=k.ritmo;
+  const ritmoSt=ritmo<0.3?{t:"Mês fraco",c:"#F87171"}:ritmo<0.7?{t:"Meta provável",c:"#F5A524"}:{t:"Mês forte",c:GREEN};
+  const nivel=k.fechadosMes<gMin?0:k.fechadosMes<k.goal?1:2;
+  const respRate=prospPct(k.followUp,k.total),propRate=prospPct(k.propostas,k.sites),closeRate=prospPct(k.fechados,k.propostas),conv=prospPct(k.fechados,k.total);
+  const fmtDias=d=>d<=0?"—":d<1?`~${Math.max(1,Math.round(d*24))}h`:d<10?`~${d.toFixed(1).replace(".",",")} dias`:`~${Math.round(d)} dias`;
+  const cards=[
+    {lb:"Receita confirmada",v:prospFmtBRL(k.receita),sub:`${k.fechados} fechados`,b:k.fechados?{t:"Real",c:GREEN}:{t:"Zerado",c:"#F5A524"}},
+    {lb:"Valor no funil",v:prospFmtBRL(k.pipeline),sub:`${k.ativos} leads ativos`,b:{t:"Potencial",c:"#38bdf8"}},
+    {lb:"Dinheiro em follow-up",v:prospFmtBRL(k.followValor),sub:`${k.followOnly} leads · ${prospPctTxt(prospPct(k.followValor,k.pipeline))} do funil`,b:prospBadge(1-prospPct(k.followValor,k.pipeline),0.7,0.5)},
+    {lb:"Progresso da meta",v:prospPctTxt(prospPct(k.fechadosMes,k.goal)),sub:`${k.fechadosMes} / ${k.goal} no mês`,b:prospBadge(prospPct(k.fechadosMes,k.goal),0.7,0.35)},
+    {lb:"Leads coletados",v:k.total,sub:"Volume do funil",b:{t:"Base",c:GREEN}},
+    {lb:"Leads coletados hoje",v:k.leadsHoje,sub:`Meta ${prospCfg(st.data.config).meta_leads_dia}/dia`,b:k.leadsHoje>=10?{t:"Meta",c:GREEN}:k.leadsHoje>=5?{t:"Atenção",c:"#F5A524"}:{t:"Baixo",c:"#F87171"}},
+    {lb:"DM1 enviadas",v:k.dm1,sub:`${k.dm1Hoje} hoje · ${k.dm1} / ${k.total}`,b:k.dm1?{t:"Ativo",c:GREEN}:{t:"Zerado",c:"#F5A524"}},
+    {lb:"Taxa de resposta DM1",v:prospPctTxt(respRate),sub:`${k.followUp} / ${k.total}`,b:prospBadge(respRate,0.5,0.35)},
+    {lb:"Sites gerados",v:k.sites,sub:`${k.sitesHoje} hoje`,b:k.sitesHoje>=2?{t:"Ritmo",c:GREEN}:k.sitesHoje>=1?{t:"Atenção",c:"#F5A524"}:{t:"Parado",c:"#F87171"}},
+    {lb:"Propostas enviadas",v:k.propostas,sub:`${k.propostasSem} nesta semana`,b:k.propostas?{t:"Ativo",c:GREEN}:{t:"Zerado",c:"#F5A524"}},
+    {lb:"Taxa de proposta",v:prospPctTxt(propRate),sub:`${k.propostas} / ${k.sites}`,b:prospBadge(propRate,0.5,0.3)},
+    {lb:"Pendentes de follow-up",v:k.pendentes,sub:`${k.atrasados} atrasados (+48h)`,b:k.atrasados<=5?{t:"OK",c:GREEN}:k.atrasados<=15?{t:"Atenção",c:"#F5A524"}:{t:"Crítico",c:"#F87171"}},
+    {lb:"Fechamentos",v:k.fechados,sub:`${k.fechadosSem} nesta semana`,b:k.fechados?{t:"Venda",c:GREEN}:{t:"Zerado",c:"#F5A524"}},
+    {lb:"Taxa de fechamento",v:prospPctTxt(closeRate),sub:`${k.fechados} / ${k.propostas}`,b:prospBadge(closeRate,0.25,0.12)},
+    {lb:"Taxa de conversão",v:prospPctTxt(conv),sub:`${k.fechados} / ${k.total}`,b:prospBadge(conv,0.12,0.06)},
+    {lb:"Tempo até fechar",v:fmtDias(k.diasMedio),sub:"Média do 1º contato à venda",b:k.diasMedio<=0?{t:"—",c:MUTED}:k.diasMedio<=7?{t:"OK",c:GREEN}:k.diasMedio<=14?{t:"Atenção",c:"#F5A524"}:{t:"Crítico",c:"#F87171"}},
+  ];
+  const funil=[{lb:"Leads",n:k.total},{lb:"DM1 enviadas",n:k.dm1},{lb:"Follow-up",n:k.followUp},{lb:"Sites gerados",n:k.sites},{lb:"Propostas",n:k.propostas},{lb:"Vendas",n:k.fechados}];
+  const base=Math.max(1,k.total);
+  const porEtapa=PROSP_STAGES.map(s=>({...s,n:st.data.leads.filter(l=>l.stage===s.id).length}));
+  const maxEt=Math.max(1,...porEtapa.map(x=>x.n));
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:10}}>
+        <div>
+          <div style={{color:TEXT,fontSize:26,fontWeight:700,letterSpacing:"-0.03em",fontFamily:SF}}>Hoje</div>
+          <div style={{color:MUTED,fontSize:13,fontFamily:F,textTransform:"capitalize"}}>{new Date(now).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}</div>
+        </div>
+        <button onClick={()=>setCfgAberta(true)} aria-label="Metas e preço" title="Metas e preço" style={{...iconBtn(),width:40,height:40}}><Ic n="settings" s={16}/></button>
+      </div>
+
+      <div style={{...glassCard(),padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+        <span style={{width:12,height:12,borderRadius:6,background:bl.c,boxShadow:`0 0 12px ${bl.c}`}}/>
+        <div style={{flex:1}}><div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F}}>{bl.n}</div><div style={{color:MUTED,fontSize:12,fontFamily:F}}>Faltam {restaTxt} pra acabar o turno</div></div>
+        <div style={{color:TEXT,fontSize:22,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{new Date(now).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+      </div>
+
+      <div style={{...glassCard(),padding:"18px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+          <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F}}>Meta do mês</div>
+          <span style={{fontSize:11,fontWeight:700,color:ritmoSt.c,background:`${ritmoSt.c}1A`,border:`1px solid ${ritmoSt.c}55`,borderRadius:100,padding:"3px 10px",fontFamily:F}}>{ritmoSt.t}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:10}}>
+          <span style={{color:TEXT,fontSize:34,fontWeight:700,letterSpacing:"-0.03em",fontFamily:SF}}>{k.fechadosMes}</span><span style={{color:MUTED,fontSize:15,fontFamily:F}}>/ {k.goal} vendas</span>
+          <span style={{marginLeft:"auto",color:MUTED,fontSize:12,fontFamily:F}}>{ritmo.toFixed(1).replace(".",",")}/dia</span>
+        </div>
+        <div style={{height:10,borderRadius:6,background:"rgba(255,255,255,0.08)",overflow:"hidden",marginTop:10}}><div style={{width:`${prog*100}%`,height:"100%",borderRadius:6,background:`linear-gradient(90deg,${GOLD},${GOLD2})`,boxShadow:`0 0 14px ${GOLD}66`,transition:"width .6s"}}/></div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:12}}>
+          {[{t:"Mínimo",n:gMin},{t:"Meta",n:k.goal},{t:"Desafio",n:gDes}].map((x,i)=>(
+            <div key={x.t} style={{...glassInset,padding:"10px",textAlign:"center",border:`1px solid ${nivel===i?GOLD+"66":"rgba(255,255,255,0.08)"}`,background:nivel===i?`${GOLD}14`:glassInset.background}}>
+              <div style={{color:nivel===i?GOLD:MUTED,fontSize:11,fontWeight:700,fontFamily:F}}>{x.t}</div>
+              <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F}}>{x.n}</div>
+              <div style={{color:MUTED,fontSize:11,fontFamily:F}}>{prospFmtBRL(x.n*k.price)}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{color:MUTED,fontSize:11,marginTop:10,fontFamily:F}}>Preço por venda: {prospFmtBRL(k.price)} · {k.minutosPorLead<10?k.minutosPorLead.toFixed(1).replace(".",","):Math.round(k.minutosPorLead)} min por lead pra bater a meta diária</div>
+      </div>
+
+      <div style={{...glassSurface,borderRadius:100,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:14,flexWrap:"wrap"}}>
+        <span style={{display:"inline-flex",alignItems:"center",gap:6,fontFamily:F,fontSize:13,color:MUTED}}><span style={{width:8,height:8,borderRadius:4,background:GREEN}}/>Confirmada <b style={{color:TEXT}}>{prospFmtBRL(k.receita)}</b></span>
+        <span style={{width:1,height:16,background:"rgba(255,255,255,0.12)"}}/>
+        <span style={{display:"inline-flex",alignItems:"center",gap:6,fontFamily:F,fontSize:13,color:MUTED}}><span style={{width:8,height:8,borderRadius:4,background:"#38bdf8"}}/>No funil <b style={{color:TEXT}}>{prospFmtBRL(k.pipeline)}</b></span>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
+        {cards.map(c=>(
+          <div key={c.lb} style={{...glassSurface,borderRadius:20,padding:"13px 13px 12px",display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:6,alignItems:"flex-start"}}>
+              <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600,lineHeight:1.25,fontFamily:F}}>{c.lb}</span>
+              <span style={{fontSize:9,fontWeight:700,color:c.b.c,background:`${c.b.c}1A`,borderRadius:100,padding:"2px 7px",whiteSpace:"nowrap",fontFamily:F}}>{c.b.t}</span>
+            </div>
+            <div style={{color:TEXT,fontSize:20,fontWeight:700,letterSpacing:"-0.02em",fontFamily:F}}>{c.v}</div>
+            <div style={{color:MUTED,fontSize:11,lineHeight:1.3,fontFamily:F}}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{...glassCard(),padding:"18px"}}>
+        <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F,marginBottom:12}}>Funil</div>
+        {funil.map((s,i)=>(
+          <div key={s.lb} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{width:96,flexShrink:0}}><div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F}}>{s.n}</div><div style={{color:MUTED,fontSize:11,fontFamily:F}}>{s.lb}</div></div>
+            <div style={{flex:1,height:10,borderRadius:6,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}><div style={{width:`${Math.max(2,s.n/base*100)}%`,height:"100%",borderRadius:6,background:`linear-gradient(90deg,${GOLD}cc,${GOLD2})`}}/></div>
+            <div style={{width:42,textAlign:"right",color:MUTED,fontSize:12,fontWeight:600,fontFamily:F}}>{k.total?`${Math.round(s.n/base*100)}%`:"—"}</div>
+          </div>
+        ))}
+        <div style={{color:MUTED,fontSize:11,fontFamily:F}}>{k.arquivados} sem interesse (arquivados)</div>
+      </div>
+
+      <div style={{...glassCard(),padding:"18px"}}>
+        <div style={{color:TEXT,fontSize:15,fontWeight:700,fontFamily:F,marginBottom:12}}>Leads por etapa</div>
+        {porEtapa.map(s=>(
+          <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
+            <span style={{width:8,height:8,borderRadius:4,background:s.color,flexShrink:0}}/>
+            <span style={{flex:"0 0 46%",color:s.n?TEXT:MUTED,fontSize:12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
+            <div style={{flex:1,height:6,borderRadius:4,background:"rgba(255,255,255,0.06)",overflow:"hidden"}}><div style={{width:`${s.n/maxEt*100}%`,height:"100%",background:s.color,borderRadius:4}}/></div>
+            <span style={{width:26,textAlign:"right",color:TEXT,fontSize:12,fontWeight:700,fontFamily:F}}>{s.n}</span>
+          </div>
+        ))}
+      </div>
+      {cfgAberta&&<MetricasConfig onClose={()=>setCfgAberta(false)}/>}
+    </div>
+  );
+}
+
+// ── "Mais" do rodapé: grade de ícones (estilo tela de apps do iPhone). Cada ícone
+// abre a PÁGINA dele — nada abre dentro do modal (pedido do Thomas, 17/10). ──────
+const MAIS_ITENS=[
+  {id:"prospeccao",label:"Prospecção",icon:"columns",cor:"#a855f7"},
+  {id:"mensagens",label:"Mensagens",icon:"message",cor:"#22c55e"},
+  {id:"metricas",label:"Métricas",icon:"chart",cor:"#38bdf8"},
+  {id:"relatorios",label:"Relatórios",icon:"note",cor:"#f59e0b"},
+  {id:"parceiros",label:"Parceiros",icon:"users",cor:"#ec4899"},
+  {id:"indicacao",label:"Indicação",icon:"star",cor:GOLD},
+  {id:"chat",label:"Chat IA",icon:"sparkles",cor:"#818cf8"},
+  {id:"integracoes",label:"Integrações",icon:"plug",cor:"#14b8a6"},
+  {id:"config",label:"Config",icon:"settings",cor:"#94a3b8"},
+];
+function MaisModal({tab,onPick,onClose}){
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(10px)",WebkitBackdropFilter:"blur(10px)"}} onClick={onClose}/>
+      <div style={{position:"relative",...glassSheet,borderRadius:"30px 30px 0 0",animation:"sup .32s cubic-bezier(.2,.9,.3,1)",width:"100%",maxWidth:640,margin:"0 auto",paddingBottom:"calc(18px + env(safe-area-inset-bottom,16px))"}}>
+        <div style={{display:"flex",justifyContent:"center",paddingTop:10}}><div style={{width:38,height:5,borderRadius:3,background:"rgba(255,255,255,0.18)"}}/></div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 22px 4px"}}>
+          <div style={{fontSize:20,fontWeight:700,color:TEXT,fontFamily:F,letterSpacing:"-0.02em"}}>Mais</div>
+          <button onClick={onClose} aria-label="Fechar" style={iconBtn()}><Ic n="x" s={14}/></button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(88px,1fr))",gap:"18px 10px",padding:"16px 18px 6px"}}>
+          {MAIS_ITENS.map(it=>{const a=tab===it.id;return(
+            <button key={it.id} onClick={()=>onPick(it.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",WebkitTapHighlightColor:"transparent",padding:0}}>
+              <div style={{width:62,height:62,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",color:a?"#0C0C0C":it.cor,
+                background:a?`linear-gradient(160deg,${GOLD2},${GOLD})`:`linear-gradient(160deg,${it.cor}33,${it.cor}12)`,
+                border:`1px solid ${a?GOLD:it.cor+"40"}`,backdropFilter:"blur(18px) saturate(160%)",WebkitBackdropFilter:"blur(18px) saturate(160%)",
+                boxShadow:`inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 22px ${a?GOLD+"40":"rgba(0,0,0,0.35)"}`}}>
+                <Ic n={it.icon} s={26} w={1.6}/>
+              </div>
+              <span style={{fontSize:12,fontWeight:a?700:500,color:a?GOLD:TEXT,fontFamily:F,letterSpacing:"-0.01em"}}>{it.label}</span>
+            </button>);})}
         </div>
       </div>
     </div>
@@ -6433,8 +7392,7 @@ function AdminPanel({onLogout,userEmail}){
   useEffect(()=>{reloadProfile();},[]);
   const [finSubTab,setFinSubTab]=useState(null);
   const [showMais,setShowMais]=useState(false);
-  const [maisSub,setMaisSub]=useState("relatorios");
-  const onNav=(t,sub=null)=>{setFinSubTab(sub);setTab(t);};
+  const onNav=(t,sub=null)=>{setFinSubTab(sub);setTab(t);window.scrollTo&&window.scrollTo(0,0);};
   const NAV=[
     {id:"dashboard",icon:<Ic n="home" s={17}/>,label:"Dashboard"},
     {id:"clientes",icon:<Ic n="users" s={17}/>,label:"Clientes"},
@@ -6442,16 +7400,20 @@ function AdminPanel({onLogout,userEmail}){
     {id:"googleads",icon:<Ic n="target" s={17}/>,label:"Google Ads"},
     {id:"relatorios",icon:<Ic n="note" s={17}/>,label:"Relatórios"},
     {id:"parceiros",icon:<Ic n="users" s={17}/>,label:"Parceiros"},
+    {id:"indicacao",icon:<Ic n="star" s={17}/>,label:"Indicação"},
+    {id:"prospeccao",icon:<Ic n="columns" s={17}/>,label:"Prospecção"},
+    {id:"mensagens",icon:<Ic n="message" s={17}/>,label:"Mensagens"},
+    {id:"metricas",icon:<Ic n="chart" s={17}/>,label:"Métricas"},
     {id:"chat",icon:<Ic n="star" s={17}/>,label:"Chat IA"},
     {id:"integracoes",icon:<Ic n="plug" s={17}/>,label:"Integrações"},
     {id:"config",icon:<Ic n="settings" s={17}/>,label:"Config"},
   ];
-  // Rodapé (celular): Relatórios e Parceiros ficam no modal "Mais" — o Chat IA continua no menu
-  // lateral (computador) e no menu do perfil (foto no topo), nunca some.
+  // Rodapé (celular): o resto fica no "Mais" — uma grade de ícones; cada um abre a PÁGINA
+  // dele (nada abre dentro do modal). No computador tudo continua no menu lateral.
   const NAV_RODAPE=NAV.filter(n=>["dashboard","clientes","financeiro","googleads"].includes(n.id))
     .concat([{id:"mais",icon:<Ic n="grid" s={17}/>,label:"Mais"}]);
-  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",relatorios:"Relatórios",parceiros:"Parceiros",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
-  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,relatorios:<RelatoriosAdmin/>,parceiros:<ParceirosAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
+  const TITLES={dashboard:"Dashboard",clientes:"Clientes",financeiro:"Financeiro",googleads:"Google Ads",relatorios:"Relatórios",parceiros:"Parceiros",indicacao:"Indicação",prospeccao:"Prospecção",mensagens:"Mensagens",metricas:"Métricas",chat:"Chat IA",integracoes:"Integrações",config:"Configurações"};
+  const VIEWS={dashboard:<DashAdmin onNav={onNav}/>,clientes:<ClientesAdmin/>,relatorios:<RelatoriosAdmin/>,parceiros:<ParceirosAdmin/>,indicacao:<IndicacaoAdmin/>,prospeccao:<ProspeccaoAdmin/>,mensagens:<MensagensAdmin/>,metricas:<MetricasAdmin/>,financeiro:<FinanceiroAdmin initialSubTab={finSubTab}/>,googleads:<GoogleAdsAdmin/>,chat:<ChatIA productName="JosephPay" onBack={()=>setTab("dashboard")}/>,integracoes:<IntegracoesAdmin/>,config:<Config/>};
   return(
     <>
       <Sidebar tab={tab} setTab={onNav} nav={NAV} userName={profile.name||"Admin"} initial={profile.name?.[0]?.toUpperCase()||"J"}/>
@@ -6459,9 +7421,9 @@ function AdminPanel({onLogout,userEmail}){
         <Topbar title={TITLES[tab]} sub={tab==="dashboard"?"● Painel Principal":null} onLogout={onLogout} initial={profile.name?.[0]?.toUpperCase()||"J"} onOpenPerfil={()=>setShowPerfil(true)} avatarUrl={profile.avatar_url}/>
         <div style={{padding:tab==="chat"?"20px 22px 0":"20px 22px",maxWidth:960,margin:"0 auto"}}>{VIEWS[tab]}</div>
       </div>
-      {tab !== "chat" && <BottomNav tab={tab} setTab={onNav} nav={NAV_RODAPE} onMais={()=>setShowMais(true)}/>}
+      {tab !== "chat" && <BottomNav tab={MAIS_ITENS.some(i=>i.id===tab)?"mais":tab} setTab={onNav} nav={NAV_RODAPE} onMais={()=>setShowMais(true)}/>}
       {showPerfil&&<PerfilModal profile={profile} email={userEmail||"—"} onClose={()=>setShowPerfil(false)} onLogout={()=>{setShowPerfil(false);onLogout();}} onSaved={reloadProfile} isAdmin={true} onNavigate={(t)=>{setShowPerfil(false);setTab(t);}}/>}
-      {showMais&&<MaisModal sub={maisSub} setSub={setMaisSub} onClose={()=>setShowMais(false)}/>}
+      {showMais&&<MaisModal tab={tab} onPick={t=>{setShowMais(false);onNav(t);}} onClose={()=>setShowMais(false)}/>}
     </>
   );
 }

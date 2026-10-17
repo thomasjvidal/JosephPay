@@ -419,3 +419,29 @@ Com "Sim", o botão "Enviar por e-mail" também NÃO abre o app de e-mail da pes
 servidor (`sendLeadEmail`, uma vez só) e segue pro link. Só se o envio pelo servidor falhar é que abre o
 `mailto:` como sempre. Com "Não", o botão continua abrindo o app de e-mail (regra antiga).
 
+
+## "Mais" do rodapé do Admin = grade de ícones, cada um abre a SUA página (17/10)
+
+Pedido do Thomas: o "Mais" (`MaisModal`, lista `MAIS_ITENS`) é uma folha de vidro com ícones estilo
+tela do iPhone — tocar leva pra página daquele item (`onNav`), nunca abre a página dentro do modal.
+Itens: Prospecção, Mensagens, Métricas, Relatórios, Parceiros, Indicação, Chat IA, Integrações, Config.
+O botão "Mais" fica dourado quando a página atual é um desses. No computador tudo continua no menu lateral.
+
+## Prospecção / Mensagens / Métricas (o VJoseph dentro do Admin)
+
+- É a prospecção do PRÓPRIO Thomas (quem ele quer trazer pro JosephPay) — tabelas `prospeccao_leads`,
+  `prospeccao_mensagens`, `prospeccao_config` (migration_v47). Não confundir com `customers` dos produtores.
+- Kanban com as MESMAS 21 etapas e o mesmo passo a passo do VJoseph (`PROSP_STAGES`, `PROSP_ACOES`) —
+  o Thomas já testou esse fluxo, não "simplificar" as etapas. +48h esperando = atrasado (aba "Hoje").
+- Envio é MANUAL: abre WhatsApp/Instagram com o texto pronto e o Thomas confirma "Enviei". Nada dispara sozinho.
+- Estatística das mensagens (envios/visualizou/respondeu) vem do `history` dos leads (`msg_id`), não de contador.
+- "Trazer do VJoseph" importa o backup .json (leads com etapas/histórico + mensagens) ou o .csv; repetir não duplica.
+- "Vincular produtor" liga o lead a um `profiles.id`; o servidor sugere quando telefone/e-mail batem.
+
+## Caminho do Mini Chat: só a parte depois do domínio (Novarks, 16/10)
+
+`cleanMinichatPath()` (servidor) / `cleanMcPath` (front). O campo recebeu "https://novarks.com/#contact" e
+virou a regra "/https://novarks.com/#contact" no vercel.json — inválida pra Vercel, a publicação do site
+passou a falhar ("Falta publicar"). Âncora (#) e ?query nunca são caminho. `ensureMinichatRedirect()` remove
+regras NOSSAS inválidas ao reinstalar. A verificação também lê os "pedaços" de JS carregados depois e páginas
+internas, e confere a publicação antes de dizer "Falta publicar".
