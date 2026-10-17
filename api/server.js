@@ -3363,7 +3363,8 @@ async function reinstalarMinichatFile(id) {
     .select("github_repo,github_minichat_path")
     .eq("id", id).maybeSingle();
   if (!profile?.github_repo) throw new Error("Repositório não vinculado");
-  const desiredPath = (profile.github_minichat_path || "minichat.html").replace(/^public\//, "");
+  // Caminho salvo inválido (ex: "https://novarks.com/#contact") volta pro padrão.
+  const desiredPath = cleanMinichatPath(profile.github_minichat_path) || "minichat.html";
   const token = await getGithubToken();
   if (!token) throw new Error("GitHub não conectado");
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
@@ -5553,8 +5554,33 @@ async function ensureVercelConfig(repo, headers, detected, id) {
 // Mini Chat de aparecer no site da Lervet não importava quantas vezes reinstalasse.
 // Só mexe na chave "redirects"/"routes", nunca no resto do arquivo — pode rodar mesmo
 // em framework "desconhecido" que `ensureVercelConfig` se recusa a tocar.
+// Caminho do Mini Chat no site do cliente = só a parte DEPOIS do domínio (ex:
+// "minichat.html", "contato"). Descoberto na Novarks (16/10): o campo recebeu o endereço
+// inteiro "https://novarks.com/#contact" e virou a regra "/https://novarks.com/#contact"
+// no vercel.json — os ":" têm significado especial pra Vercel, a regra é inválida e a
+// publicação do site inteiro passa a falhar. Âncora (#contact) e ?query nunca chegam no
+// servidor, então não servem de caminho. Devolve "" quando não sobra caminho válido.
+function cleanMinichatPath(input) {
+  let s = String(input || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) { try { s = new URL(s).pathname; } catch { return ""; } }
+  s = s.split("#")[0].split("?")[0].trim().replace(/^\.\//, "").replace(/^\/+/, "").replace(/^public\//, "").replace(/\/+$/, "");
+  if (!s || !/^[A-Za-z0-9._\-\/]+$/.test(s) || s.includes("..")) return "";
+  return s;
+}
+
+// Regra NOSSA (aponta pro Mini Chat) com caminho que a Vercel recusa — sobra de antes
+// do cleanMinichatPath. Só mexe nas que apontam pro josephpay.com/minichat.html.
+function isBrokenMinichatRule(source, destination) {
+  if (!/josephpay\.com\/minichat\.html/i.test(String(destination || ""))) return false;
+  const src = String(source || "");
+  return !src.startsWith("/") || /[#?]|:\/\//.test(src) || cleanMinichatPath(src) !== src.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
 async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
-  const source = "/" + String(desiredPath || "minichat.html").replace(/^\/+/, "");
+  const limpo = cleanMinichatPath(desiredPath || "minichat.html");
+  if (!limpo) return { changed: false, invalid: true };
+  const source = "/" + limpo;
   const destination = `https://josephpay.com/minichat.html?uid=${id}`;
   let sha = null;
   let cfg = {};
@@ -5575,11 +5601,14 @@ async function ensureMinichatRedirect(repo, headers, id, desiredPath) {
     // antiga NO MESMO caminho (senão duplica a cada reinstalação) — várias entradas
     // com destinos iguais mas caminhos diferentes podem coexistir, porque a gente
     // não sabe de antemão qual caminho é o botão de verdade do site do cliente.
-    const semEsseCaminho = cfg.routes.filter(r => r.src !== `^${escaped}$`);
+    const semEsseCaminho = cfg.routes.filter(r => r.src !== `^${escaped}$`
+      && !isBrokenMinichatRule(String(r.src || "").replace(/^\^/, "").replace(/\$$/, "").replace(/\\/g, ""), r.headers?.Location));
     novoCfg = { ...cfg, routes: [{ src: `^${escaped}$`, status: 307, headers: { Location: destination } }, ...semEsseCaminho] };
   } else {
     const atuais = Array.isArray(cfg.redirects) ? cfg.redirects : [];
-    const semEsseCaminho = atuais.filter(r => r.source !== source);
+    // Também tira regra nossa quebrada (caminho inválido) — sem isso a publicação do
+    // site continuava falhando mesmo depois de reinstalar com o caminho certo.
+    const semEsseCaminho = atuais.filter(r => r.source !== source && !isBrokenMinichatRule(r.source, r.destination));
     novoCfg = { ...cfg, redirects: [{ source, destination, permanent: false }, ...semEsseCaminho] };
   }
 
@@ -5607,7 +5636,7 @@ async function detectMinichatCandidatePaths(repo, headers, token) {
     });
     const keywords = /minichat|mini-chat|mini_chat|\bchat\b|contact|contato|agendar|conversa|falar|atendimento/i;
     const candidatos = internos.filter(l => keywords.test(l.href));
-    return [...new Set(candidatos.map(l => l.href.replace(/^\.\//, "").replace(/^\/+/, "")).filter(Boolean))].slice(0, 5);
+    return [...new Set(candidatos.map(l => cleanMinichatPath(l.href)).filter(Boolean))].slice(0, 5);
   } catch {
     return [];
   }
@@ -5624,9 +5653,9 @@ async function getInstalledMinichatPaths(repo, headers, id) {
     const cfg = content.trim() ? JSON.parse(content) : {};
     const destination = `https://josephpay.com/minichat.html?uid=${id}`;
     if (Array.isArray(cfg.routes)) {
-      return cfg.routes.filter(r => r.headers?.Location === destination).map(r => r.src.replace(/^\^\/?/, "").replace(/\$$/, ""));
+      return cfg.routes.filter(r => r.headers?.Location === destination).map(r => cleanMinichatPath(r.src.replace(/^\^\/?/, "").replace(/\$$/, "").replace(/\\/g, ""))).filter(Boolean);
     }
-    return (Array.isArray(cfg.redirects) ? cfg.redirects : []).filter(r => r.destination === destination).map(r => String(r.source || "").replace(/^\/+/, ""));
+    return (Array.isArray(cfg.redirects) ? cfg.redirects : []).filter(r => r.destination === destination).map(r => cleanMinichatPath(r.source)).filter(Boolean);
   } catch {
     return [];
   }
@@ -5670,8 +5699,14 @@ app.post("/api/admin/producers/:id/github/prepare-vercel", requireAuth, requireA
 app.post("/api/admin/producers/:id/github/install-minichat", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const desiredPath = (req.body?.file_path || "minichat.html").trim().replace(/^\/+/, "").replace(/^public\//, "");
-    if (!desiredPath) return res.status(400).json({ error: "Caminho é obrigatório" });
+    const bruto = String(req.body?.file_path || "minichat.html").trim();
+    const desiredPath = cleanMinichatPath(bruto);
+    if (!desiredPath) {
+      const ancora = bruto.includes("#");
+      return res.status(400).json({ error: ancora
+        ? "\"#...\" é uma âncora dentro da página, não um caminho — o site nunca recebe esse pedido. Deixe \"minichat.html\" e use \"Corrigir botão agora\" pra apontar o botão do site direto pro Mini Chat."
+        : "Caminho inválido. Use só a parte depois do domínio, ex: minichat.html ou contato." });
+    }
     const { data: profile } = await supabase.from("profiles").select("github_repo,github_minichat_path").eq("id", id).maybeSingle();
     if (!profile?.github_repo) return res.status(400).json({ error: "Vincule um repositório a este cliente primeiro" });
     const oldPath = profile.github_minichat_path || null;
@@ -5859,23 +5894,57 @@ async function detectOwnMinichat(repo, headers, token) {
 // continuava dizendo "Ainda não está no ar". Prova real (regra 4): procura o link no
 // HTML publicado e nos arquivos JS que ele carrega (site SPA monta os botões via JS).
 async function checkDirectMinichatButton(base, id) {
-  const marker = `minichat.html?uid=${id}`;
+  // Variações em que o link pode aparecer no HTML/JS publicado (com & escapado ou
+  // codificado dentro de outra URL).
+  const markers = [`minichat.html?uid=${id}`, `minichat.html%3Fuid%3D${id}`, `minichat.html\\u003Fuid=${id}`];
+  const tem = txt => markers.some(m => txt.includes(m));
   const get = url => axios.get(url, { timeout: 10000, maxRedirects: 5, responseType: "text", transformResponse: r => r, validateStatus: () => true, maxContentLength: 8 * 1024 * 1024, headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" } });
   let origin;
   try { origin = new URL(base).origin; } catch { return null; }
+  const ok = { status: "ok", method: "botao", url: base, message: "✓ Os botões do site abrem o Mini Chat direto (link no próprio botão — funciona em qualquer tipo de site)." };
   const home = await get(`${base}/?_jp=${Date.now()}`).catch(() => null);
   if (!home || home.status >= 400 || typeof home.data !== "string") return null;
-  if (home.data.includes(marker)) return { status: "ok", method: "botao", url: base, message: "✓ Os botões do site abrem o Mini Chat direto (link no próprio botão — funciona em qualquer tipo de site)." };
-  const srcs = new Set();
-  for (const m of home.data.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)) srcs.add(m[1]);
-  for (const m of home.data.matchAll(/<link\b[^>]*\brel=["'](?:modulepreload|preload)["'][^>]*\bhref=["']([^"']+\.m?js[^"']*)["']/gi)) srcs.add(m[1]);
-  for (const m of home.data.matchAll(/<link\b[^>]*\bhref=["']([^"']+\.m?js[^"']*)["'][^>]*\brel=["'](?:modulepreload|preload)["']/gi)) srcs.add(m[1]);
-  const urls = [...srcs].map(u => { try { return new URL(u, `${base}/`); } catch { return null; } })
-    .filter(u => u && u.origin === origin).map(u => u.href).slice(0, 25);
-  for (let i = 0; i < urls.length; i += 5) {
-    const lote = await Promise.all(urls.slice(i, i + 5).map(u => get(u).catch(() => null)));
-    if (lote.some(r => r && r.status < 400 && typeof r.data === "string" && r.data.includes(marker))) {
-      return { status: "ok", method: "botao", url: base, message: "✓ Os botões do site abrem o Mini Chat direto (link no próprio botão — funciona em qualquer tipo de site)." };
+  if (tem(home.data)) return ok;
+  const mesmaOrigem = (u, rel) => { try { const x = new URL(u, rel); return x.origin === origin ? x : null; } catch { return null; } };
+  const scriptsDoHtml = html => {
+    const out = new Set();
+    for (const m of html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)) out.add(m[1]);
+    for (const m of html.matchAll(/<link\b[^>]*\brel=["'](?:modulepreload|preload)["'][^>]*\bhref=["']([^"']+\.m?js[^"']*)["']/gi)) out.add(m[1]);
+    for (const m of html.matchAll(/<link\b[^>]*\bhref=["']([^"']+\.m?js[^"']*)["'][^>]*\brel=["'](?:modulepreload|preload)["']/gi)) out.add(m[1]);
+    return [...out];
+  };
+  // Páginas internas: o botão pode estar só em "/contato", "/sobre"... (até 6, priorizando
+  // as com cara de contato).
+  const paginas = [];
+  for (const m of home.data.matchAll(/<a\b[^>]*\bhref=["']([^"'#]+)["']/gi)) {
+    const u = mesmaOrigem(m[1], `${base}/`);
+    if (u && !/\.(png|jpe?g|webp|svg|pdf|css|js)$/i.test(u.pathname) && u.pathname !== "/" ) paginas.push(u.origin + u.pathname);
+  }
+  const paginasUnicas = [...new Set(paginas)].sort((a, b) => /contat|contact|fale|atend|agend/i.test(b) - /contat|contact|fale|atend|agend/i.test(a)).slice(0, 6);
+  const vistos = new Set();
+  const fila = scriptsDoHtml(home.data).map(u => mesmaOrigem(u, `${base}/`)).filter(Boolean).map(u => u.href);
+  for (const pg of paginasUnicas) {
+    const r = await get(pg).catch(() => null);
+    if (r && r.status < 400 && typeof r.data === "string") {
+      if (tem(r.data)) return ok;
+      for (const sc of scriptsDoHtml(r.data)) { const u = mesmaOrigem(sc, pg); if (u) fila.push(u.href); }
+    }
+  }
+  // Lê os JS e também os "pedaços" que eles carregam depois (Vite/React dividem o código:
+  // o botão costuma morar num pedaço que o HTML nem cita). Limite de 60 arquivos.
+  while (fila.length && vistos.size < 60) {
+    const lote = [];
+    while (fila.length && lote.length < 6) { const u = fila.shift(); if (!vistos.has(u)) { vistos.add(u); lote.push(u); } }
+    if (!lote.length) continue;
+    const resps = await Promise.all(lote.map(u => get(u).then(r => ({ u, r })).catch(() => null)));
+    for (const x of resps) {
+      if (!x || !x.r || x.r.status >= 400 || typeof x.r.data !== "string") continue;
+      if (tem(x.r.data)) return ok;
+      for (const m of x.r.data.matchAll(/["'`]((?:\.{1,2}\/|\/)?[\w\-./]*?[\w\-]+\.m?js)["'`]/g)) {
+        if (/^https?:/i.test(m[1]) || m[1].length > 200) continue;
+        const u = mesmaOrigem(m[1], x.u);
+        if (u && !vistos.has(u.href)) fila.push(u.href);
+      }
     }
   }
   return null;
@@ -5884,7 +5953,11 @@ async function checkDirectMinichatButton(base, id) {
 async function verifyMinichatLive(id) {
   const { data: profile } = await supabase.from("profiles").select("site_url,github_minichat_path,github_repo").eq("id", id).maybeSingle();
   if (!profile?.site_url) return { status: "sem_site", message: "Esse cliente ainda não tem um 'Site' cadastrado no perfil — cadastre a URL pra eu poder checar." };
-  const base = profile.site_url.replace(/\/+$/, "");
+  // Só origem + caminho: "#contact" ou "?utm=" no site cadastrado quebravam todas as
+  // URLs montadas a partir daqui.
+  let base;
+  try { const u = new URL(/^https?:\/\//i.test(profile.site_url) ? profile.site_url : `https://${profile.site_url}`); base = (u.origin + u.pathname).replace(/\/+$/, ""); }
+  catch { base = profile.site_url.split("#")[0].split("?")[0].replace(/\/+$/, ""); }
   const token = profile.github_repo ? await getGithubToken() : null;
   const headers = token ? { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" } : null;
   // Lê do vercel.json quais caminhos JÁ estão configurados de verdade (pode ser mais de
@@ -5892,7 +5965,7 @@ async function verifyMinichatLive(id) {
   // verdade real, não só o que ficou salvo no banco (pode estar desatualizado).
   let paths = [];
   if (headers && profile.github_repo) paths = await getInstalledMinichatPaths(profile.github_repo, headers, id);
-  if (!paths.length) paths = [(profile.github_minichat_path || "minichat.html").replace(/^public\//, "")];
+  if (!paths.length) paths = [cleanMinichatPath(profile.github_minichat_path) || "minichat.html"];
   // Diagnóstico extra: só roda quando TODAS as checagens falharem, pra explicar o motivo
   // mais provável em vez de só dizer "não achei" — ajuda a não ficar tentando às cegas.
   const diagnosticoCatchAll = async () => {
@@ -5927,7 +6000,18 @@ async function verifyMinichatLive(id) {
       try {
         const links = await scanRepoJsxLinks(profile.github_repo, headers, token);
         if (links.some(l => String(l.href || "").includes(`minichat.html?uid=${id}`))) {
-          ultimoResultado = { ...ultimoResultado, status: "nao_publicado", message: "O botão do site já aponta pro Mini Chat no código, mas o site publicado ainda não tem essa versão.", detail: "Falta só a publicação: veja a \"Última publicação\" no card Vercel (se estiver bloqueada, abra o link e clique em Redeploy). Não precisa reinstalar nada." };
+          // Confere a publicação de verdade antes de culpar ela — "Falta publicar" com a
+          // publicação OK confundia (o problema era outro).
+          const deploy = await getRepoDeployStatus(profile.github_repo, headers).catch(() => null);
+          const st = deploy?.state;
+          if (st === "ok") {
+            ultimoResultado = { ...ultimoResultado, status: "nao_encontrado_no_site", message: "O botão aponta pro Mini Chat no código e a última publicação deu certo, mas não achei o link no site publicado.", detail: "Pode estar numa página que só abre depois de um clique, ou num botão montado por um script de fora. Abra o site, toque no botão e veja se o Mini Chat abre — se abrir, está tudo certo." };
+          } else {
+            const porque = st === "bloqueado" || st === "falhou" ? deploy.message
+              : st === "publicando" ? "A Vercel está publicando agora — verifique de novo em ~1 min."
+              : "Veja a \"Última publicação\" no card Vercel (se estiver bloqueada, abra o link e clique em Redeploy).";
+            ultimoResultado = { ...ultimoResultado, status: "nao_publicado", deploy_state: st || null, message: "O botão do site já aponta pro Mini Chat no código, mas o site publicado ainda não tem essa versão.", detail: `${porque} Não precisa reinstalar nada.` };
+          }
         }
       } catch (e) { console.warn("[verifyMinichatLive] scan botão:", e.message); }
     }
@@ -8456,7 +8540,27 @@ app.get("/api/admin/training", requireAuth, requireAdmin, async (req, res) => {
         )`)
       .eq("role", "afiliado")
       .order("created_at", { ascending: false });
-    if (error) throw error;
+    if (error) {
+      // Sem a tabela training_progress (migration_v46 não rodada) a busca com o join
+      // falha inteira e a aba Parceiros mostrava "0 embaixadores" enquanto Clientes →
+      // Embaixadores mostrava todos. Lista mesmo assim, só sem o progresso.
+      const { data: semTreino, error: e2 } = await supabase
+        .from("profiles")
+        .select("id, name, email, role, partner_type, disabled_at, created_at")
+        .eq("role", "afiliado")
+        .order("created_at", { ascending: false });
+      if (e2) {
+        // partner_type também vem da migration_v46
+        const { data: basico, error: e3 } = await supabase
+          .from("profiles").select("id, name, email, role, disabled_at, created_at")
+          .eq("role", "afiliado").order("created_at", { ascending: false });
+        if (e3) throw e3;
+        res.set("X-Training-Missing", "1");
+        return res.json(basico || []);
+      }
+      res.set("X-Training-Missing", "1");
+      return res.json(semTreino || []);
+    }
     res.json(data || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -8479,7 +8583,13 @@ app.get("/api/admin/training/:userId", requireAuth, requireAdmin, async (req, re
         .eq("user_id", userId)
         .order("attempt_num", { ascending: true }),
     ]);
-    if (profileRes.error) throw profileRes.error;
+    if (profileRes.error) {
+      // Sem a migration_v46: mostra o embaixador mesmo assim, só sem treinamento.
+      const { data: p, error: e2 } = await supabase.from("profiles")
+        .select("id, name, email, role, created_at").eq("id", userId).maybeSingle();
+      if (e2) throw e2;
+      return res.json({ profile: p, attempts: [], training_missing: true });
+    }
     res.json({ profile: profileRes.data, attempts: attemptsRes.data || [] });
   } catch (e) {
     res.status(500).json({ error: e.message });
